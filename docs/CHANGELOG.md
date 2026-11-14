@@ -1,5 +1,51 @@
 # SurePath - Changelog
 
+## v2.9.7 - 2026-11-14
+
+### B2B — pilihan perusahaan asuransi, hero glassmorphism
+
+- **Pilihan insurer di order unit** (`B2BUnitOrder`). Kartu kaca grid 1/2/3
+  kolom menampilkan setiap insurer aktif (nama + kode + logo + deskripsi
+  singkat). Dipilih optional; server memverifikasi ulang via gateway baru
+  `list_active_insurers`, dan bila valid tersimpan sebagai catatan batch
+  (`notes`) sehingga admin melihatnya saat meng-assign. Premi tetap pakai
+  tarif OJK — pilihan ini tidak menggeser angka.
+- **Hero dashboard B2B** diganti ke glassmorphism: panel kaca di atas dua
+  lingkaran blur emerald/indigo + dot grid; nama perusahaan solid ink dengan
+  "Selamat datang kembali" kecil di atasnya, chip status hijau yang berdenyut.
+  Menggantikan gradasi tri-warna indigo→emerald→orange yang dirasa "AI slop".
+
+### Admin — Edit profil & hapus pengguna, menu per baris
+
+- Kolom "Aksi" di `UserManagementView` sekarang memuat satu tombol toggle
+  aktif/nonaktif plus menu titik-tiga dengan **Edit profil**, **Lihat
+  detail**, dan **Hapus pengguna**. Menu glass panel menutup saat klik di
+  luar / Escape.
+- `EditUserProfileModal` — edit nama, telepon, alamat. Mengaitkan ke
+  wrapper baru `adminUpdateUserProfile`.
+- `ConfirmDeleteUserModal` — konfirmasi ketik ulang email, hanya aktif
+  bila `callerRole ∈ {MASTER_ADMIN, ADMIN}`.
+- Gateway action baru `admin_delete_user` (admin-only). Menolak self-delete
+  dan menolak non-MASTER_ADMIN menghapus MASTER_ADMIN; menghapus baris
+  `sp_users` + akun auth, jejak transaksi tetap terikat ke `id`.
+- Wrapper service baru: `adminUpdateUserProfile`, `adminDeleteUser`.
+
+### Modal — backdrop glassmorphism
+
+- `SmoothModal` (AddUserWizard) — latar `rgba(15,23,42,0.42)` diganti
+  gradient slate→emerald→indigo tipis dengan `backdrop-filter: blur(16px)
+  saturate(140%)`. Panel kini semi-transparan putih 95%. Menghilangkan
+  kesan "layar hitam pekat" saat menambah user/mitra.
+- `DialogShell` (Edit/Delete) memakai treatment yang sama agar konsisten.
+
+### Catatan deploy
+
+- Migrasi: tidak ada perubahan skema (menumpang kolom `notes` yang sudah
+  ada di `sp_b2b_batches`).
+- Edge function: deploy `data-gateway` untuk `admin_delete_user` dan
+  `list_active_insurers`, serta `preferred_insurer_id` di
+  `b2b_bulk_create_batch`.
+
 ## v2.9.6 - 2026-11-14
 
 ### Admin dashboard — animated menu + page transitions + skeleton

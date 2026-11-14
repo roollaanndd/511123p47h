@@ -208,6 +208,41 @@ export async function handleAdminAction(action: string, ctx: GatewayContext): Pr
         return json({ data });
       }
 
+    // Hapus pengguna — MASTER_ADMIN & ADMIN saja. Menghapus baris sp_users
+    // sekaligus akun auth. Dilindungi dari penghapusan diri sendiri dan dari
+    // penghapusan MASTER_ADMIN oleh non-MASTER_ADMIN (anti-privilege-escalation).
+    // Baris money-trail (sp_commissions, sp_wallet_transactions, dsb.) dibiarkan;
+    // yang dihapus hanya identitas login, jejak audit tetap terbaca by id.
+    case 'admin_delete_user': {
+        if (!caller.isAdmin) return json({ error: 'Forbidden: admin only' }, 403);
+        const DELETE_ROLES = ['MASTER_ADMIN', 'ADMIN'];
+        if (!DELETE_ROLES.includes(caller.role ?? '')) {
+          return json({ error: 'Hanya ADMIN atau MASTER_ADMIN yang bisa menghapus pengguna' }, 403);
+        }
+        if (!params.user_id) return json({ error: 'Missing user_id' }, 400);
+        if (params.user_id === caller.authId || params.user_id === caller.spUser?.id) {
+          return json({ error: 'Tidak bisa menghapus akun sendiri' }, 403);
+        }
+        const { data: target, error: fetchErr } = await db
+          .from('sp_users')
+          .select('id, name, email, role')
+          .eq('id', params.user_id)
+          .maybeSingle();
+        if (fetchErr) return json({ error: fetchErr.message }, 400);
+        if (!target) return json({ error: 'Pengguna tidak ditemukan' }, 404);
+        if (target.role === 'MASTER_ADMIN' && caller.role !== 'MASTER_ADMIN') {
+          return json({ error: 'Hanya MASTER_ADMIN yang bisa menghapus MASTER_ADMIN' }, 403);
+        }
+        // sp_users.id adalah sama dengan auth.users.id untuk akun paska-ensure_profile.
+        // Jika ada pre-ensure_profile legacy (sp_users.id ≠ auth.id), hapus sp_users saja —
+        // auth record mungkin tidak ketemu; biarkan silently fail.
+        const { error: delProfileErr } = await db.from('sp_users').delete().eq('id', params.user_id);
+        if (delProfileErr) return json({ error: delProfileErr.message }, 400);
+        await db.auth.admin.deleteUser(String(target.id)).catch(() => {});
+        logActivity(null, null, 'admin_delete_user', { target_id: target.id, email: target.email, role: target.role });
+        return json({ data: { id: target.id, email: target.email, name: target.name } });
+      }
+
     case 'admin_stats': {
         if (!caller.isAdmin) return json({ error: 'Forbidden: admin only' }, 403);
         const [ordersRes, paymentsRes, agentsRes, commissionsRes] = await Promise.all([

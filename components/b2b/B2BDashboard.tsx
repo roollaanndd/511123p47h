@@ -161,47 +161,66 @@ const B2BDashboard: React.FC<Props> = ({
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
-      {/* ── Hero line — company, role, quick actions ────────────────────── */}
-      <div
-        className="relative flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 rounded-3xl p-6 lg:p-8 border overflow-hidden"
-        style={{
-          background: 'linear-gradient(120deg, #eef2ff 0%, #ecfdf5 55%, #fff7ed 100%)',
-          borderColor: 'rgba(79, 70, 229, 0.15)',
-        }}
-      >
-        <div aria-hidden className="absolute -right-24 -top-24 h-64 w-64 rounded-full bg-gradient-to-br from-orange-200/60 via-amber-100/40 to-transparent blur-3xl pointer-events-none" />
-        <div aria-hidden className="absolute -left-20 -bottom-28 h-56 w-56 rounded-full bg-gradient-to-br from-indigo-200/50 via-emerald-100/40 to-transparent blur-3xl pointer-events-none" />
-        <div className="relative">
-          <div className="flex items-center gap-2 mb-1.5">
-            <div className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse" />
-            <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-widest">
-              {t('B2B Dashboard', 'Dashboard B2B')}
-            </span>
-          </div>
-          <h1 className="text-2xl lg:text-3xl font-black text-slate-900" style={{ letterSpacing: '-0.025em' }}>
-            {t('Welcome back, ', 'Selamat datang, ')}
-            <span style={{ background: 'linear-gradient(115deg, #4338ca 0%, #059669 60%, #ea580c 100%)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>
-              {companyName}
-            </span>
-          </h1>
-          <p className="text-sm text-slate-600 mt-1">
-            {t('Overview of your fleet policies, quotes, and bulk batches.',
-               'Ringkasan polis armada, penawaran, dan batch massal Anda.')}
-          </p>
+      {/* ── Hero glassmorphism — v2.9.7 ──────────────────────────────────────
+          Mengganti gradasi tri-warna "AI slop" (indigo → emerald → orange) yang
+          tadinya menerjang teks nama perusahaan, dengan kartu glass yang teduh:
+          panel kaca di atas dua lingkaran blur, nama perusahaan solid ink dengan
+          chip verifikasi. Aksen tetap emerald SurePath, bukan pelangi. */}
+      <div className="relative overflow-hidden rounded-3xl">
+        {/* Latar kaca: dua lingkaran blur + grid halus */}
+        <div aria-hidden className="absolute inset-0 pointer-events-none">
+          <div className="absolute -right-32 -top-32 h-80 w-80 rounded-full bg-emerald-300/40 dark:bg-emerald-500/20 blur-3xl" />
+          <div className="absolute -left-24 -bottom-32 h-72 w-72 rounded-full bg-indigo-300/30 dark:bg-indigo-500/15 blur-3xl" />
+          <div className="absolute inset-0" style={{
+            backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(15,23,42,0.05) 1px, transparent 0)',
+            backgroundSize: '22px 22px',
+          }} />
         </div>
+        {/* Panel kaca utama */}
+        <div
+          className="relative flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 p-6 lg:p-8 border border-white/60 dark:border-white/10 rounded-3xl"
+          style={{
+            background: 'linear-gradient(135deg, rgba(255,255,255,0.72) 0%, rgba(255,255,255,0.45) 100%)',
+            backdropFilter: 'blur(18px) saturate(160%)',
+            WebkitBackdropFilter: 'blur(18px) saturate(160%)',
+            boxShadow: '0 20px 60px -24px rgba(15, 23, 42, 0.22), inset 0 1px 0 0 rgba(255,255,255,0.65)',
+          }}
+        >
+          <div className="relative min-w-0">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-70 animate-ping" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-600" />
+              </span>
+              <span className="text-[10px] font-black text-emerald-700 dark:text-emerald-300 uppercase tracking-[0.2em]">
+                {t('B2B Dashboard', 'Dashboard B2B')}
+              </span>
+            </div>
+            <p className="text-xs font-bold text-slate-500 dark:text-ds-ink3">
+              {t('Welcome back,', 'Selamat datang kembali,')}
+            </p>
+            <h1 className="mt-0.5 text-2xl lg:text-3xl font-black tracking-tight text-slate-900 dark:text-white break-words">
+              {companyName}
+            </h1>
+            <p className="text-sm text-slate-600 dark:text-ds-ink2 mt-1 max-w-xl">
+              {t('Overview of your fleet policies, quotes, and bulk batches.',
+                 'Ringkasan polis armada, penawaran, dan batch massal Anda.')}
+            </p>
+          </div>
 
-        <div className="relative flex items-center gap-2 flex-wrap">
-          <B2BButton variant="ghost" icon={FilePlus} onClick={() => onNavigate('new-single')}>
-            {t('New Submission', 'Pengajuan Baru')}
-          </B2BButton>
-          <button
-            type="button"
-            onClick={() => onNavigateBulk?.('new-bulk')}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider text-white shadow-lg transition-all hover:brightness-110 active:scale-95"
-            style={{ background: 'linear-gradient(115deg, #4338ca 0%, #059669 100%)', boxShadow: '0 10px 25px -8px rgba(5,150,105,0.45)' }}
-          >
-            <Upload size={14} /> {t('Bulk Import', 'Impor Massal')}
-          </button>
+          <div className="relative flex items-center gap-2 flex-wrap flex-shrink-0">
+            <B2BButton variant="ghost" icon={FilePlus} onClick={() => onNavigate('new-single')}>
+              {t('New Submission', 'Pengajuan Baru')}
+            </B2BButton>
+            <button
+              type="button"
+              onClick={() => onNavigateBulk?.('new-bulk')}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider text-white shadow-lg transition-all hover:brightness-110 active:scale-95 bg-emerald-600 hover:bg-emerald-700"
+              style={{ boxShadow: '0 12px 28px -10px rgba(5,150,105,0.45)' }}
+            >
+              <Upload size={14} /> {t('Bulk Import', 'Impor Massal')}
+            </button>
+          </div>
         </div>
       </div>
 

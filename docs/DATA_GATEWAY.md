@@ -39,6 +39,7 @@ Origin yang diizinkan:
 | `create_policy_order` | Buat order — `agent_id` SELALU di-set dari caller, tidak pernah dari klien |
 | `get_my_orders` / `get_my_claims` / `get_my_payments` | Data customer sendiri (scoped client_id / user_id / order milik sendiri) |
 | `cancel_my_order` | Batalkan order sendiri (status SUBMITTED/UNDER_REVIEW); kepemilikan diverifikasi server-side via `client_id` |
+| `list_active_insurers` (v2.9.7) | Daftar insurer aktif untuk UI klien/mitra (id/code/name/description/logo_url saja — tanpa PIC/API config). Dipakai `B2BUnitOrder` untuk pilihan asuransi batch. |
 
 ### B2B Bulk Fleet TLO (v2.7.51 — `actions/b2bBulk.ts`)
 | Action | Fungsi |
@@ -61,7 +62,10 @@ Invoice-nya sendiri dibuat oleh edge function terpisah **`create-b2b-bulk-invoic
 > Client (`services/quotationService.ts`) memanggil **`quotations-gateway` DULU** untuk 3 action ini — data-gateway hanya fallback jaringan, karena bundle data-gateway production dideploy manual dan bisa tertinggal. Jaga `data-gateway/actions/quotations.ts` tetap sinkron dengan `quotations-gateway/index.ts`.
 
 ### Admin-only (role di ADMIN_ROLES)
-`admin_list_users`, `admin_get_user`, `admin_update_user`, `admin_register_agent`,
+`admin_list_users`, `admin_get_user`, `admin_update_user`,
+`admin_delete_user` (v2.9.7 — MASTER_ADMIN/ADMIN saja; menolak self-delete dan
+non-master menghapus MASTER_ADMIN; menghapus `sp_users` + akun auth),
+`admin_register_agent`,
 `admin_invite_user` (khusus MASTER_ADMIN), `admin_list_clients`, `admin_list_claims`,
 `admin_update_claim`, `admin_list_policies`, `admin_list_orders`, `admin_update_order`
 (+INSURER), `admin_list_payments`, `admin_list_withdrawals`, `admin_approve_withdrawal`
