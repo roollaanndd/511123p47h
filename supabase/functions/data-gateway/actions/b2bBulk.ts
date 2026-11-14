@@ -215,6 +215,22 @@ export async function handleB2BBulkAction(action: string, ctx: GatewayContext): 
       ).trim() || 'Klien B2B';
       const sourceFileName = params.source_file_name ? String(params.source_file_name).slice(0, 255) : null;
 
+      // v2.9.7 — preferensi asuransi dari klien. Diverifikasi ke sp_insurers
+      // agar tidak nyampah kolom notes dengan ID hantu; namanya saja yang
+      // disimpan (ke kolom notes yang sudah ada) sehingga admin melihatnya
+      // waktu meng-assign insurer. Status insurer harus aktif.
+      let preferredInsurerNote: string | null = null;
+      if (params.preferred_insurer_id) {
+        const { data: insurer } = await db
+          .from('sp_insurers')
+          .select('id, name, is_active')
+          .eq('id', String(params.preferred_insurer_id))
+          .maybeSingle();
+        if (insurer && insurer.is_active) {
+          preferredInsurerNote = `Pilihan asuransi klien: ${insurer.name}`;
+        }
+      }
+
       const validated: ClientItemInput[] = [];
       for (let i = 0; i < rawItems.length; i++) {
         const v = validateItem(rawItems[i], i);
@@ -275,6 +291,7 @@ export async function handleB2BBulkAction(action: string, ctx: GatewayContext): 
         total_admin_fee: totals.totalAdminFee,
         total_amount: totals.totalAmount,
         status: 'SUBMITTED',
+        notes: preferredInsurerNote,
       }).select().single();
       if (batchErr) return err(batchErr.message, 400);
 

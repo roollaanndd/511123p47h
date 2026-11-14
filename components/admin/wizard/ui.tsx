@@ -18,7 +18,7 @@ import {
 ────────────────────────────────────────────────────────────────────────── */
 export const WizardStyles: React.FC = () => (
   <style>{`
-    @keyframes wiz-backdrop-in { from { opacity: 0; backdrop-filter: blur(0px) } to { opacity: 1; backdrop-filter: blur(4px) } }
+    @keyframes wiz-backdrop-in { from { opacity: 0; backdrop-filter: blur(0px) } to { opacity: 1; backdrop-filter: blur(16px) } }
     @keyframes wiz-panel-in { from { opacity: 0; transform: translateY(16px) scale(.97) } to { opacity: 1; transform: translateY(0) scale(1) } }
     @keyframes wiz-panel-out { from { opacity: 1; transform: translateY(0) scale(1) } to { opacity: 0; transform: translateY(8px) scale(.98) } }
     @keyframes wiz-step-in { from { opacity: 0; transform: translateX(16px) } to { opacity: 1; transform: translateX(0) } }
@@ -88,16 +88,24 @@ export const SmoothModal: React.FC<{
 
   return (
     <div className="fixed inset-0 z-[220] flex items-center justify-center p-3 sm:p-5">
+      {/* v2.9.7 — glassmorphism backdrop. Latar lama (rgba(15,23,42,0.42)) tampil
+          sebagai "layar hitam" tanpa karakter; gradasi slate→emerald yang teduh,
+          blur 16px + saturate 140%, memberi kesan panel melayang di atas isi
+          halaman yang masih terbaca — konsisten dengan aksen SurePath. */}
       <div
         aria-hidden
         onClick={() => !busy && onClose()}
         className="wiz-backdrop absolute inset-0"
-        style={{ background: 'rgba(15,23,42,0.42)' }}
+        style={{
+          background: 'linear-gradient(135deg, rgba(15,23,42,0.32) 0%, rgba(16,185,129,0.14) 60%, rgba(79,70,229,0.12) 100%)',
+          backdropFilter: 'blur(16px) saturate(140%)',
+          WebkitBackdropFilter: 'blur(16px) saturate(140%)',
+        }}
       />
       <div
         role="dialog"
         aria-modal="true"
-        className={`wiz-panel-in relative z-10 w-full ${sizeClass} max-h-[92dvh] flex flex-col bg-white dark:bg-ds-card text-slate-900 dark:text-white rounded-2xl sm:rounded-3xl shadow-[0_24px_80px_rgba(15,23,42,0.28)] border border-slate-200 dark:border-ds-border overflow-hidden`}
+        className={`wiz-panel-in relative z-10 w-full ${sizeClass} max-h-[92dvh] flex flex-col bg-white/95 dark:bg-ds-card/95 backdrop-blur-xl text-slate-900 dark:text-white rounded-2xl sm:rounded-3xl shadow-[0_28px_80px_-20px_rgba(15,23,42,0.45)] border border-white/40 dark:border-white/10 overflow-hidden`}
       >
         <header className="flex items-start justify-between gap-3 px-5 py-4 sm:px-7 sm:py-5 border-b border-slate-100 dark:border-ds-border">
           <div className="flex items-start gap-3 min-w-0">

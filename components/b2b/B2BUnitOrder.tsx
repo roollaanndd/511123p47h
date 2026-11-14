@@ -32,7 +32,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   Car, Bike, Construction, Loader2, CheckCircle2, AlertTriangle, ExternalLink,
   Info, ClipboardList, CalendarDays, TrendingDown, ShieldCheck, ShieldAlert,
-  Camera, Upload, X, Package, Download, Droplets, Mountain, Flame, Users, Wrench, Sparkles,
+  Camera, Upload, X, Package, Download, Droplets, Mountain, Flame, Users, Wrench, Sparkles, Building2, Check,
 } from 'lucide-react';
 import { Language } from '../../types';
 import {
@@ -47,6 +47,7 @@ import {
 import {
   createB2BBulkBatch, createB2BBulkInvoice,
   listActiveB2BPlans, type SpB2BPlan,
+  listActiveInsurers, type SpInsurer,
 } from '../../services/supabaseService';
 import { uploadB2BVehiclePhoto } from '../../services/storage';
 import { generateB2BProposalPdf } from '../../services/b2bProposalPdf';
@@ -152,10 +153,15 @@ const B2BUnitOrder: React.FC<Props> = ({ clientId, client, onDone, lang }) => {
   const [photos, setPhotos] = useState<Array<{ slot: string; label: string; url: string; size_bytes: number }>>([]);
   const [uploadingSlot, setUploadingSlot] = useState<string>('');
   const [photoError, setPhotoError] = useState('');
+  // v2.9.7 — pilihan asuransi (opsional). Server memverifikasi ulang; nama
+  // insurer tersimpan di `notes` batch sebagai catatan admin.
+  const [insurers, setInsurers] = useState<SpInsurer[]>([]);
+  const [preferredInsurerId, setPreferredInsurerId] = useState<string>('');
 
   useEffect(() => {
     let alive = true;
     listActiveB2BPlans().then(ps => { if (alive) setPlans(ps); });
+    listActiveInsurers().then(ins => { if (alive) setInsurers(ins); });
     return () => { alive = false; };
   }, []);
 
@@ -324,6 +330,7 @@ const B2BUnitOrder: React.FC<Props> = ({ clientId, client, onDone, lang }) => {
     const result = await createB2BBulkBatch({
       companyName,
       sourceFileName: t('unit-order', 'order-satuan'),
+      preferredInsurerId: preferredInsurerId || null,
       items: [{
         rowNo: 1,
         nasabahName: nasabahName.trim(),
@@ -926,6 +933,97 @@ const B2BUnitOrder: React.FC<Props> = ({ clientId, client, onDone, lang }) => {
                 onClick={() => setPlanId(p.id)}
               />
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Pilihan perusahaan asuransi — v2.9.7. Preferensi klien yang
+          disimpan di `notes` batch; premi tidak berubah (tarif OJK sama di
+          seluruh insurer). Admin melihat pilihan ini saat meng-assign. */}
+      {insurers.length > 0 && (
+        <div
+          className="relative overflow-hidden rounded-2xl p-5 space-y-4 border border-white/60 dark:border-white/10"
+          style={{
+            background: 'linear-gradient(135deg, rgba(255,255,255,0.75) 0%, rgba(236,253,245,0.55) 100%)',
+            backdropFilter: 'blur(14px) saturate(140%)',
+            WebkitBackdropFilter: 'blur(14px) saturate(140%)',
+            boxShadow: 'inset 0 1px 0 0 rgba(255,255,255,0.6), 0 10px 32px -18px rgba(15,23,42,0.18)',
+          }}
+        >
+          <div aria-hidden className="absolute -right-16 -top-16 h-48 w-48 rounded-full bg-emerald-300/30 blur-3xl pointer-events-none" />
+          <div aria-hidden className="absolute -left-10 -bottom-10 h-40 w-40 rounded-full bg-indigo-300/20 blur-3xl pointer-events-none" />
+          <div className="relative flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className={labelCls + ' flex items-center gap-1.5'}>
+                <Building2 size={11} /> {t('Preferred insurer', 'Pilihan perusahaan asuransi')}
+              </p>
+              <p className="text-2xs text-ds-ink3 mt-0.5">
+                {t(
+                  'Pick the insurer you want for this policy. Premium stays the same (OJK tariff).',
+                  'Pilih perusahaan asuransi untuk polis ini. Premi tetap sama (tarif OJK).',
+                )}
+              </p>
+            </div>
+            {preferredInsurerId && (
+              <button
+                type="button"
+                onClick={() => setPreferredInsurerId('')}
+                className="shrink-0 text-2xs font-black uppercase tracking-widest text-ds-ink3 hover:text-ds-ink2 underline underline-offset-2"
+              >
+                {t('Clear', 'Hapus pilihan')}
+              </button>
+            )}
+          </div>
+          <div className="relative grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {insurers.map(ins => {
+              const selected = preferredInsurerId === ins.id;
+              return (
+                <button
+                  key={ins.id}
+                  type="button"
+                  onClick={() => setPreferredInsurerId(selected ? '' : ins.id)}
+                  aria-pressed={selected}
+                  className={`group relative text-left rounded-2xl border-2 p-3.5 transition-all duration-200 overflow-hidden ${
+                    selected
+                      ? 'border-emerald-500 bg-white dark:bg-ds-card shadow-[0_12px_32px_-14px_rgba(5,150,105,0.45)]'
+                      : 'border-white/70 dark:border-white/10 bg-white/70 dark:bg-ds-card2/80 hover:border-emerald-400 hover:-translate-y-0.5'
+                  }`}
+                  style={{
+                    backdropFilter: 'blur(10px) saturate(130%)',
+                    WebkitBackdropFilter: 'blur(10px) saturate(130%)',
+                  }}
+                >
+                  {selected && (
+                    <span className="absolute top-2 right-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-600 text-white shadow-md">
+                      <Check size={11} />
+                    </span>
+                  )}
+                  <div className="flex items-center gap-3">
+                    <div className="h-11 w-11 rounded-xl bg-white dark:bg-ds-card flex items-center justify-center border border-slate-200 dark:border-ds-border overflow-hidden flex-shrink-0">
+                      {ins.logo_url ? (
+                        <img
+                          src={ins.logo_url}
+                          alt={ins.name}
+                          className="h-full w-full object-contain"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <Building2 size={18} className="text-emerald-600" />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-black text-slate-900 dark:text-white truncate">{ins.name}</p>
+                      {ins.code && (
+                        <p className="text-2xs font-mono font-bold text-ds-ink3 uppercase tracking-widest truncate">{ins.code}</p>
+                      )}
+                    </div>
+                  </div>
+                  {ins.description && (
+                    <p className="mt-2 text-2xs text-ds-ink3 leading-snug line-clamp-2">{ins.description}</p>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
       )}

@@ -1,7 +1,45 @@
 # SurePath Session Context
-**Updated:** 2026-11-14 (v2.9.1 — B2B perluasan/foto/paket/proposal/warna; v2.9.0 agent revamp)
+**Updated:** 2026-11-14 (v2.9.7 — B2B insurer picker + hero glass; admin delete/edit user + modal glass)
 
-## Terakhir dikerjakan (14 Nov 2026) — v2.9.1
+## Terakhir dikerjakan (14 Nov 2026) — v2.9.7
+
+**v2.9.7 — B2B insurer + admin CRUD + modal glass.** Permintaan owner: pilihan
+perusahaan asuransi di order B2B belum ada, hero B2B pakai gradasi "AI slop"
+pada nama perusahaan, admin tidak punya menu delete/edit user, dan latar modal
+"Tambah Pengguna/Mitra" berupa layar hitam yang jelek.
+
+Status: edge function `data-gateway` perlu di-deploy (action baru
+`admin_delete_user`, `list_active_insurers`, dan parameter
+`preferred_insurer_id` di `b2b_bulk_create_batch`).
+
+**Berkas kunci yang disentuh**
+- `supabase/functions/data-gateway/actions/admin.ts` — action baru
+  `admin_delete_user` (MASTER_ADMIN/ADMIN; anti-self-delete; non-master tak
+  bisa hapus MASTER_ADMIN; hapus profil + akun auth).
+- `supabase/functions/data-gateway/actions/insurers.ts` — action baru
+  `list_active_insurers` (authenticated). Field terbatas: id/code/name/
+  description/logo_url.
+- `supabase/functions/data-gateway/actions/b2bBulk.ts` —
+  `b2b_bulk_create_batch` terima `preferred_insurer_id`, verifikasi aktif,
+  simpan nama insurer ke kolom `notes`.
+- `services/users.ts` — wrapper `adminUpdateUserProfile`, `adminDeleteUser`.
+- `services/insurers.ts` — `listActiveInsurers()` memakai gateway baru.
+- `services/b2bBulk.ts` — `createB2BBulkBatch` terima `preferredInsurerId`.
+- `components/b2b/B2BUnitOrder.tsx` — grid kartu insurer glass sebelum
+  bagian paket/perluasan, diisi dari `listActiveInsurers`; selection
+  dikirim via `preferredInsurerId`.
+- `components/b2b/B2BDashboard.tsx` — hero diganti panel glassmorphism
+  (dua blur emerald+indigo, dot grid, nama solid ink + chip pulse).
+- `components/admin/AdminViews.tsx` — `UserManagementView` dapat menu
+  titik-tiga (Edit profil / Lihat detail / Hapus pengguna) per baris.
+  `EditUserProfileModal` + `ConfirmDeleteUserModal` + `DialogShell`
+  pakai backdrop gradient blur, panel kaca semi-transparan.
+- `components/admin/wizard/ui.tsx` — `SmoothModal` backdrop diganti dari
+  `rgba(15,23,42,0.42)` ke gradient slate→emerald→indigo + blur 16px
+  saturate 140%; panel bg jadi 95% opacity.
+- `docs/CHANGELOG.md`, `docs/DATA_GATEWAY.md`, `src/version.ts` → 2.9.7.
+
+## Sebelumnya — v2.9.1
 
 **v2.9.1 — B2B lanjut.** Permintaan owner: pilihan perluasan sesuai formula
 agent/admin, koneksi admin dashboard, perbaiki `company_name` error,

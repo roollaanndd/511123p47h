@@ -148,6 +148,29 @@ export async function updateAgentCommissionRate(agentId: string, rate: number): 
   return true;
 }
 
+/** Edit profil user oleh admin — nama, nomor, alamat, dsb. Role diubah lewat
+ *  handleRoleChange yang memanggil admin_update_user langsung; wrapper ini
+ *  khusus field profil biasa. Returns the error string on failure, else null. */
+export async function adminUpdateUserProfile(
+  userId: string,
+  updates: { name?: string; phone?: string; address?: string; ktp?: string },
+): Promise<string | null> {
+  const cleaned: Record<string, unknown> = { user_id: userId };
+  if (updates.name !== undefined) cleaned.name = updates.name.trim();
+  if (updates.phone !== undefined) cleaned.phone = updates.phone.trim();
+  if (updates.address !== undefined) cleaned.address = updates.address.trim();
+  if (updates.ktp !== undefined) cleaned.ktp = updates.ktp.trim();
+  const { error } = await callGateway('admin_update_user', cleaned);
+  return error ?? null;
+}
+
+/** Hapus pengguna (sp_users + auth). MASTER_ADMIN & ADMIN saja; server menolak
+ *  self-delete dan menolak non-master menghapus MASTER_ADMIN. */
+export async function adminDeleteUser(userId: string): Promise<string | null> {
+  const { error } = await callGateway('admin_delete_user', { user_id: userId });
+  return error ?? null;
+}
+
 // ─── Agent Registration ───────────────────────────────────────────────────────
 
 export async function registerAgent(data: {

@@ -36,6 +36,19 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
   const { db, params, caller, sendTelegram, logActivity, checkRateLimit, RESEND_KEY } = ctx;
 
   switch (action) {
+    // v2.9.7 — daftar insurer aktif untuk UI mitra/B2B. Setiap sesi yang
+    // terotentikasi (B2B client, agent, admin) boleh membaca — hanya
+    // id/code/name/logo yang dikembalikan, tanpa kontak PIC atau API config.
+    case 'list_active_insurers': {
+        if (!caller.authId) return json({ error: 'Login required' }, 401);
+        const { data, error } = await db.from('sp_insurers')
+          .select('id, code, name, description, logo_url')
+          .eq('is_active', true)
+          .order('name');
+        if (error) return json({ error: error.message }, 400);
+        return json({ data: data ?? [] });
+      }
+
     case 'admin_list_insurer_tokens': {
         if (!caller.isAdmin) return json({ error: 'Forbidden: admin only' }, 403);
         const { data, error } = await db.from('sp_insurer_auth_tokens')

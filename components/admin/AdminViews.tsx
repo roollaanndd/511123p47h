@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { ShieldCheck, ArrowUpRight, Search, FileText, CheckCircle, Check, ShieldAlert, RefreshCw, Globe, FileDown, Upload, Plus, UserPlus, ChevronDown, Pencil, X, Clock, AlertCircle, Send, Sparkles, KeyRound, Copy, MailCheck } from 'lucide-react';
+import { ShieldCheck, ArrowUpRight, Search, FileText, CheckCircle, Check, ShieldAlert, RefreshCw, Globe, FileDown, Upload, Plus, UserPlus, ChevronDown, Pencil, X, Clock, AlertCircle, Send, Sparkles, KeyRound, Copy, MailCheck, Trash2, MoreVertical, Loader2 } from 'lucide-react';
 import { db, CustomProduct, User } from '../../db';
 import {
   getAllAgents, getAllClaims, updateAgentVerification, updateAgentCommissionRate,
@@ -12,6 +12,7 @@ import {
   type Withdrawal,
   registerAgent,
   sendMitraPasswordReset, setMitraTempPassword,
+  adminUpdateUserProfile, adminDeleteUser,
   getSecurityStats, getSessionActivityByHour,
   getAdminPayments,
 } from '../../services/supabaseService';
@@ -1994,6 +1995,12 @@ export const UserManagementView = () => {
   >(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  // Edit profil (nama/telp/alamat) & hapus — v2.9.7, melengkapi tabel yang
+  // sebelumnya hanya punya toggle active/role/apps. Konfirmasi hapus memakai
+  // modal custom, bukan window.confirm, supaya seragam dengan wizard.
+  const [editingUser, setEditingUser] = useState<UserWithActive | null>(null);
+  const [deletingUser, setDeletingUser] = useState<UserWithActive | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
   // Sejajar dengan AgentManagementView — baca role caller dari sesi untuk
   // menampilkan opsi password manual hanya pada MASTER_ADMIN.
@@ -2004,6 +2011,20 @@ export const UserManagementView = () => {
     } catch { return ''; }
   })();
   const callerIsMasterAdmin = callerRole === UserRole.MASTER_ADMIN;
+  const canDeleteUsers = callerRole === UserRole.MASTER_ADMIN || callerRole === UserRole.ADMIN;
+
+  // Close row menu on outside click / escape.
+  useEffect(() => {
+    if (!openMenuId) return;
+    const onClick = () => setOpenMenuId(null);
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpenMenuId(null); };
+    window.addEventListener('click', onClick);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('click', onClick);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [openMenuId]);
   // Menu cleanup 2026-10-26: the former standalone "Pengguna" menu (BizAdminView)
   // merged in here as the "Partner Aktif" tab — one canonical user screen.
   const [dirTab, setDirTab] = useState<'accounts' | 'partners'>('accounts');
@@ -2087,6 +2108,27 @@ export const UserManagementView = () => {
     } catch (e: any) {
       toast.error(`Gagal toggle status: ${e?.message ?? e}`);
     }
+  };
+
+  const handleSaveEdit = async (
+    userId: string,
+    updates: { name: string; phone: string; address: string },
+  ): Promise<string | null> => {
+    const err = await adminUpdateUserProfile(userId, updates);
+    if (err) { toast.error(`Gagal simpan: ${err}`); return err; }
+    toast.success('Profil diperbarui');
+    setEditingUser(null);
+    load();
+    return null;
+  };
+
+  const handleDeleteUser = async (u: UserWithActive): Promise<void> => {
+    if (!u.id) return;
+    const err = await adminDeleteUser(u.id);
+    if (err) { toast.error(`Gagal hapus: ${err}`); return; }
+    toast.success(`${u.name} dihapus`);
+    setDeletingUser(null);
+    load();
   };
 
   // v2.7.58: AddInternalUserModal menggantikan handler lama yang memanggil
@@ -2303,16 +2345,63 @@ export const UserManagementView = () => {
                       )}
                     </td>
                     <td className="py-3.5 text-right pr-6">
-                      <button
-                        onClick={() => handleToggleActive(u)}
-                        className={`px-3 py-1.5 rounded-xl text-2xs font-black uppercase tracking-widest transition-all ${
-                          isActive
-                            ? 'bg-rose-500/10 text-rose-700 dark:text-rose-300 hover:bg-rose-500 hover:text-white'
-                            : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500 hover:text-white'
-                        }`}
-                      >
-                        {isActive ? 'Nonaktifkan' : 'Aktifkan'}
-                      </button>
+                      <div className="inline-flex items-center gap-1.5 justify-end">
+                        <button
+                          onClick={() => handleToggleActive(u)}
+                          title={isActive ? 'Nonaktifkan' : 'Aktifkan'}
+                          className={`px-3 py-1.5 rounded-xl text-2xs font-black uppercase tracking-widest transition-all ${
+                            isActive
+                              ? 'bg-rose-500/10 text-rose-700 dark:text-rose-300 hover:bg-rose-500 hover:text-white'
+                              : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500 hover:text-white'
+                          }`}
+                        >
+                          {isActive ? 'Nonaktifkan' : 'Aktifkan'}
+                        </button>
+                        <div className="relative">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setOpenMenuId(openMenuId === u.id ? null : u.id); }}
+                            title="Opsi lainnya"
+                            aria-label="Opsi lainnya"
+                            className="p-1.5 rounded-lg text-ds-ink3 hover:text-ds-ink hover:bg-ds-card2 transition-colors"
+                          >
+                            <MoreVertical size={14} />
+                          </button>
+                          {openMenuId === u.id && (
+                            <div
+                              onClick={(e) => e.stopPropagation()}
+                              role="menu"
+                              className="absolute right-0 top-9 z-30 w-48 rounded-xl border border-ds-border bg-ds-card shadow-[0_20px_50px_-20px_rgba(15,23,42,0.5)] backdrop-blur-xl py-1 animate-fade-in"
+                            >
+                              <button
+                                role="menuitem"
+                                onClick={() => { setEditingUser(u); setOpenMenuId(null); }}
+                                className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold text-ds-ink hover:bg-emerald-500/10 hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors text-left"
+                              >
+                                <Pencil size={12} /> Edit profil
+                              </button>
+                              <button
+                                role="menuitem"
+                                onClick={() => { setSelectedUserId(u.id); setOpenMenuId(null); }}
+                                className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold text-ds-ink hover:bg-ds-card2 transition-colors text-left"
+                              >
+                                <FileText size={12} /> Lihat detail
+                              </button>
+                              {canDeleteUsers && (
+                                <>
+                                  <div className="my-1 border-t border-ds-border" />
+                                  <button
+                                    role="menuitem"
+                                    onClick={() => { setDeletingUser(u); setOpenMenuId(null); }}
+                                    className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 transition-colors text-left"
+                                  >
+                                    <Trash2 size={12} /> Hapus pengguna
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -2352,7 +2441,270 @@ export const UserManagementView = () => {
         }}
       />
       {credential && <CredentialModal {...credential} onClose={() => setCredential(null)} />}
+
+      {editingUser && (
+        <EditUserProfileModal
+          user={editingUser}
+          onClose={() => setEditingUser(null)}
+          onSave={handleSaveEdit}
+        />
+      )}
+
+      {deletingUser && (
+        <ConfirmDeleteUserModal
+          user={deletingUser}
+          canDelete={canDeleteUsers}
+          onClose={() => setDeletingUser(null)}
+          onConfirm={() => handleDeleteUser(deletingUser)}
+        />
+      )}
     </div>
+  );
+};
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Edit & Delete User modals — v2.9.7                                      */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+const DialogShell: React.FC<{
+  onClose: () => void;
+  title: React.ReactNode;
+  subtitle?: React.ReactNode;
+  icon?: React.ReactNode;
+  tone?: 'emerald' | 'rose';
+  children: React.ReactNode;
+  footer?: React.ReactNode;
+  busy?: boolean;
+}> = ({ onClose, title, subtitle, icon, tone = 'emerald', children, footer, busy }) => {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !busy) onClose(); };
+    window.addEventListener('keydown', onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = prev; };
+  }, [onClose, busy]);
+  const toneBg = tone === 'rose'
+    ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400'
+    : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400';
+  return (
+    <div className="fixed inset-0 z-[220] flex items-center justify-center p-3 sm:p-5">
+      {/* Glassmorphism backdrop — light blur, subtle tint — tidak gelap pekat */}
+      <div
+        aria-hidden
+        onClick={() => !busy && onClose()}
+        className="absolute inset-0 animate-fade-in"
+        style={{
+          background: 'linear-gradient(135deg, rgba(15,23,42,0.28) 0%, rgba(16,185,129,0.12) 100%)',
+          backdropFilter: 'blur(14px) saturate(140%)',
+          WebkitBackdropFilter: 'blur(14px) saturate(140%)',
+        }}
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="relative z-10 w-full max-w-lg max-h-[92dvh] flex flex-col bg-white/95 dark:bg-ds-card/95 backdrop-blur-xl text-slate-900 dark:text-white rounded-2xl sm:rounded-3xl shadow-[0_28px_80px_-20px_rgba(15,23,42,0.45)] border border-white/40 dark:border-white/10 overflow-hidden animate-fade-up"
+      >
+        <header className="flex items-start justify-between gap-3 px-5 py-4 sm:px-6 sm:py-5 border-b border-slate-100 dark:border-ds-border">
+          <div className="flex items-start gap-3 min-w-0">
+            {icon && <div className={`flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center ${toneBg}`}>{icon}</div>}
+            <div className="min-w-0">
+              <h2 className="font-black text-base sm:text-lg tracking-tight">{title}</h2>
+              {subtitle && <p className="mt-0.5 text-xs text-slate-500 dark:text-ds-ink3">{subtitle}</p>}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+            aria-label="Tutup"
+            className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-ds-card2 text-slate-500 dark:text-ds-ink3 transition-colors disabled:opacity-40"
+          >
+            <X size={16} />
+          </button>
+        </header>
+        <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-4 sm:px-6 sm:py-5">
+          {children}
+        </div>
+        {footer && (
+          <footer className="flex-shrink-0 px-5 py-4 sm:px-6 sm:py-5 border-t border-slate-100 dark:border-ds-border bg-slate-50/60 dark:bg-ds-card2/40">
+            {footer}
+          </footer>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const EditUserProfileModal: React.FC<{
+  user: UserWithActive;
+  onClose: () => void;
+  onSave: (
+    userId: string,
+    updates: { name: string; phone: string; address: string },
+  ) => Promise<string | null>;
+}> = ({ user, onClose, onSave }) => {
+  const [name, setName] = useState(user.name ?? '');
+  const [phone, setPhone] = useState((user as any).phone ?? '');
+  const [address, setAddress] = useState((user as any).address ?? '');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async () => {
+    if (!name.trim()) { setError('Nama tidak boleh kosong'); return; }
+    setBusy(true);
+    setError(null);
+    const err = await onSave(user.id!, { name, phone, address });
+    if (err) setError(err);
+    setBusy(false);
+  };
+
+  const inputCls = 'w-full bg-white dark:bg-ds-card2 border border-slate-200 dark:border-ds-border rounded-xl px-3.5 py-2.5 text-sm text-slate-800 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition-all';
+
+  return (
+    <DialogShell
+      onClose={onClose}
+      busy={busy}
+      icon={<Pencil size={16} />}
+      title="Edit profil pengguna"
+      subtitle={user.email}
+      footer={
+        <div className="flex items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+            className="px-4 py-2.5 rounded-xl text-sm font-bold bg-slate-100 dark:bg-ds-card2 text-slate-700 dark:text-ds-ink2 hover:bg-slate-200 dark:hover:bg-white/5 transition-colors disabled:opacity-40"
+          >
+            Batal
+          </button>
+          <button
+            type="button"
+            onClick={submit}
+            disabled={busy}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm transition-all active:scale-[0.97] disabled:opacity-40"
+          >
+            {busy ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+            Simpan perubahan
+          </button>
+        </div>
+      }
+    >
+      <div className="space-y-4">
+        {error && (
+          <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/30">
+            <AlertCircle size={14} className="text-rose-600 flex-shrink-0 mt-0.5" />
+            <p className="text-xs font-bold text-rose-700 dark:text-rose-300">{error}</p>
+          </div>
+        )}
+        <div>
+          <label className="block text-xs font-bold text-slate-700 dark:text-ds-ink2 mb-1.5">
+            Nama lengkap <span className="text-rose-500">*</span>
+          </label>
+          <input className={inputCls} value={name} onChange={e => setName(e.target.value)} placeholder="Nama lengkap" />
+        </div>
+        <div>
+          <label className="block text-xs font-bold text-slate-700 dark:text-ds-ink2 mb-1.5">
+            Nomor telepon
+          </label>
+          <input className={inputCls} value={phone} onChange={e => setPhone(e.target.value)} placeholder="08xx…" />
+        </div>
+        <div>
+          <label className="block text-xs font-bold text-slate-700 dark:text-ds-ink2 mb-1.5">
+            Alamat
+          </label>
+          <textarea
+            className={`${inputCls} resize-none min-h-[72px]`}
+            value={address}
+            onChange={e => setAddress(e.target.value)}
+            placeholder="Alamat domisili"
+          />
+        </div>
+        <p className="text-2xs text-slate-500 dark:text-ds-ink3 leading-relaxed bg-slate-50 dark:bg-ds-card2 border border-slate-100 dark:border-ds-border p-3 rounded-xl">
+          <strong>Catatan:</strong> email tidak bisa diubah dari sini. Untuk mengganti email, mitra harus login lalu mengatur ulang sendiri.
+          Role &amp; app access diubah dari tabel utama.
+        </p>
+      </div>
+    </DialogShell>
+  );
+};
+
+const ConfirmDeleteUserModal: React.FC<{
+  user: UserWithActive;
+  canDelete: boolean;
+  onClose: () => void;
+  onConfirm: () => Promise<void>;
+}> = ({ user, canDelete, onClose, onConfirm }) => {
+  const [busy, setBusy] = useState(false);
+  const [typed, setTyped] = useState('');
+  const match = typed.trim().toLowerCase() === (user.email ?? '').toLowerCase();
+  const handle = async () => { setBusy(true); try { await onConfirm(); } finally { setBusy(false); } };
+
+  return (
+    <DialogShell
+      onClose={onClose}
+      busy={busy}
+      tone="rose"
+      icon={<Trash2 size={16} />}
+      title="Hapus pengguna?"
+      subtitle={user.name}
+      footer={
+        <div className="flex items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+            className="px-4 py-2.5 rounded-xl text-sm font-bold bg-slate-100 dark:bg-ds-card2 text-slate-700 dark:text-ds-ink2 hover:bg-slate-200 dark:hover:bg-white/5 transition-colors disabled:opacity-40"
+          >
+            Batal
+          </button>
+          <button
+            type="button"
+            onClick={handle}
+            disabled={busy || !match || !canDelete}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-rose-600 text-white hover:bg-rose-700 shadow-sm transition-all active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {busy ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+            Hapus permanen
+          </button>
+        </div>
+      }
+    >
+      <div className="space-y-4">
+        {!canDelete && (
+          <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30">
+            <ShieldAlert size={14} className="text-amber-600 flex-shrink-0 mt-0.5" />
+            <p className="text-xs font-bold text-amber-800 dark:text-amber-300">Hanya MASTER_ADMIN atau ADMIN yang bisa menghapus pengguna.</p>
+          </div>
+        )}
+        <div className="rounded-2xl bg-rose-50/60 dark:bg-rose-500/10 border border-rose-200/60 dark:border-rose-500/30 p-4">
+          <p className="text-sm font-bold text-rose-900 dark:text-rose-200">
+            Tindakan ini tidak bisa dibatalkan.
+          </p>
+          <p className="mt-1.5 text-xs text-rose-800 dark:text-rose-300 leading-relaxed">
+            Akun login <span className="font-mono font-black">{user.email}</span> ({user.role})
+            akan dihapus sepenuhnya dari sistem. Jejak transaksi (polis, komisi,
+            pembayaran) tetap tersimpan atas ID pengguna, tapi pengguna ini
+            tidak akan bisa login lagi.
+          </p>
+        </div>
+        <div>
+          <label className="block text-xs font-bold text-slate-700 dark:text-ds-ink2 mb-1.5">
+            Ketik email pengguna untuk konfirmasi:
+          </label>
+          <input
+            type="text"
+            value={typed}
+            onChange={e => setTyped(e.target.value)}
+            placeholder={user.email}
+            disabled={!canDelete}
+            className="w-full bg-white dark:bg-ds-card2 border border-slate-200 dark:border-ds-border rounded-xl px-3.5 py-2.5 text-sm font-mono text-slate-800 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20 transition-all disabled:opacity-50"
+          />
+          {typed.length > 0 && !match && (
+            <p className="mt-1.5 text-2xs font-bold text-rose-700 dark:text-rose-300">Email belum cocok.</p>
+          )}
+        </div>
+      </div>
+    </DialogShell>
   );
 };
 

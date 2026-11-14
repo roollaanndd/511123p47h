@@ -128,11 +128,15 @@ export async function createB2BBulkBatch(input: {
   companyName: string;
   sourceFileName?: string;
   items: CreateB2BBulkItemInput[];
+  /** v2.9.7 — pilihan asuransi klien. Server verifikasi dan simpan sebagai
+   *  catatan batch; admin melihatnya saat meng-assign insurer. */
+  preferredInsurerId?: string | null;
 }): Promise<{ batch: SpB2BBatch; totals: Record<string, number> } | { error: string }> {
   const { data, error } = await callGateway('b2b_bulk_create_batch', {
     company_name: input.companyName,
     source_file_name: input.sourceFileName,
     items: input.items,
+    preferred_insurer_id: input.preferredInsurerId ?? undefined,
   });
   if (error) return { error };
   return data as { batch: SpB2BBatch; totals: Record<string, number> };
