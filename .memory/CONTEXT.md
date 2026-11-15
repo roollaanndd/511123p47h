@@ -1,7 +1,37 @@
 # SurePath Session Context
-**Updated:** 2026-11-14 (v2.9.7 — B2B insurer picker + hero glass; admin delete/edit user + modal glass)
+**Updated:** 2026-11-15 (v2.9.8 — Pathy white glassmorphism, watermark logo, AI assistant positioning)
 
-## Terakhir dikerjakan (14 Nov 2026) — v2.9.7
+## Terakhir dikerjakan (15 Nov 2026) — v2.9.8
+
+**v2.9.8 — Pathy redesign.** Permintaan owner: UI/UX Pathy direfresh ikut
+tema terupdate — clean white modern glassmorphism, watermark logo SurePath
+di latar putih, kombinasi hijau SurePath + oranye, simple dan user-friendly,
+kesan AI assistant (bukan customer service).
+
+Status: murni frontend, tidak ada migrasi/edge function.
+
+**Berkas kunci yang disentuh**
+- `components/shared/PathyChat.tsx`:
+  - FAB launcher — kaca putih dengan dua halo blur (emerald + orange),
+    dot status gradien emerald→orange.
+  - Panel latar — dua radial blur + gradient putih; `.pathy-watermark`
+    centered logo `/surepath-logo.png` dengan opacity 4.5%.
+  - Header — kaca putih backdrop-blur-xl; nama **Pathy** gradient
+    `bg-clip-text` emerald→orange + chip "AI" oranye kecil. Status text
+    jadi "AI Assistant SurePath · siap membantu".
+  - Disclaimer bar — soft slate + label "AI assistant" oranye (bukan amber
+    galak).
+  - Bubble user — gradient diagonal emerald→orange; bubble bot putih 90% +
+    backdrop-blur.
+  - `CardShell` dapat accent bar 0.5px emerald→orange; kartu `greet` taps
+    diselang-seling emerald/orange.
+  - Composer — input putih di bar kaca, tombol upload emerald/kamera
+    oranye, send button gradient emerald→orange bulat.
+  - Quick taps bergantian emerald/orange soft; WhatsApp tetap emerald solid.
+  - Greeting mikro-copy: "AI asisten SurePath" (bukan sekadar "asisten"),
+    footer card: "Pathy akan bantu langkah demi langkah".
+
+## Sebelumnya — v2.9.7 (14 Nov 2026)
 
 **v2.9.7 — B2B insurer + admin CRUD + modal glass.** Permintaan owner: pilihan
 perusahaan asuransi di order B2B belum ada, hero B2B pakai gradasi "AI slop"

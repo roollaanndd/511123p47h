@@ -96,6 +96,83 @@ function ensurePathyChatKeyframes() {
       .pathy-listen-ring, .pathy-speak-mouth, .pathy-think-dots span { animation: none !important; }
     }
     @media (prefers-reduced-motion: reduce) { [data-pathychat-anim] { animation: none !important; } }
+
+    /* ── v2.9.8 Pathy glassmorphism theme ──────────────────────────────── */
+
+    /* FAB launcher — kaca putih + dua halo blur (emerald + orange). */
+    .pathy-fab {
+      background: transparent;
+      backdrop-filter: none;
+    }
+    .pathy-fab-core {
+      position: relative;
+      z-index: 2;
+      width: 100%;
+      height: 100%;
+      border-radius: 9999px;
+      background: linear-gradient(135deg, rgba(255,255,255,0.95), rgba(255,255,255,0.72));
+      -webkit-backdrop-filter: blur(14px) saturate(140%);
+      backdrop-filter: blur(14px) saturate(140%);
+      border: 1px solid rgba(255,255,255,0.7);
+      box-shadow: 0 14px 34px -14px rgba(16,157,87,0.45), inset 0 1px 0 0 rgba(255,255,255,0.8);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .pathy-fab-halo {
+      position: absolute;
+      inset: -6px;
+      border-radius: 9999px;
+      filter: blur(14px);
+      opacity: 0.85;
+      pointer-events: none;
+      z-index: 1;
+    }
+    .pathy-fab-halo--emerald { background: radial-gradient(circle at 30% 30%, rgba(16,185,129,0.55), transparent 65%); }
+    .pathy-fab-halo--orange  { background: radial-gradient(circle at 75% 75%, rgba(249,115,22,0.45), transparent 60%); }
+    @media (prefers-color-scheme: dark) {
+      .pathy-fab-core {
+        background: linear-gradient(135deg, rgba(15,23,42,0.92), rgba(15,23,42,0.72));
+        border-color: rgba(255,255,255,0.08);
+      }
+    }
+
+    /* Panel — latar putih dengan dua lingkaran blur aksen SurePath. */
+    .pathy-panel {
+      background:
+        radial-gradient(circle at 12% -10%, rgba(16,185,129,0.14), transparent 55%),
+        radial-gradient(circle at 92% 110%, rgba(249,115,22,0.12), transparent 60%),
+        linear-gradient(180deg, #ffffff 0%, #fafafa 100%);
+    }
+    .dark .pathy-panel {
+      background:
+        radial-gradient(circle at 12% -10%, rgba(16,185,129,0.14), transparent 55%),
+        radial-gradient(circle at 92% 110%, rgba(249,115,22,0.10), transparent 60%),
+        linear-gradient(180deg, #0a0a0a 0%, #050505 100%);
+    }
+
+    /* Watermark logo SurePath — di tengah area pesan, sangat tipis. */
+    .pathy-watermark {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background-image: url('/surepath-logo.png');
+      background-repeat: no-repeat;
+      background-position: center 58%;
+      background-size: min(62vw, 360px) auto;
+      opacity: 0.045;
+      filter: saturate(140%);
+      z-index: 0;
+    }
+    .dark .pathy-watermark { opacity: 0.06; }
+
+    /* Message area sits on top of the watermark */
+    .pathy-messages { z-index: 1; }
+
+    /* User bubble — gradasi emerald → orange SurePath, bukan solid hijau datar. */
+    .pathy-bubble-user {
+      background: linear-gradient(135deg, #10b981 0%, #059669 55%, #f97316 180%);
+    }
   `;
   document.head.appendChild(style);
 }
@@ -248,8 +325,9 @@ const indicationOf = (d: any, legacy?: boolean): Indication => {
 };
 
 const CardShell: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
-  <div className="mt-2 rounded-2xl border border-emerald-500/20 bg-white dark:bg-slate-800 overflow-hidden">
-    <p className="px-3 py-1.5 text-[0.55rem] font-black uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-300 bg-emerald-500/10">
+  <div className="mt-2 rounded-2xl border border-slate-100 dark:border-white/10 bg-white/92 dark:bg-slate-900/85 backdrop-blur-sm overflow-hidden shadow-[0_6px_20px_-12px_rgba(16,157,87,0.25)]">
+    <div className="h-0.5 bg-gradient-to-r from-emerald-500 via-emerald-400 to-orange-400" />
+    <p className="px-3 py-1.5 text-[0.55rem] font-black uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-300 bg-emerald-500/5">
       {title}
     </p>
     <div className="px-3 py-2 space-y-2">{children}</div>
@@ -451,15 +529,24 @@ const PathyCardView: React.FC<{
       return (
         <CardShell title={t('Mau mulai dari mana?', 'Where shall we start?')}>
           <div className="grid gap-2">
-            {taps.map(tap => (
-              <button key={tap.id} type="button" onClick={() => openTap(tap.id)}
-                className="w-full py-2.5 px-3 rounded-xl text-left text-[0.7rem] font-black uppercase tracking-wide bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-1 ring-inset ring-emerald-500/20 active:scale-[0.98] transition-transform">
-                {tap.label}
-              </button>
-            ))}
+            {taps.map((tap, i) => {
+              const useOrange = i === 1;
+              return (
+                <button key={tap.id} type="button" onClick={() => openTap(tap.id)}
+                  className={`w-full py-2.5 px-3 rounded-xl text-left text-[0.7rem] font-black uppercase tracking-wide ring-1 ring-inset active:scale-[0.98] transition-all ${
+                    useOrange
+                      ? 'bg-orange-500/10 text-orange-700 dark:text-orange-300 ring-orange-500/20 hover:bg-orange-500/20'
+                      : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-emerald-500/20 hover:bg-emerald-500/20'
+                  }`}>
+                  {tap.label}
+                </button>
+              );
+            })}
           </div>
-          <p className="text-[0.55rem] text-slate-400">
-            {t('Satu ketukan = satu aksi nyata.', 'One tap = one real action.')}
+          <p className="text-[0.55rem] text-slate-400 flex items-center gap-1.5">
+            <span className="inline-block w-1 h-1 rounded-full bg-gradient-to-r from-emerald-500 to-orange-400" />
+            {t('Ketik bebas atau pilih di atas — Pathy akan bantu langkah demi langkah.',
+               'Type freely or tap above — Pathy will walk you through it.')}
           </p>
         </CardShell>
       );
@@ -1308,12 +1395,12 @@ const PathyChat: React.FC<PathyChatProps> = ({ lang, currentUser, hideLauncher =
     : { pagi: 'Selamat pagi', siang: 'Selamat siang', sore: 'Selamat sore', malam: 'Selamat malam' }[dayPart];
   const greeting = currentUser?.name
     ? t(
-        `${salutation}, ${currentUser.name}! Aku Pathy. ${isAgent ? 'Mau mulai dari mana?' : 'Ada yang bisa kubantu?'}`,
-        `${salutation}, ${currentUser.name}! I'm Pathy. ${isAgent ? 'Where shall we start?' : 'How can I help?'}`,
+        `${salutation}, ${currentUser.name}! Aku Pathy — AI asisten SurePath. ${isAgent ? 'Mau mulai dari mana?' : 'Ada yang bisa kubantu?'}`,
+        `${salutation}, ${currentUser.name}! I'm Pathy — your SurePath AI assistant. ${isAgent ? 'Where shall we start?' : 'How can I help?'}`,
       )
     : t(
-        `${salutation}! Aku Pathy, asisten SurePath. Pilih salah satu di bawah atau ketik langsung ya.`,
-        `${salutation}! I'm Pathy, your SurePath assistant. Pick an option below or just type.`,
+        `${salutation}! Aku Pathy, AI asisten SurePath. Tanyakan apa saja soal polis, klaim, atau pembayaran — atau pilih ketukan cepat di bawah.`,
+        `${salutation}! I'm Pathy, your SurePath AI assistant. Ask me anything about policies, claims, or payments — or tap a quick action below.`,
       );
 
   useEffect(() => {
@@ -1882,7 +1969,7 @@ const PathyChat: React.FC<PathyChatProps> = ({ lang, currentUser, hideLauncher =
       ? t('Sedang berpikir…', 'Thinking…')
       : ttsSpeaking
         ? t('Membacakan jawaban…', 'Reading the answer…')
-        : t('AI Asisten · SurePath', 'AI Assistant · SurePath');
+        : t('AI Assistant SurePath · siap membantu', 'SurePath AI Assistant · ready to help');
 
   return (
     <>
@@ -1892,16 +1979,24 @@ const PathyChat: React.FC<PathyChatProps> = ({ lang, currentUser, hideLauncher =
       <button
         ref={buttonRef}
         type="button"
-        aria-label={t('Buka asisten Pathy', 'Open Pathy assistant')}
+        aria-label={t('Buka asisten AI Pathy', 'Open Pathy AI assistant')}
         aria-expanded={open}
         onClick={() => setOpen(o => !o)}
-        className="fixed bottom-28 right-4 z-[60] w-16 h-16 rounded-full bg-white dark:bg-slate-900 shadow-[0_12px_32px_-8px_rgba(16,157,87,0.6)] ring-2 ring-emerald-500/30 flex items-center justify-center active:scale-90 transition-transform duration-200 motion-reduce:transition-none focus:outline-none focus-visible:ring-4 focus-visible:ring-emerald-500/50"
+        // v2.9.8 — Launcher glassmorphism putih dengan halo emerald + orange
+        // di belakang, menegaskan identitas AI assistant (bukan CS). Dua
+        // cincin blur (hijau SurePath + oranye aksen) memberi kedalaman tanpa
+        // mengganggu nama yang berdiri di latar isi halaman.
+        className="pathy-fab fixed bottom-28 right-4 z-[60] w-16 h-16 rounded-full flex items-center justify-center active:scale-90 transition-transform duration-200 motion-reduce:transition-none focus:outline-none focus-visible:ring-4 focus-visible:ring-emerald-500/40"
       >
-        <span data-pathychat-anim>
-          <PathyFace size={40} />
+        <span aria-hidden className="pathy-fab-halo pathy-fab-halo--emerald" />
+        <span aria-hidden className="pathy-fab-halo pathy-fab-halo--orange" />
+        <span className="pathy-fab-core">
+          <span data-pathychat-anim>
+            <PathyFace size={40} />
+          </span>
         </span>
         {!open && (
-          <span className="absolute top-0 right-0 w-3.5 h-3.5 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-slate-900 animate-pulse motion-reduce:animate-none" />
+          <span className="absolute top-0.5 right-0.5 w-3.5 h-3.5 rounded-full bg-gradient-to-br from-emerald-500 to-orange-400 ring-2 ring-white dark:ring-slate-900 animate-pulse motion-reduce:animate-none" />
         )}
       </button>
       )}
@@ -1917,7 +2012,7 @@ const PathyChat: React.FC<PathyChatProps> = ({ lang, currentUser, hideLauncher =
           // isi yang di panel 22rem/70vh harus digulir dalam lubang kecil.
           // aria-modal ikut jadi true karena sekarang ia memang menutupi
           // seluruh layar; bilang "false" akan membohongi pembaca layar.
-          className="fixed inset-0 z-[70] w-full flex flex-col overflow-hidden bg-white dark:bg-slate-900"
+          className="pathy-panel fixed inset-0 z-[70] w-full flex flex-col overflow-hidden"
           style={{
             animation: 'pathychat-pop 0.28s cubic-bezier(.22,1,.36,1)',
             // Hormati notch//gesture bar di APK dan iOS.
@@ -1925,15 +2020,27 @@ const PathyChat: React.FC<PathyChatProps> = ({ lang, currentUser, hideLauncher =
             paddingBottom: 'env(safe-area-inset-bottom)',
           }}
         >
-          {/* Header */}
-          <div className="flex items-center gap-3 px-4 py-3 bg-gradient-to-br from-emerald-500 to-emerald-600 text-white flex-shrink-0">
-            <span data-pathychat-anim className="flex-shrink-0">
-              <PathyFace size={34} mood={mood} />
+          {/* v2.9.8 — Watermark logo SurePath di latar area pesan. Tipis,
+              dekoratif, tidak mengganggu baca bubble: pakai pointer-events
+              none dan opacity rendah. Ikut background bahkan di dark mode. */}
+          <span aria-hidden className="pathy-watermark" />
+          {/* Header glass putih — tema baru. Tombol header pakai warna
+              slate/emerald yang kontras di latar putih, bukan putih-di-emerald
+              seperti versi lama. */}
+          <div className="relative flex items-center gap-3 px-4 py-3 flex-shrink-0 border-b border-slate-100 bg-white/85 backdrop-blur-xl dark:bg-slate-950/70 dark:border-white/10">
+            <span data-pathychat-anim className="flex-shrink-0 relative">
+              <span aria-hidden className="absolute inset-[-6px] rounded-full bg-gradient-to-br from-emerald-300/40 via-white to-orange-300/30 blur-md" />
+              <span className="relative">
+                <PathyFace size={34} mood={mood} />
+              </span>
             </span>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-black tracking-tight leading-none">Pathy</p>
-              <p className="text-[0.6rem] font-bold uppercase tracking-widest opacity-90 mt-1 flex items-center gap-1">
-                <span className={`w-1.5 h-1.5 rounded-full ${listening ? 'bg-rose-300 animate-pulse motion-reduce:animate-none' : 'bg-emerald-200 animate-pulse motion-reduce:animate-none'}`} />
+              <p className="text-sm font-black tracking-tight leading-none flex items-center gap-1.5">
+                <span className="bg-gradient-to-r from-emerald-600 to-orange-500 bg-clip-text text-transparent">Pathy</span>
+                <span className="text-[0.52rem] font-black uppercase tracking-[0.2em] text-orange-600 bg-orange-500/10 ring-1 ring-inset ring-orange-500/20 px-1.5 py-0.5 rounded-full">AI</span>
+              </p>
+              <p className="text-[0.6rem] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 mt-1 flex items-center gap-1">
+                <span className={`w-1.5 h-1.5 rounded-full ${listening ? 'bg-rose-500 animate-pulse motion-reduce:animate-none' : loading ? 'bg-orange-400 animate-pulse motion-reduce:animate-none' : 'bg-emerald-500 animate-pulse motion-reduce:animate-none'}`} />
                 {statusText}
               </p>
             </div>
@@ -1948,8 +2055,10 @@ const PathyChat: React.FC<PathyChatProps> = ({ lang, currentUser, hideLauncher =
                   ? t('Matikan mode percakapan suara', 'Turn off voice conversation mode')
                   : t('Nyalakan mode percakapan suara', 'Turn on voice conversation mode')}
                 aria-pressed={voiceLoop}
-                className={`w-9 h-9 rounded-full flex items-center justify-center active:scale-90 transition-all duration-200 motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70 ${
-                  voiceLoop ? 'bg-white/25' : 'bg-white/10 hover:bg-white/20'
+                className={`w-9 h-9 rounded-full flex items-center justify-center active:scale-90 transition-all duration-200 motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/60 ${
+                  voiceLoop
+                    ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/30'
+                    : 'bg-slate-100 text-slate-500 hover:bg-emerald-500/10 hover:text-emerald-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-emerald-500/20'
                 }`}
               >
                 <svg viewBox="0 0 24 24" width={17} height={17} fill="none" stroke="currentColor" strokeWidth={2.1} strokeLinecap="round" strokeLinejoin="round">
@@ -1968,8 +2077,10 @@ const PathyChat: React.FC<PathyChatProps> = ({ lang, currentUser, hideLauncher =
                 onClick={toggleTts}
                 aria-label={ttsOn ? t('Matikan suara Pathy', 'Turn Pathy voice off') : t('Nyalakan suara Pathy', 'Turn Pathy voice on')}
                 aria-pressed={ttsOn}
-                className={`w-9 h-9 rounded-full flex items-center justify-center active:scale-90 transition-all duration-200 motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70 ${
-                  ttsOn ? 'bg-white/25' : 'bg-white/10 hover:bg-white/20'
+                className={`w-9 h-9 rounded-full flex items-center justify-center active:scale-90 transition-all duration-200 motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/60 ${
+                  ttsOn
+                    ? 'bg-orange-500 text-white shadow-md shadow-orange-500/30'
+                    : 'bg-slate-100 text-slate-500 hover:bg-orange-500/10 hover:text-orange-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-orange-500/20'
                 }`}
               >
                 <svg viewBox="0 0 24 24" width={17} height={17} fill="none" stroke="currentColor" strokeWidth={2.1} strokeLinecap="round" strokeLinejoin="round">
@@ -1989,7 +2100,7 @@ const PathyChat: React.FC<PathyChatProps> = ({ lang, currentUser, hideLauncher =
               type="button"
               aria-label={t('Tutup', 'Close')}
               onClick={closePanel}
-              className="w-9 h-9 rounded-full bg-white/15 hover:bg-white/25 flex items-center justify-center active:scale-90 transition-all duration-200 motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+              className="w-9 h-9 rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 flex items-center justify-center active:scale-90 transition-all duration-200 motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/60"
             >
               <svg viewBox="0 0 24 24" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
                 <path d="M6 6l12 12M18 6L6 18" />
@@ -1997,26 +2108,31 @@ const PathyChat: React.FC<PathyChatProps> = ({ lang, currentUser, hideLauncher =
             </button>
           </div>
 
-          {/* AI disclaimer banner */}
-          <div className="flex-shrink-0 px-3 py-2 bg-amber-50 dark:bg-amber-950/40 border-b border-amber-200/60 dark:border-amber-700/30">
-            <p className="text-[0.58rem] text-amber-700 dark:text-amber-400 font-medium leading-snug text-center">
+          {/* AI disclaimer banner — soft slate, bukan amber yang galak */}
+          <div className="relative flex-shrink-0 px-3 py-2 bg-white/60 backdrop-blur-sm border-b border-slate-100 dark:bg-slate-950/40 dark:border-white/5">
+            <p className="text-[0.58rem] text-slate-500 dark:text-slate-400 font-medium leading-snug text-center">
+              <span className="inline-flex items-center gap-1 text-orange-600 dark:text-orange-400 font-bold">
+                <span className="w-1 h-1 rounded-full bg-orange-500" />
+                {t('AI assistant', 'AI assistant')}
+              </span>
+              <span className="mx-1.5 text-slate-300">·</span>
               {t(
-                'Pathy AI bisa keliru dan tidak memutuskan klaim — keputusan dijamin atau tidak ada pada pihak asuransi.',
-                'Pathy is AI, can be wrong, and does not decide claims — cover decisions rest with the insurer.',
+                'bisa keliru, keputusan klaim ada di pihak asuransi.',
+                'can be wrong, claim decisions rest with the insurer.',
               )}
             </p>
           </div>
 
-          {/* Messages */}
-          <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-[#fafaf9] dark:bg-[#0a0a0a]">
+          {/* Messages — bg transparan supaya watermark SurePath tembus */}
+          <div ref={scrollRef} className="relative flex-1 overflow-y-auto px-4 py-4 space-y-3 pathy-messages">
             {messages.map(m => (
               <div key={m.id} className={`flex ${m.from === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div className={`max-w-[88%] ${m.from === 'user' ? '' : 'w-full'}`}>
                   <div
                     className={`px-3.5 py-2.5 text-xs font-medium leading-relaxed rounded-2xl whitespace-pre-wrap ${
                       m.from === 'user'
-                        ? 'bg-emerald-500 text-white rounded-br-md'
-                        : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-bl-md border border-slate-100 dark:border-white/5 shadow-sm'
+                        ? 'pathy-bubble-user text-white rounded-br-md shadow-md shadow-emerald-500/25'
+                        : 'bg-white/90 dark:bg-slate-900/80 backdrop-blur-sm text-slate-700 dark:text-slate-200 rounded-bl-md border border-slate-100 dark:border-white/10 shadow-sm'
                     }`}
                   >
                     {m.text}
@@ -2060,12 +2176,15 @@ const PathyChat: React.FC<PathyChatProps> = ({ lang, currentUser, hideLauncher =
             ))}
             {loading && (
               <div className="flex justify-start">
-                <div className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-white/5 rounded-2xl rounded-bl-md px-4 py-3 shadow-sm flex items-center gap-1.5">
+                <div className="bg-white/90 dark:bg-slate-900/80 backdrop-blur-sm border border-slate-100 dark:border-white/10 rounded-2xl rounded-bl-md px-4 py-3 shadow-sm flex items-center gap-1.5">
                   {[0, 0.2, 0.4].map((delay, i) => (
                     <span
                       key={i}
-                      className="w-1.5 h-1.5 rounded-full bg-emerald-400"
-                      style={{ animation: `pathy-typing 1.2s ease-in-out ${delay}s infinite` }}
+                      className="w-1.5 h-1.5 rounded-full"
+                      style={{
+                        background: i === 0 ? '#10b981' : i === 1 ? '#f59e0b' : '#f97316',
+                        animation: `pathy-typing 1.2s ease-in-out ${delay}s infinite`,
+                      }}
                     />
                   ))}
                 </div>
@@ -2081,7 +2200,7 @@ const PathyChat: React.FC<PathyChatProps> = ({ lang, currentUser, hideLauncher =
               recent screenshots; with `capture` set (as this used to be) a
               phone jumps straight to the camera and a photo the user already
               has is unreachable — the "there is no upload" complaint. */}
-          <div className="flex-shrink-0 px-3 pt-2 pb-1 border-t border-slate-100 dark:border-white/10 bg-white dark:bg-slate-900">
+          <div className="relative flex-shrink-0 px-3 pt-2 pb-1 border-t border-slate-100 dark:border-white/10 bg-white/85 backdrop-blur-xl dark:bg-slate-950/70">
             <input
               ref={uploadRef}
               type="file"
@@ -2146,7 +2265,7 @@ const PathyChat: React.FC<PathyChatProps> = ({ lang, currentUser, hideLauncher =
                 type="button"
                 onClick={() => uploadRef.current?.click()}
                 disabled={!!scanning || pending.length >= 4}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-emerald-500/10 text-[0.62rem] font-bold text-emerald-700 dark:text-emerald-300 ring-1 ring-inset ring-emerald-500/20 active:scale-95 transition-transform disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-emerald-500/10 text-[0.62rem] font-bold text-emerald-700 dark:text-emerald-300 ring-1 ring-inset ring-emerald-500/20 hover:bg-emerald-500/20 active:scale-95 transition-all disabled:opacity-50"
               >
                 <svg viewBox="0 0 24 24" width={11} height={11} fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M12 3v13M7 8l5-5 5 5" /></svg>
                 {t('Unggah gambar', 'Upload image')}
@@ -2155,7 +2274,7 @@ const PathyChat: React.FC<PathyChatProps> = ({ lang, currentUser, hideLauncher =
                 type="button"
                 onClick={() => cameraRef.current?.click()}
                 disabled={!!scanning || pending.length >= 4}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 text-[0.62rem] font-bold text-slate-600 dark:text-slate-300 active:scale-95 transition-transform disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-orange-500/10 text-[0.62rem] font-bold text-orange-700 dark:text-orange-300 ring-1 ring-inset ring-orange-500/20 hover:bg-orange-500/20 active:scale-95 transition-all disabled:opacity-50"
               >
                 <svg viewBox="0 0 24 24" width={11} height={11} fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" /><circle cx="12" cy="13" r="4" /></svg>
                 {t('Kamera', 'Camera')}
@@ -2165,7 +2284,7 @@ const PathyChat: React.FC<PathyChatProps> = ({ lang, currentUser, hideLauncher =
               </span>
             </div>
 
-            <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800 rounded-2xl px-3 py-2 ring-1 ring-slate-200 dark:ring-white/10 focus-within:ring-emerald-500/50">
+            <div className="flex items-center gap-2 bg-white dark:bg-slate-900/80 rounded-2xl px-3 py-2 ring-1 ring-slate-200 dark:ring-white/10 focus-within:ring-2 focus-within:ring-emerald-500/40 transition-shadow shadow-sm">
               <input
                 ref={inputRef}
                 type="text"
@@ -2204,9 +2323,10 @@ const PathyChat: React.FC<PathyChatProps> = ({ lang, currentUser, hideLauncher =
                 type="button"
                 onClick={handleSend}
                 disabled={(!input.trim() && pending.length === 0) || loading}
-                className="w-7 h-7 rounded-full bg-emerald-500 disabled:bg-slate-200 dark:disabled:bg-slate-700 flex items-center justify-center active:scale-90 transition-all duration-150 flex-shrink-0"
+                aria-label={t('Kirim', 'Send')}
+                className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-500 to-orange-400 disabled:from-slate-200 disabled:to-slate-200 dark:disabled:from-slate-700 dark:disabled:to-slate-700 flex items-center justify-center active:scale-90 transition-all duration-150 flex-shrink-0 shadow-md shadow-emerald-500/30 disabled:shadow-none"
               >
-                <svg viewBox="0 0 24 24" width={13} height={13} fill="none" stroke="white" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                <svg viewBox="0 0 24 24" width={14} height={14} fill="none" stroke="white" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
                   <path d="M22 2L11 13M22 2L15 22l-4-9-9-4 20-7z" />
                 </svg>
               </button>
@@ -2216,25 +2336,34 @@ const PathyChat: React.FC<PathyChatProps> = ({ lang, currentUser, hideLauncher =
           {/* Quick reply chips — role-shaped (v2.7.11): the agent sees acting
               taps, the customer sees service taps. Same set the greet card
               shows, so nothing surprises twice. */}
-          <div className="flex-shrink-0 px-3 pt-1 pb-3 bg-white dark:bg-slate-900">
-            <p className="text-[0.55rem] font-black uppercase tracking-[0.2em] text-slate-400 mb-2 px-1">
+          <div className="relative flex-shrink-0 px-3 pt-1 pb-3 bg-white/85 backdrop-blur-xl dark:bg-slate-950/70 border-t border-slate-50 dark:border-white/5">
+            <p className="text-[0.55rem] font-black uppercase tracking-[0.2em] text-slate-400 mb-2 px-1 flex items-center gap-1.5">
+              <span className="inline-block w-1 h-1 rounded-full bg-gradient-to-r from-emerald-500 to-orange-400" />
               {t('Ketukan Cepat', 'Quick Taps')}
             </p>
             <div className="flex flex-wrap gap-2">
-              {quickReplies.map(qr => (
+              {quickReplies.map((qr, idx) => {
+                // Alternate emerald/orange soft chips for warmer feel; WhatsApp
+                // tetap emerald solid supaya langsung dikenali.
+                const isWa = qr.action === 'whatsapp';
+                const useOrange = !isWa && idx % 2 === 1;
+                return (
                 <button
                   key={qr.id}
                   type="button"
                   onClick={() => handleQuick(qr)}
-                  className={`min-h-[36px] px-3 py-1.5 rounded-full text-[0.68rem] font-bold transition-all duration-200 motion-reduce:transition-none active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50 ${
-                    qr.action === 'whatsapp'
-                      ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/30 hover:bg-emerald-600'
-                      : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20 ring-1 ring-inset ring-emerald-500/15'
+                  className={`min-h-[36px] px-3 py-1.5 rounded-full text-[0.68rem] font-bold transition-all duration-200 motion-reduce:transition-none active:scale-95 focus:outline-none focus-visible:ring-2 ${
+                    isWa
+                      ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/30 hover:bg-emerald-600 focus-visible:ring-emerald-500/50'
+                      : useOrange
+                        ? 'bg-orange-500/10 text-orange-700 dark:text-orange-300 hover:bg-orange-500/20 ring-1 ring-inset ring-orange-500/20 focus-visible:ring-orange-500/40'
+                        : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20 ring-1 ring-inset ring-emerald-500/15 focus-visible:ring-emerald-500/50'
                   }`}
                 >
                   {en ? qr.chipEn : qr.chipId}
                 </button>
-              ))}
+              );
+              })}
             </div>
           </div>
         </div>
