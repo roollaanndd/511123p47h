@@ -1,5 +1,61 @@
 # SurePath - Changelog
 
+## v2.9.8 - 2026-11-15
+
+### Pathy — redesign ke white glassmorphism (AI assistant, bukan CS)
+
+Permintaan owner: Pathy direfresh dengan tema terupdate — clean white modern
+glassmorphism, watermark logo SurePath di latar putih, kombinasi hijau SurePath
+dengan oranye, simple dan user-friendly, dan kesan **AI assistant**, bukan
+customer service.
+
+**Launcher (FAB)**
+- Dari ring emerald solid ke kaca putih dengan dua halo blur (emerald di
+  kiri-atas, oranye di kanan-bawah) — identitas SurePath dua warna.
+- Dot status pulsa gradasi emerald→orange, bukan hijau polos.
+
+**Panel**
+- Latar panel: dua radial blur (emerald atas-kiri, oranye bawah-kanan) di atas
+  gradient putih halus.
+- Watermark logo SurePath di tengah area pesan (opacity 4.5%, pointer-events
+  none) — identitas visual tanpa mengganggu baca.
+
+**Header**
+- Dari `bg-gradient-to-br from-emerald-500 to-emerald-600` putih-teks →
+  kaca putih 85% + backdrop-blur-xl, nama **Pathy** memakai `bg-clip-text`
+  emerald→orange + chip kecil "AI" oranye di sampingnya.
+- Status "AI Assistant SurePath · siap membantu" menegaskan posisi asisten.
+  Titik status: emerald (idle), orange (thinking), rose (listening).
+- Tombol header: `voice loop` emerald solid saat aktif, `tts` oranye solid
+  saat aktif, `close` slate netral.
+
+**Disclaimer bar**
+- Dari banner kuning galak ke strip putih 60% dengan teks slate dan label
+  "AI assistant" oranye di depan — info, bukan peringatan.
+
+**Bubble & card**
+- Bubble user: gradient diagonal emerald→orange SurePath, bukan solid
+  emerald flat. Bubble bot: putih 90% + backdrop-blur-sm + border tipis.
+- `CardShell` dapat accent bar 0.5px emerald→orange di atas; isi bg putih
+  92% + backdrop-blur-sm, shadow emerald tipis. Kartu `greet` taps
+  diselang-seling emerald/orange.
+
+**Composer & quick taps**
+- Input bar: putih solid di atas bar kaca, fokus ring emerald.
+- Tombol upload: emerald soft. Tombol kamera: oranye soft. Pembeda yang
+  jelas tanpa ikon tambahan.
+- Tombol kirim: gradient emerald→orange bulat.
+- Quick taps bergantian emerald/orange soft; WhatsApp tetap emerald solid
+  supaya langsung dikenali.
+
+**Micro-copy**
+- Greeting menyebut "AI asisten SurePath" (bukan sekadar "asisten"), dan
+  kalimat follow-up card tap: "Ketik bebas atau pilih di atas — Pathy akan
+  bantu langkah demi langkah" (mengganti "Satu ketukan = satu aksi nyata").
+
+### Catatan deploy
+- Tidak ada perubahan migrasi/edge function — murni frontend.
+
 ## v2.9.7 - 2026-11-14
 
 ### B2B — pilihan perusahaan asuransi, hero glassmorphism
