@@ -105,12 +105,12 @@ export const B2BAmbient: React.FC = () => (
     }} />
     <div aria-hidden className="b2b-blob fixed pointer-events-none z-0" style={{
       top: '-20%', left: '-10%', width: '55%', height: '55%',
-      background: 'radial-gradient(ellipse, rgba(5,150,105,0.12) 0%, transparent 70%)',
+      background: 'radial-gradient(ellipse, rgba(148,163,184,0.08) 0%, transparent 70%)',
       animation: 'b2b-drift-a 20s ease-in-out infinite',
     }} />
     <div aria-hidden className="b2b-blob fixed pointer-events-none z-0" style={{
       bottom: '-25%', right: '-15%', width: '60%', height: '60%',
-      background: 'radial-gradient(ellipse, rgba(67,56,202,0.10) 0%, transparent 72%)',
+      background: 'radial-gradient(ellipse, rgba(100,116,139,0.06) 0%, transparent 72%)',
       animation: 'b2b-drift-b 22s ease-in-out infinite',
     }} />
   </>
@@ -198,36 +198,40 @@ export const B2BKpi: React.FC<{
   /** Suppress the count-up animation (e.g. for pre-formatted strings). */
   animate?: boolean;
 }> = ({ label, value, hint, tone = 'default', icon: Icon, format, animate = true }) => {
-  const toneCls = {
-    default: 'text-slate-900',
-    accent:  'text-indigo-600',
-    warn:    'text-amber-600',
-    success: 'text-emerald-600',
-    spark:   'text-orange-600',
+  const toneMap = {
+    default: { text: 'text-slate-900', accent: 'rgba(100,116,139,0.5)',  iconBg: 'rgba(100,116,139,0.08)', iconCls: 'text-slate-500' },
+    accent:  { text: 'text-indigo-600', accent: 'rgba(99,102,241,0.6)',  iconBg: 'rgba(99,102,241,0.08)',  iconCls: 'text-indigo-600' },
+    warn:    { text: 'text-amber-600',  accent: 'rgba(245,158,11,0.6)',  iconBg: 'rgba(245,158,11,0.08)',  iconCls: 'text-amber-600' },
+    success: { text: 'text-emerald-600',accent: 'rgba(16,185,129,0.6)', iconBg: 'rgba(16,185,129,0.08)', iconCls: 'text-emerald-600' },
+    spark:   { text: 'text-orange-600', accent: 'rgba(249,115,22,0.6)', iconBg: 'rgba(249,115,22,0.08)', iconCls: 'text-orange-600' },
   }[tone];
   const numeric = typeof value === 'number';
   return (
-    <B2BGlass className="p-5">
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{label}</span>
-        {Icon && (
-          <div
-            className="w-8 h-8 rounded-xl flex items-center justify-center transition-transform duration-200 hover:scale-110"
-            style={{ background: 'rgba(67,56,202,0.08)' }}
-          >
-            <Icon size={14} className="text-indigo-600" strokeWidth={2.25} />
-          </div>
-        )}
+    <B2BGlass className="overflow-hidden">
+      {/* Tone accent stripe — 2px top bar, subtle but distinctive */}
+      <div className="h-[2px] w-full rounded-t-2xl" style={{ background: toneMap.accent, opacity: 0.7 }} />
+      <div className="p-5">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{label}</span>
+          {Icon && (
+            <div
+              className="w-8 h-8 rounded-xl flex items-center justify-center transition-transform duration-200 hover:scale-110"
+              style={{ background: toneMap.iconBg }}
+            >
+              <Icon size={14} className={toneMap.iconCls} strokeWidth={2.25} />
+            </div>
+          )}
+        </div>
+        <div
+          className={`text-3xl font-black b2b-numerals ${toneMap.text}`}
+          style={{ fontFamily: '"JetBrains Mono","SF Mono",ui-monospace,monospace', letterSpacing: '-0.025em' }}
+        >
+          {numeric && animate
+            ? <B2BCountUp value={value as number} format={format} />
+            : value}
+        </div>
+        {hint && <div className="text-xs text-slate-500 mt-1">{hint}</div>}
       </div>
-      <div
-        className={`text-3xl font-black b2b-numerals ${toneCls}`}
-        style={{ fontFamily: '"JetBrains Mono","SF Mono",ui-monospace,monospace', letterSpacing: '-0.025em' }}
-      >
-        {numeric && animate
-          ? <B2BCountUp value={value as number} format={format} />
-          : value}
-      </div>
-      {hint && <div className="text-xs text-slate-500 mt-1">{hint}</div>}
     </B2BGlass>
   );
 };

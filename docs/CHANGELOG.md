@@ -1,5 +1,24 @@
 # SurePath - Changelog
 
+## v2.9.10 - 2026-11-16
+
+### B2B — Welcome card & KPI cards redesign (tanpa warna hijau)
+
+Menghapus warna hijau dari welcome card B2B dan mengganti background cards
+dengan sesuatu yang lebih kreatif dan eye-pleasant.
+
+- **Hero welcome card**: Dua blur circle (emerald + indigo) diganti dengan
+  pearl gradient (slate-50→white→slate-100) + pola kontur topografi SVG tipis
+  (garis melengkung faint slate, mirip premium B2B SaaS seperti Stripe/Linear)
+  + dua radial slate lembut tanpa warna.
+- **B2BAmbient blobs**: Green blob `rgba(5,150,105,0.12)` → neutral slate
+  `rgba(148,163,184,0.08)`; indigo blob dilembutkan.
+- **KPI cards**: Tambah accent stripe 2px di atas tiap kartu sesuai tone-nya
+  (slate/indigo/amber/emerald/orange), memberi identitas visual per metrik
+  tanpa menambah background warna.
+
+---
+
 ## v2.9.9 - 2026-11-16
 
 ### Latar belakang app — putih bersih tanpa gradasi warna

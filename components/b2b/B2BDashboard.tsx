@@ -167,23 +167,34 @@ const B2BDashboard: React.FC<Props> = ({
           panel kaca di atas dua lingkaran blur, nama perusahaan solid ink dengan
           chip verifikasi. Aksen tetap emerald SurePath, bukan pelangi. */}
       <div className="relative overflow-hidden rounded-3xl">
-        {/* Latar kaca: dua lingkaran blur + grid halus */}
-        <div aria-hidden className="absolute inset-0 pointer-events-none">
-          <div className="absolute -right-32 -top-32 h-80 w-80 rounded-full bg-emerald-300/40 dark:bg-emerald-500/20 blur-3xl" />
-          <div className="absolute -left-24 -bottom-32 h-72 w-72 rounded-full bg-indigo-300/30 dark:bg-indigo-500/15 blur-3xl" />
+        {/* Latar: pearl gradient + kontur topografi halus + bayangan slate */}
+        <div aria-hidden className="absolute inset-0 pointer-events-none rounded-3xl overflow-hidden">
+          {/* Base pearl gradient */}
           <div className="absolute inset-0" style={{
-            backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(15,23,42,0.05) 1px, transparent 0)',
-            backgroundSize: '22px 22px',
+            background: 'linear-gradient(135deg, #f8fafc 0%, #ffffff 45%, #f1f5f9 100%)',
+          }} />
+          {/* Topographic contour SVG pattern — very faint, premium feel */}
+          <div className="absolute inset-0" style={{
+            backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cpath d='M60 0 Q80 30 60 60 Q40 90 60 120' fill='none' stroke='%2394a3b8' stroke-width='0.6' opacity='0.25'/%3E%3Cpath d='M0 60 Q30 40 60 60 Q90 80 120 60' fill='none' stroke='%2394a3b8' stroke-width='0.6' opacity='0.25'/%3E%3Cpath d='M20 0 Q50 40 20 80' fill='none' stroke='%2394a3b8' stroke-width='0.4' opacity='0.18'/%3E%3Cpath d='M100 40 Q70 70 100 120' fill='none' stroke='%2394a3b8' stroke-width='0.4' opacity='0.18'/%3E%3C/svg%3E")`,
+            backgroundSize: '120px 120px',
+          }} />
+          {/* Soft slate radial on top-right */}
+          <div className="absolute -right-16 -top-20 w-80 h-80 rounded-full" style={{
+            background: 'radial-gradient(circle at 60% 30%, rgba(148,163,184,0.18), transparent 65%)',
+          }} />
+          {/* Soft slate radial on bottom-left */}
+          <div className="absolute -left-16 -bottom-24 w-72 h-72 rounded-full" style={{
+            background: 'radial-gradient(circle at 35% 70%, rgba(226,232,240,0.55), transparent 60%)',
           }} />
         </div>
         {/* Panel kaca utama */}
         <div
-          className="relative flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 p-6 lg:p-8 border border-white/60 dark:border-white/10 rounded-3xl"
+          className="relative flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 p-6 lg:p-8 border border-slate-200/70 dark:border-white/10 rounded-3xl"
           style={{
-            background: 'linear-gradient(135deg, rgba(255,255,255,0.72) 0%, rgba(255,255,255,0.45) 100%)',
-            backdropFilter: 'blur(18px) saturate(160%)',
-            WebkitBackdropFilter: 'blur(18px) saturate(160%)',
-            boxShadow: '0 20px 60px -24px rgba(15, 23, 42, 0.22), inset 0 1px 0 0 rgba(255,255,255,0.65)',
+            background: 'linear-gradient(135deg, rgba(255,255,255,0.90) 0%, rgba(248,250,252,0.78) 100%)',
+            backdropFilter: 'blur(18px) saturate(140%)',
+            WebkitBackdropFilter: 'blur(18px) saturate(140%)',
+            boxShadow: '0 20px 60px -24px rgba(15, 23, 42, 0.14), inset 0 1px 0 0 rgba(255,255,255,0.80)',
           }}
         >
           <div className="relative min-w-0">
