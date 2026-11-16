@@ -74,41 +74,10 @@
   background-image: none !important;
 }
 
+/* Aurora layer — kept as structural placeholder; blobs removed for clean white canvas */
 .ag-aurora {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  overflow: hidden;
-  pointer-events: none;
+  display: none;
 }
-.ag-aurora i {
-  position: absolute;
-  display: block;
-  border-radius: 50%;
-  filter: blur(64px);
-  will-change: transform;
-}
-.ag-aurora i:nth-child(1) {
-  top: -18vh; left: -22vw; width: 86vw; height: 62vh; max-width: 720px;
-  background: radial-gradient(circle at 40% 40%, rgba(0, 193, 106, 0.34), rgba(0, 193, 106, 0) 68%);
-  animation: ag-drift-a 26s var(--ag-ease) infinite alternate;
-}
-.ag-aurora i:nth-child(2) {
-  top: 8vh; right: -34vw; width: 78vw; height: 52vh; max-width: 640px;
-  background: radial-gradient(circle at 50% 50%, rgba(163, 230, 53, 0.2), rgba(163, 230, 53, 0) 70%);
-  animation: ag-drift-b 32s var(--ag-ease) infinite alternate;
-}
-.ag-aurora i:nth-child(3) {
-  bottom: -14vh; right: -18vw; width: 70vw; height: 44vh; max-width: 560px;
-  background: radial-gradient(circle at 50% 50%, rgba(249, 115, 22, 0.16), rgba(249, 115, 22, 0) 70%);
-  animation: ag-drift-a 38s var(--ag-ease) infinite alternate-reverse;
-}
-.dark .ag-aurora i:nth-child(1) { background: radial-gradient(circle at 40% 40%, rgba(0, 193, 106, 0.22), rgba(0, 193, 106, 0) 68%); }
-.dark .ag-aurora i:nth-child(2) { background: radial-gradient(circle at 50% 50%, rgba(52, 211, 153, 0.1), rgba(52, 211, 153, 0) 70%); }
-.dark .ag-aurora i:nth-child(3) { background: radial-gradient(circle at 50% 50%, rgba(249, 115, 22, 0.1), rgba(249, 115, 22, 0) 70%); }
-
-@keyframes ag-drift-a { to { transform: translate3d(6vw, 4vh, 0) scale(1.08); } }
-@keyframes ag-drift-b { to { transform: translate3d(-8vw, 6vh, 0) scale(0.94); } }
 
 /* Kanvas lama (lapisan ambient portal-modernization) tidak dipakai lagi. */
 .ag-app > .sp-ambient { display: none; }

@@ -1,5 +1,20 @@
 # SurePath - Changelog
 
+## v2.9.9 - 2026-11-16
+
+### Latar belakang app — putih bersih tanpa gradasi warna
+
+Semua portal sekarang memiliki latar belakang putih murni. Gradient dan blob
+warna di belakang layar dihapus sepenuhnya.
+
+- **Agent portal**: Aurora (3 blob radial animasi hijau/oranye) dinonaktifkan.
+- **Customer, Operator, Insurer, AppSelector**: `.sp-ambient` emerald radial
+  wash dihapus — background kini `transparent` di atas kanvas putih `#FFFFFF`.
+- Struktur HTML node `.ag-aurora` dan `.sp-ambient` tetap ada untuk kemudahan
+  restore, hanya CSS yang diubah.
+
+---
+
 ## v2.9.8 - 2026-11-15
 
 ### Pathy — redesign ke white glassmorphism (AI assistant, bukan CS)
