@@ -593,22 +593,16 @@ body {
     0 12px 32px -16px rgba(0,0,0,0.6);
 }
 
-/* Ambient emerald wash behind glass — gives backdrop-filter something to refract */
+/* Ambient layer — kept as a structural placeholder; background removed for clean white canvas */
 .sp-ambient {
   position: fixed;
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  background:
-    radial-gradient(420px 320px at 12% -5%,  rgba(16,185,129,0.14), transparent 65%),
-    radial-gradient(520px 380px at 108% 18%, rgba(16,185,129,0.08), transparent 70%),
-    radial-gradient(480px 420px at 50% 115%, rgba(5,150,105,0.10),  transparent 70%);
+  background: transparent;
 }
 .dark .sp-ambient {
-  background:
-    radial-gradient(420px 320px at 12% -5%,  rgba(16,185,129,0.16), transparent 65%),
-    radial-gradient(520px 380px at 108% 18%, rgba(16,185,129,0.09), transparent 70%),
-    radial-gradient(480px 420px at 50% 115%, rgba(5,150,105,0.12),  transparent 70%);
+  background: transparent;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
