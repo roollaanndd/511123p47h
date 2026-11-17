@@ -2,7 +2,7 @@ import React from 'react';
 import { ArrowRight, ChevronDown } from 'lucide-react';
 import SiteLayout from './site/SiteLayout';
 import { SitePageProps, useT, useSiteTheme, Reveal, SectionLabel, useWebsiteConfig } from './site/siteKit';
-import InsurerPartners from './site/InsurerPartners';
+import InsurerPartners from './site/InsurerPartners.tsx';
 
 const AboutPage: React.FC<SitePageProps> = (props) => {
   const { onSignIn, lang } = props;

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { nextSortState, paginate, sortRows } from '../../components/admin/shared/dataTable';
+import { nextSortState, paginate, sortRows } from '../../components/admin/shared/dataTableUtils';
 
 describe('nextSortState', () => {
   it('starts ascending on a new column', () => {

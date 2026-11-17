@@ -15,7 +15,7 @@
 // module-by-module passes that follow this PR.
 import React, { useMemo, useState } from 'react';
 import { ArrowUp, ChevronLeft, ChevronRight, ChevronsUpDown } from 'lucide-react';
-import { nextSortState, paginate, sortRows, type SortState } from './dataTable';
+import { nextSortState, paginate, sortRows, type SortState } from './dataTableUtils';
 import { AdminEmptyState } from '../adminUI';
 import type { LucideIcon } from 'lucide-react';
 
