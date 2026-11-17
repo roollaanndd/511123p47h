@@ -13,7 +13,7 @@ SurePath is a full-stack insurtech platform for Indonesian markets. Agents sell 
 | Frontend | React 19 + TypeScript, Vite 6, TailwindCSS, VitePWA |
 | Backend | Supabase (Postgres + Edge Functions on Deno + Realtime, since v1.21) |
 | Payments | Xendit (Invoice + Disbursement APIs) |
-| Auth | Supabase Auth (Google OAuth, Email OTP) for Customer/Agent/Admin/Operator; bearer-token auth for Insurer app; single-use review tokens for `/review/:uuid` |
+| Auth | Google Identity Services ID token exchanged through Supabase Auth for Customer/Agent/Admin/Operator; Email OTP via Supabase; bearer-token auth for Insurer app; single-use review tokens for `/review/:uuid` |
 | Deploy | Vercel (frontend) + Supabase (functions + DB) |
 | Notifications | Telegram bot, Supabase `sp_notifications`, Supabase Realtime channels (operator + insurer apps) |
 | Rate limiting + audit | `sp_rate_limits` + `sp_insurer_activity_log` (v1.23.0) |

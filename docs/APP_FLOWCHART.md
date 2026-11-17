@@ -34,7 +34,7 @@ flowchart TD
         AG1 -- LOGIN --> AG2[Email + Password\nsupabase.auth.signInWithPassword]
         AG1 -- REGISTER, Customer --> AG3[Email + Password\nsupabase.auth.signUp]
         AG1 -- REGISTER, Agent --> AG4[AgentOnboarding\n2-step form]
-        AG1 -- Google --> AG5[supabase.auth.signInWithOAuth\nprovider: google]
+        AG1 -- Google --> AG5[Google Identity Services\nID token → supabase.auth.signInWithIdToken]
         AG1 -- Email OTP --> AG6[supabase.auth.signInWithOtp\n→ EMAIL_OTP_VERIFY mode]
         AG1 -- Forgot Pwd --> AG7[supabase.auth.resetPasswordForEmail\n→ FORGOT_SENT → email link → RESET_PASSWORD mode]
 

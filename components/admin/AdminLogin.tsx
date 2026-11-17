@@ -1,6 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useState } from 'react';
 import { Lock, Mail, ArrowRight, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { supabase } from '../../services/supabaseService';
+import { signInWithGoogleIdToken } from '../../services/googleAuth';
 import { checkRateLimit, recordFailedAttempt, clearRateLimit } from '../../services/authService';
 import { UserRole } from '../../types';
 
@@ -84,55 +85,12 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess, onBack }) => {
     }
   };
 
-  // Supabase returns here after Google OAuth. Verify the session against the
-  // existing SurePath profile before rendering the admin portal.
-  // Latest-instance ref: the OAuth callback must run exactly once per mount,
-  // but the exhaustive-deps lint (rightly) wants `authorizeAdminSession`
-  // declared — holding it in a ref satisfies both.
-  const authorizeRef = useRef(authorizeAdminSession);
-  authorizeRef.current = authorizeAdminSession;
-  useEffect(() => {
-    const callbackUrl = new URL(window.location.href);
-    const isOAuthCallback =
-      callbackUrl.searchParams.has('code') ||
-      window.location.hash.includes('access_token=') ||
-      window.location.hash.includes('error=');
-    if (!isOAuthCallback) return;
-
-    let active = true;
-    setLoading(true);
-    setError(null);
-    (async () => {
-      try {
-        const { data, error: sessionError } = await supabase.auth.getSession();
-        if (!active) return;
-        if (sessionError || !data.session || !data.session.user) {
-          setError('Login Google gagal atau sesi tidak valid. Silakan coba lagi.');
-          return;
-        }
-        await authorizeRef.current(data.session.user, data.session, data.session.user.email);
-        if (active) {
-          // Remove OAuth tokens/code from the visible URL after verification.
-          window.history.replaceState({}, document.title, '/admin');
-        }
-      } catch {
-        if (active) setError('Tidak dapat memverifikasi akun Google. Silakan coba lagi.');
-      } finally {
-        if (active) setLoading(false);
-      }
-    })();
-    return () => { active = false; };
-  }, []);
-
   const handleGoogleLogin = async () => {
     setLoading(true);
     setError(null);
     try {
-      const { error: oauthError } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: { redirectTo: `${window.location.origin}/admin` },
-      });
-      if (oauthError) setError(`Login Google gagal: ${oauthError.message}`);
+      const { user, session } = await signInWithGoogleIdToken();
+      await authorizeAdminSession(user, session, user.email);
     } catch {
       setError('Tidak dapat memulai login Google. Silakan coba lagi.');
     } finally {

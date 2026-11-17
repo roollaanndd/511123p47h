@@ -4,10 +4,10 @@ import {
   AlertCircle, Smartphone, Briefcase,
   ArrowRight, Shield, CheckCircle2, RefreshCw, Building2
 } from 'lucide-react';
-import { Capacitor } from '@capacitor/core';
 import { SurePathLogo } from './Navbar';
 import { Language, UserRole } from '../types';
 import { supabase, ensureProfile, fetchMyProfileForLogin } from '../services/supabaseService';
+import { signInWithGoogleIdToken } from '../services/googleAuth';
 import { isUntrustedEmail } from '../supabase/functions/_shared/trust';
 import AgentOnboarding from './agent/AgentOnboarding';
 import { OjkBadge, EncryptionBadge } from './ui';
@@ -338,17 +338,17 @@ const AuthGate: React.FC<AuthGateProps> = ({
     setTimeout(() => setResending(false), 5000);
   };
 
-  // ── Google OAuth ─────────────────────────────────────────────────────────
+  // ── Google Identity Services ─────────────────────────────────────────────
   const handleGoogleSignIn = async () => {
     setLoading(true); setError(null);
-    const redirectTo = Capacitor.isNativePlatform()
-      ? 'com.myinsurepath.os://auth-callback'
-      : window.location.origin;
-    const { error: e } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo },
-    });
-    if (e) { setError(e.message); setLoading(false); }
+    resolvedRef.current = false;
+    try {
+      const { user } = await signInWithGoogleIdToken();
+      await resolveAndLogin(user);
+    } catch (e: any) {
+      setError(e?.message || t('Google login failed. Please try again.', 'Login Google gagal. Coba lagi.'));
+      setLoading(false);
+    }
   };
 
   // ── Forgot password ───────────────────────────────────────────────────────

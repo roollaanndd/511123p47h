@@ -4,7 +4,7 @@
 
 ## Identitas: dua lapisan
 
-1. **Supabase Auth** (`auth.users`) — akun login (email+password, Google OAuth, OTP email).
+1. **Supabase Auth** (`auth.users`) — akun login (email+password, Google ID token exchange, OTP email). Google credentials are obtained directly from Google Identity Services, then verified by Supabase with `signInWithIdToken` so every Google user still receives a Supabase session and `auth.users` record.
 2. **Profil SurePath** (`public.sp_users`) — nama, role, agent_code, trust_score, dll.
 
 Keduanya dihubungkan oleh action gateway **`ensure_profile`**: membuat baris `sp_users`
@@ -64,10 +64,10 @@ Jangan "merapikan" id ini — `sp_clients`, `sp_commissions`, dll mereferensikan
    - **gagal sementara** (5xx/jaringan) → tampilkan error, **jangan** login dengan role
      tebakan. Role yang salah menulis baris yang salah dan tidak memperbaiki diri sendiri.
 
-### 4. Google OAuth
-1. `signInWithOAuth({ provider: 'google' })` — redirect ke origin (web) atau
-   `com.myinsurepath.os://auth-callback` (native).
-2. `App.tsx` (startup) menangkap sesi → cari profil. Tidak ada profil dan tidak ada role di
+### 4. Google Identity Services
+1. The browser loads Google Identity Services and obtains a Google ID token directly from Google.
+2. `supabase.auth.signInWithIdToken({ provider: 'google', token, nonce })` verifies the token and creates or resumes the Supabase Auth user/session.
+3. `App.tsx` / `AuthGate` resolves the Supabase session → finds the `sp_users` profile. Tidak ada profil dan tidak ada role di
    metadata → `RoleSelectionScreen` → user pilih Nasabah / Mitra / Klien Korporat →
    `ensure_profile({ role, phone, name })` (B2B lewat `createB2BClientProfile`).
 3. **Dua jalur, satu layar.** Pada web, `?code=` di URL membuat `App.tsx` menahan render

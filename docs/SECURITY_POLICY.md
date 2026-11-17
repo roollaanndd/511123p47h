@@ -9,7 +9,7 @@
 ## 1. Authentication & Authorization
 
 ### 1.1 Customer / Agent Login
-- Google OAuth via Supabase GoTrue PKCE flow — `code_verifier` stored in localStorage, URL cleaned after exchange to prevent state replay
+- Google Identity Services issues the credential directly; Supabase verifies it with `signInWithIdToken` using a per-attempt nonce before creating the Supabase session
 - Email OTP (passwordless) as fallback — `shouldCreateUser: false` (no enumeration)
 - Session persisted in `sessionStorage` only (cleared on tab close); wallet-sensitive operations re-validate JWT
 
