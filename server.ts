@@ -794,6 +794,13 @@ async function startServer() {
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
+    // Keep each installable role entry paired with its own manifest. The
+    // manifest identity is what lets Customer and Mitra coexist as separate
+    // installed apps while the SPA still handles their internal routes.
+    app.get(['/custapp', '/custapp/'], (_req, res) => res.sendFile(path.join(distPath, 'customer.html')));
+    app.get(['/agapps', '/agapps/', '/agentapp', '/agentapp/'], (_req, res) => res.sendFile(path.join(distPath, 'agent.html')));
+    app.get(['/operatorapp', '/operatorapp/'], (_req, res) => res.sendFile(path.join(distPath, 'operator.html')));
+    app.get(['/admin', '/admin/'], (_req, res) => res.sendFile(path.join(distPath, 'admin.html')));
     app.get('*all', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });

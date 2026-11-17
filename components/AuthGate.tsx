@@ -28,6 +28,8 @@ interface AuthGateProps {
   // which the gateway defaulted to CUSTOMER — so every such signup silently
   // landed in the customer app and the picker never ran.
   onNeedsRoleSelection?: (user: { id: string; name: string; email: string }) => void;
+  /** Role selected by the public app entry point; it is a UX default, never an authorization decision. */
+  intendedRole?: UserRole.CUSTOMER | UserRole.AGENT;
 }
 
 const AuthGate: React.FC<AuthGateProps> = ({
@@ -37,6 +39,7 @@ const AuthGate: React.FC<AuthGateProps> = ({
   externalError = null,
   onDismissExternalError,
   onNeedsRoleSelection,
+  intendedRole,
 }) => {
   type AuthMode = 'LOGIN' | 'REGISTER' | 'CHECK_EMAIL' | 'FORGOT_PASSWORD' | 'FORGOT_SENT' | 'EMAIL_OTP_VERIFY' | 'RESET_PASSWORD';
   const [mode, setMode] = useState<AuthMode>(initialMode as AuthMode);
@@ -45,7 +48,7 @@ const AuthGate: React.FC<AuthGateProps> = ({
   const [resending, setResending]   = useState(false);
   const [error, setError]           = useState<string | null>(null);
   const [lang]                      = useState<Language>(initialLang);
-  const [regRole, setRegRole]       = useState<UserRole | null>(null);
+  const [regRole, setRegRole]       = useState<UserRole | null>(intendedRole ?? null);
   const [formData, setFormData]     = useState({ name: '', email: '', password: '' });
   const [showAgentOnboarding, setShowAgentOnboarding] = useState(false);
   const [otpCode, setOtpCode]       = useState('');
@@ -56,6 +59,7 @@ const AuthGate: React.FC<AuthGateProps> = ({
   const resolvedRef = useRef(false);
 
   useEffect(() => { setMode(initialMode as AuthMode); }, [initialMode]);
+  useEffect(() => { if (intendedRole) setRegRole(intendedRole); }, [intendedRole]);
 
   // The account type the signup flow already established for this user, if any.
   // Email/password registration puts it in the Supabase Auth metadata, so it
@@ -628,7 +632,11 @@ const AuthGate: React.FC<AuthGateProps> = ({
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     />
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
+                  {intendedRole ? (
+                    <p className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800">
+                      Akun ini akan dibuat sebagai {intendedRole === UserRole.AGENT ? 'Mitra' : 'Nasabah'} sesuai aplikasi yang kamu pilih.
+                    </p>
+                  ) : <div className="grid grid-cols-2 gap-2">
                     <button
                       type="button"
                       onClick={() => setRegRole(UserRole.CUSTOMER)}
@@ -645,7 +653,7 @@ const AuthGate: React.FC<AuthGateProps> = ({
                     >
                       <Briefcase size={14} /> {t('Partner', 'Mitra')}
                     </button>
-                  </div>
+                  </div>}
                 </>
               )}
 

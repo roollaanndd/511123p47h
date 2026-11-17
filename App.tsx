@@ -149,7 +149,7 @@ const App = ({ initialRoute }: AppProps = {}) => {
   // An authenticated user with no profile yet, waiting to pick an account
   // type. Reached from Google OAuth, email OTP, or any other sign-in that
   // carries no role — not OAuth-only, hence the name.
-  const [pendingRoleUser, setPendingRoleUser] = useState<{ id: string; name: string; email: string } | null>(null);
+  const [pendingRoleUser, setPendingRoleUser] = useState<{ id: string; name: string; email: string; intendedRole?: 'CUSTOMER' | 'AGENT' } | null>(null);
   const [showTc, setShowTc] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
 
@@ -390,7 +390,10 @@ const App = ({ initialRoute }: AppProps = {}) => {
           // it instead of asking again — re-asking here would let someone who
           // registered as Mitra land back on the picker and answer Nasabah.
           const metaRole = String(u.user_metadata?.role ?? '').toUpperCase();
-          const intended = metaRole === 'AGENT' ? 'AGENT' : metaRole === 'CUSTOMER' ? 'CUSTOMER' : null;
+          const entryPath = initialRoute ?? window.location.pathname;
+          const entryRole: 'AGENT' | 'CUSTOMER' | null = entryPath === '/agapps' ? 'AGENT' : entryPath === '/custapp' ? 'CUSTOMER' : null;
+          const metadataRole: 'AGENT' | 'CUSTOMER' | null = metaRole === 'AGENT' || metaRole === 'CUSTOMER' ? metaRole : null;
+          const intended: 'AGENT' | 'CUSTOMER' | null = metadataRole ?? entryRole;
           const displayName =
             u.user_metadata?.full_name ?? u.user_metadata?.name ?? u.email!.split('@')[0];
 
@@ -419,7 +422,7 @@ const App = ({ initialRoute }: AppProps = {}) => {
 
           // No account type on record: this sign-in carried none (Google
           // OAuth, and any other method without signup metadata). Ask.
-          setPendingRoleUser({ id: u.id, name: displayName, email: u.email! });
+          setPendingRoleUser({ id: u.id, name: displayName, email: u.email!, intendedRole: entryRole ?? undefined });
         } else {
           // Transient error (5xx, network, timeout). Do NOT show the role
           // picker — that would risk creating a wrong-role profile for an
@@ -528,6 +531,7 @@ const App = ({ initialRoute }: AppProps = {}) => {
   if (pendingRoleUser) return (
     <RoleSelectionScreen
       authUser={pendingRoleUser}
+      intendedRole={pendingRoleUser.intendedRole}
       onComplete={user => { setPendingRoleUser(null); handleAuthSuccess(user); }}
       onCancel={() => { setPendingRoleUser(null); handleLogout(); }}
     />
@@ -580,7 +584,28 @@ const App = ({ initialRoute }: AppProps = {}) => {
       isPasswordRecovery={isPasswordRecovery}
       loginError={loginError}
       onDismissLoginError={() => setLoginError(null)}
-      onNeedsRoleSelection={setPendingRoleUser}
+      onNeedsRoleSelection={user => {
+        const intendedRole = currentPath === '/agapps' ? 'AGENT' : currentPath === '/custapp' ? 'CUSTOMER' : undefined;
+        if (!intendedRole) {
+          setPendingRoleUser(user);
+          return;
+        }
+        void ensureProfile({ name: user.name, role: intendedRole })
+          .then(profile => {
+            if (!profile) { setPendingRoleUser({ ...user, intendedRole }); return; }
+            handleAuthSuccess({
+              id: profile.id,
+              name: profile.name,
+              email: profile.email,
+              role: profile.role as UserRole,
+              supabaseId: profile.id,
+              nodeId: profile.agent_code ?? `SP-${profile.id.slice(0, 8).toUpperCase()}`,
+              trustScore: profile.trust_score ?? 85,
+              allowed_apps: profile.allowed_apps ?? null,
+            });
+          })
+          .catch(() => setPendingRoleUser({ ...user, intendedRole }));
+      }}
       onAuthSuccess={handleAuthSuccess}
       onLogout={handleLogout}
       resolvePortalPath={rolePath}

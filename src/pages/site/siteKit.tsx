@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, createContext, useContext } from 'react';
 import {
-  ArrowRight, MessageSquare, Gift, Smartphone, Download, Award,
+  ArrowRight, MessageSquare, Gift, Smartphone, Award,
 } from 'lucide-react';
 import { Language } from '../../../types';
 import { fetchWebsiteSection, SpWebsiteConfig } from '../../../services/supabaseService';
@@ -388,7 +388,7 @@ const BANNERS = [
   { badge: 'Produk Unggulan', title: ['Proteksi Gadget', '& Elektronik'], sub: 'Satu produk untuk semua perangkat berhargamu. Mudah, terjangkau, komprehensif.', cta: 'Cek Harga', icon: Smartphone, grad: 'linear-gradient(135deg, #0c0a1e 0%, #1a0533 100%)', accent: '#c084fc', badgeBg: 'rgba(192,132,252,0.15)', badgeColor: '#e879f9' },
 ];
 
-export const PromoBanners: React.FC<{ onSignIn: () => void; onInstall: () => void }> = ({ onSignIn, onInstall }) => {
+export const PromoBanners: React.FC<{ onSignIn: () => void }> = ({ onSignIn }) => {
   const [active, setActive] = useState(0);
   useEffect(() => {
     const iv = setInterval(() => setActive(a => (a + 1) % BANNERS.length), 5000);
@@ -426,16 +426,7 @@ export const PromoBanners: React.FC<{ onSignIn: () => void; onInstall: () => voi
           ))}
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-3">
-        <button onClick={onInstall}
-          className="relative overflow-hidden rounded-2xl p-4 text-left cursor-pointer transition-all hover:scale-[1.03] active:scale-95 w-full"
-          style={{ background: 'linear-gradient(135deg, rgba(22,163,74,0.08), rgba(16,185,129,0.04))', border: '1px solid rgba(22,163,74,0.15)' }}>
-          <div className="w-8 h-8 rounded-xl flex items-center justify-center mb-2" style={{ background: 'rgba(22,163,74,0.12)' }}>
-            <Download size={16} style={{ color: '#16a34a' }} />
-          </div>
-          <p className="text-xs font-black text-white leading-tight">Download<br />Mobile App</p>
-          <p className="text-2xs text-gray-500 mt-1">iOS &amp; Android</p>
-        </button>
+      <div className="grid grid-cols-1 gap-3">
         <div className="relative overflow-hidden rounded-2xl p-4"
           style={{ background: 'linear-gradient(135deg, rgba(124,58,237,0.08), rgba(109,40,217,0.04))', border: '1px solid rgba(124,58,237,0.15)' }}>
           <div className="w-8 h-8 rounded-xl flex items-center justify-center mb-2" style={{ background: 'rgba(124,58,237,0.12)' }}>

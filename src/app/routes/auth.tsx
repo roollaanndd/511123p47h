@@ -2,6 +2,9 @@ import React, { lazy, Suspense } from 'react';
 import { RevampedPortalLoader as PortalLoader } from '../../routes/RevampedPortalLoader';
 import type { AppRouteProps } from '../routeHelpers';
 import { effectiveAppsFor } from '../routeHelpers';
+import { InstallPrompt } from '../../../components/InstallPrompt';
+import { UserRole } from '../../../types';
+const PublicAppChooser = lazy(() => import('../../../components/PublicAppChooser'));
 
 const AuthGate   = lazy(() => import('../../../components/AuthGate'));
 const AppSelector = lazy(() => import('../../../components/AppSelector'));
@@ -36,17 +39,29 @@ export const AuthEntryRoutes: React.FC<AppRouteProps> = ({
   pathname, lang, currentUser, onAuthSuccess, loginError, onDismissLoginError, onNeedsRoleSelection,
 }) => {
   if (currentUser) return null;
+  if (pathname === '/choose-app' || pathname === '/login') {
+    return (
+      <Suspense fallback={<PortalLoader lang={lang} />}>
+        <PublicAppChooser />
+      </Suspense>
+    );
+  }
   if (!['/login', '/custapp', '/agapps'].includes(pathname)) return null;
+  const intendedRole: UserRole.AGENT | UserRole.CUSTOMER | undefined = pathname === '/agapps' ? UserRole.AGENT : pathname === '/custapp' ? UserRole.CUSTOMER : undefined;
   return (
-    <Suspense fallback={<PortalLoader />}>
-      <AuthGate
-        onAuthSuccess={onAuthSuccess}
-        initialLang={lang}
-        externalError={loginError}
-        onDismissExternalError={onDismissLoginError}
-        onNeedsRoleSelection={onNeedsRoleSelection}
-      />
-    </Suspense>
+    <>
+      <InstallPrompt lang={lang} />
+      <Suspense fallback={<PortalLoader />}>
+        <AuthGate
+          onAuthSuccess={onAuthSuccess}
+          initialLang={lang}
+          externalError={loginError}
+          onDismissExternalError={onDismissLoginError}
+          onNeedsRoleSelection={onNeedsRoleSelection}
+          intendedRole={intendedRole}
+        />
+      </Suspense>
+    </>
   );
 };
 

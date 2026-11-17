@@ -2,8 +2,9 @@
 //
 // The four role entries (customer / agent / operator / admin) are additive:
 // the universal shell (index.html + index.tsx) must stay untouched and the
-// entries stay dormant (noindex, no SW registration) until their smoke tests
-// pass. This source-level guard keeps those invariants visible.
+// entries stay dormant (noindex) while still sharing the PWA registration so
+// every emitted app entry remains installable. This source-level guard keeps
+// those invariants visible.
 import { describe, it, expect } from 'vitest';
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
@@ -21,8 +22,8 @@ const ENTRIES = [
 describe('phase-2 role entries', () => {
   it('the universal shell keeps its canonical boot (no SW-less drift)', () => {
     const index = read('index.tsx');
-    expect(index).toContain("from 'virtual:pwa-register'");
-    expect(index).toContain('registerSW(');
+    expect(index).toContain("from './services/pwaRegistration'");
+    expect(index).toContain('registerPwaServiceWorker();');
     const html = read('index.html');
     expect(html).toContain('<script type="module" src="/index.tsx"></script>');
   });
@@ -70,10 +71,10 @@ describe('phase-2 App pinning stays optional', () => {
     }
   });
 
-  it('boot shell never registers a service worker', () => {
+  it('boot shell shares the PWA service-worker registration', () => {
     const boot = read('src/entries/boot.tsx');
-    expect(boot).not.toContain('virtual:pwa-register');
-    expect(boot).not.toContain('registerSW(');
+    expect(boot).toContain("from '../../services/pwaRegistration'");
+    expect(boot).toContain('registerPwaServiceWorker();');
   });
 
   it('boot shell imports resolve from src/entries (services/styles live at repo root)', () => {

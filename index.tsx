@@ -7,11 +7,11 @@ import './services/appViewport';
 
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import { registerSW } from 'virtual:pwa-register';
 import * as Sentry from '@sentry/react';
 import App from './App';
 import './styles.css';
 import './src/styles/portal-modernization.css';
+import { registerPwaServiceWorker } from './services/pwaRegistration';
 
 // Error monitoring — no-op unless VITE_SENTRY_DSN is configured in the env
 const SENTRY_DSN = import.meta.env.VITE_SENTRY_DSN as string | undefined;
@@ -24,32 +24,8 @@ if (SENTRY_DSN) {
   });
 }
 
-// Explicit SW registration — guarantees PWA install/offline works even if
-// the auto-injected registerSW.js script is blocked or dropped by a proxy.
-try {
-  registerSW({
-    immediate: true,
-    onRegisteredSW(_swUrl, registration) {
-      if (!registration) return;
-
-      // Trigger an explicit update check when the installed PWA starts.
-      // This is especially useful for Home Screen installs that may sit in the
-      // background for long periods between launches.
-      const checkForUpdate = () => {
-        if (document.visibilityState !== 'visible') return;
-        void registration.update().catch(() => {
-          // A temporary offline/network failure must not interrupt app use.
-        });
-      };
-
-      checkForUpdate();
-      document.addEventListener('visibilitychange', checkForUpdate);
-      window.addEventListener('pageshow', checkForUpdate);
-    },
-  });
-} catch (e) {
-  console.warn('SW registration failed (non-blocking):', e);
-}
+// Register the worker from the universal shell and every role-specific shell.
+registerPwaServiceWorker();
 
 // Recover from stale HTML / service-worker caches after a deployment.
 // A lazy chunk URL is content-hashed; if an old app shell points at a chunk no

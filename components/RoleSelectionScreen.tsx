@@ -18,6 +18,8 @@ interface Props {
   };
   onComplete: (user: any) => void;
   onCancel: () => void;
+  /** The public entry point may have already selected the intended app. */
+  intendedRole?: 'CUSTOMER' | 'AGENT';
 }
 
 const ROLE_CARDS = [
@@ -43,8 +45,8 @@ const ROLE_CARDS = [
   },
 ];
 
-const RoleSelectionScreen: React.FC<Props> = ({ authUser, onComplete, onCancel }) => {
-  const [selected, setSelected] = useState<Role | null>(null);
+const RoleSelectionScreen: React.FC<Props> = ({ authUser, onComplete, onCancel, intendedRole }) => {
+  const [selected, setSelected] = useState<Role | null>(intendedRole ?? null);
   const [phone, setPhone] = useState('');
   const [companyName, setCompanyName] = useState('');
   const [loading, setLoading] = useState(false);
@@ -150,14 +152,16 @@ const RoleSelectionScreen: React.FC<Props> = ({ authUser, onComplete, onCancel }
 
       {/* Title */}
       <p className="text-sm text-gray-400 text-center mb-8">
-        Pilih tipe akun kamu. Tidak bisa diubah setelah pendaftaran.
+        {intendedRole
+          ? `Kamu memilih aplikasi ${intendedRole === 'AGENT' ? 'Mitra' : 'Nasabah'}. Akun akan dibuat sesuai pilihan ini.`
+          : 'Pilih tipe akun kamu. Tidak bisa diubah setelah pendaftaran.'}
       </p>
 
       {/* Card */}
       <div className="w-full max-w-sm">
         {/* Role cards */}
         <div className="flex flex-col">
-          {ROLE_CARDS.map(card => (
+          {ROLE_CARDS.filter(card => !intendedRole || card.role === intendedRole).map(card => (
             <button
               key={card.role}
               onClick={() => { setSelected(card.role); setError(''); }}

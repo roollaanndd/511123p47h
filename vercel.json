@@ -65,6 +65,11 @@
     { "source": "/llms.txt", "destination": "/llms.txt" },
     { "source": "/sitemap.xml", "destination": "/sitemap.xml" },
     { "source": "/robots.txt", "destination": "/robots.txt" },
+    { "source": "/custapp", "destination": "/customer.html" },
+    { "source": "/agapps", "destination": "/agent.html" },
+    { "source": "/agentapp", "destination": "/agent.html" },
+    { "source": "/operatorapp", "destination": "/operator.html" },
+    { "source": "/admin", "destination": "/admin.html" },
     { "source": "/((?!api/|_vercel/|_next/|__nextjs/).*)", "destination": "/_fallback.html" }
   ]
 }

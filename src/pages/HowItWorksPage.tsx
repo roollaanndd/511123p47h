@@ -1,14 +1,13 @@
 import React from 'react';
 import { ArrowRight, MessageSquare, Search, Shield, HeartHandshake, BarChart2, Leaf } from 'lucide-react';
 import SiteLayout from './site/SiteLayout';
-import { SitePageProps, useT, useSiteTheme, Reveal, PromoBanners, useSiteChrome, SectionLabel, useWebsiteConfig } from './site/siteKit';
+import { SitePageProps, useT, useSiteTheme, Reveal, PromoBanners, SectionLabel, useWebsiteConfig } from './site/siteKit';
 
 const HowItWorksPage: React.FC<SitePageProps> = (props) => {
   const { onSignIn, lang } = props;
   const t = useT(lang);
   const th = useSiteTheme(props.darkMode);
   const { cardBg, cardBorder, cardShadow, textMuted, textMain, videoBg2, videoBg3, accent } = th;
-  const { onInstall } = useSiteChrome();
 
   const config = useWebsiteConfig('how_it_works');
 
@@ -128,7 +127,7 @@ const HowItWorksPage: React.FC<SitePageProps> = (props) => {
             </div>
           </Reveal>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Reveal delay={0}><PromoBanners onSignIn={onSignIn} onInstall={onInstall} /></Reveal>
+            <Reveal delay={0}><PromoBanners onSignIn={onSignIn} /></Reveal>
             <Reveal delay={100}>
               <div className="spx-card spx-grid spx-sheen rounded-2xl h-full flex flex-col overflow-hidden" style={{ minHeight: 300, background: accent, ['--spx-accent' as string]: accent }}>
                 <div className="spx-grid-tex" style={{ ['--spx-accent' as string]: '#ffffff' }} />

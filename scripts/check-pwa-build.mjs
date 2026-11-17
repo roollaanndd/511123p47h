@@ -34,8 +34,40 @@ function listJsFiles(dir) {
 }
 const bundles = listJsFiles(join(dist, 'assets'));
 const bundleSource = bundles.map(path => readFileSync(path, 'utf8')).join('\\n');
-if (!bundles.length || !/(serviceWorker|registerSW)/i.test(bundleSource)) {
+if (!bundles.length || !/(serviceWorker|registerSW|pwaRegistration)/i.test(bundleSource)) {
   fail('built JavaScript does not contain the PWA service-worker registration code');
+}
+
+const roleEntries = [
+  ['customer.html', 'manifest-customer.webmanifest', '/pwa/customer', '/custapp'],
+  ['agent.html', 'manifest-agent.webmanifest', '/pwa/agent', '/agapps'],
+  ['operator.html', 'manifest-operator.webmanifest', '/pwa/operator', '/operatorapp'],
+  ['admin.html', 'manifest-admin.webmanifest', '/pwa/admin', '/admin'],
+];
+
+for (const entry of ['index.html', ...roleEntries.map(([html]) => html)]) {
+  const entryPath = join(dist, entry);
+  if (!existsSync(entryPath)) {
+    fail(`missing built entry ${entry}`);
+    continue;
+  }
+  const source = readFileSync(entryPath, 'utf8');
+  if (!/manifest(?:-[a-z]+)?\.webmanifest/i.test(source)) fail(`${entry} does not link the web app manifest`);
+}
+
+for (const [html, manifestFile, expectedId, expectedStartUrl] of roleEntries) {
+  const entrySource = readFileSync(join(dist, html), 'utf8');
+  if (!entrySource.includes(`/` + manifestFile)) fail(`${html} does not link ${manifestFile}`);
+  const manifestPath = join(dist, manifestFile);
+  if (!existsSync(manifestPath)) {
+    fail(`missing ${manifestFile}`);
+    continue;
+  }
+  const roleManifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  if (roleManifest.id !== expectedId || roleManifest.start_url !== expectedStartUrl || roleManifest.scope !== expectedStartUrl) {
+    fail(`${manifestFile} must pin id, start_url, and scope to ${expectedStartUrl}`);
+  }
+  if (roleManifest.display !== 'standalone') fail(`${manifestFile} must use standalone display mode`);
 }
 if (manifest.start_url !== '/' || manifest.scope !== '/' || manifest.id !== '/') {
   fail('manifest app identity/start_url/scope must remain pinned to the root');

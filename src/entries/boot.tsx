@@ -13,6 +13,12 @@ import * as Sentry from '@sentry/react';
 import App from '../../App';
 import '../../styles.css';
 import '../styles/portal-modernization.css';
+import { registerPwaServiceWorker } from '../../services/pwaRegistration';
+
+// Role entry pages are installable entry points too. Register the same worker
+// here so opening /customer.html (or another role shell) cannot degrade to a
+// bookmark-style shortcut because only index.tsx registered the PWA.
+registerPwaServiceWorker();
 
 // Error monitoring — no-op unless VITE_SENTRY_DSN is configured in the env.
 const SENTRY_DSN = import.meta.env.VITE_SENTRY_DSN as string | undefined;
@@ -25,9 +31,8 @@ if (SENTRY_DSN) {
   });
 }
 
-// Same stale-chunk recovery as index.tsx. NOTE: role entries deliberately do
-// NOT register a service worker yet — the SW stays owned by the main shell
-// until the entry smoke tests pass (plan §Fase2 step 4).
+// Same stale-chunk recovery as index.tsx. The worker registration is shared by
+// the universal and role-specific entry points.
 window.addEventListener('vite:preloadError', (event) => {
   event.preventDefault();
 

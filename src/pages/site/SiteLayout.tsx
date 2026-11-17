@@ -1,14 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ChevronRight, Menu, X, Globe, Lock, Mail, Download, Building2 } from 'lucide-react';
+import { ChevronRight, Menu, X, Globe, Lock, Mail, Building2 } from 'lucide-react';
 import { Language } from '../../../types';
 import { SurePathLogo } from '../../../components/Navbar';
 import {
   SitePageProps, useT, useSiteTheme,
-  SectionBackground, PWAPopup, SiteChromeContext, useSiteChrome, ACCENT,
+  SectionBackground, SiteChromeContext, ACCENT,
 } from './siteKit';
 import { FloatingWhatsApp } from '../../../components/ui';
 import { usePwaInstall, promptInstall, isMobileView, isInstallOfferSnoozed, snoozeInstallOffer } from '../../../services/pwaInstall';
-import InstallAppSheet from '../../../components/shared/InstallAppSheet';
 
 // ─── PWA install state hook ───────────────────────────────────────────────────
 //
@@ -64,7 +63,6 @@ const NAV_LINKS = [
 const SiteNav: React.FC<SitePageProps & { active?: string }> = ({ onSignIn, navigate, lang, setLang, darkMode, active }) => {
   const t = useT(lang);
   const th = useSiteTheme(darkMode);
-  const { onInstall, installed } = useSiteChrome();
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -103,13 +101,6 @@ const SiteNav: React.FC<SitePageProps & { active?: string }> = ({ onSignIn, navi
 
       {/* Right actions */}
       <div className="flex items-center gap-2">
-        {!installed && (
-          <button onClick={onInstall} aria-label="Install app"
-            className="hidden md:inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-lg text-xs font-bold transition-all hover:opacity-90"
-            style={{ background: 'rgba(22,163,74,0.12)', color: th.accent, border: `1px solid ${th.accent}30` }}>
-            <Download size={12} /> {t('Install App', 'Install App')}
-          </button>
-        )}
         <button onClick={() => setLang(lang === Language.EN ? Language.ID : Language.EN)} aria-label="Switch language"
           className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all hover:opacity-80"
           style={{ background: th.navBtnBg, color: th.navBtnColor }}>
@@ -151,13 +142,6 @@ const SiteNav: React.FC<SitePageProps & { active?: string }> = ({ onSignIn, navi
               <span>{t(l.label[0], l.label[1])}</span><ChevronRight size={14} />
             </a>
           ))}
-          {!installed && (
-            <button onClick={() => { setMenuOpen(false); onInstall(); }}
-              className="flex items-center justify-center gap-2 w-full mt-4 py-2.5 rounded-xl text-xs font-black"
-              style={{ background: 'rgba(22,163,74,0.12)', color: th.accent, border: `1px solid ${th.accent}30` }}>
-              <Download size={13} /> {t('Install App', 'Install App')}
-            </button>
-          )}
           <div className="flex gap-2 mt-2">
             <button onClick={() => go('/b2bapps')} className="flex-1 py-2.5 rounded-xl text-xs font-black border"
               style={{ borderColor: th.cardBorder, color: th.textMuted }}>B2B</button>
@@ -440,12 +424,6 @@ const SiteLayout: React.FC<LayoutProps> = (props) => {
         {children}
         <SiteFooter {...page} />
 
-        {pwa.pwaVisible && !pwa.pwaInstalled && (
-          <PWAPopup onDismiss={pwa.dismissBanner} onInstall={pwa.installPwa} />
-        )}
-        {pwa.installSheet && (
-          <InstallAppSheet lang={page.lang} onClose={() => pwa.setInstallSheet(false)} />
-        )}
 
         {/* Floating WhatsApp — Indonesian users expect to ask pre-purchase
             questions via WhatsApp. Its absence is the #1 conversion friction. */}

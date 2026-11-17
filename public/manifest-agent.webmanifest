@@ -1,0 +1,19 @@
+{
+  "id": "/pwa/agent",
+  "name": "SurePath Mitra",
+  "short_name": "SurePath Mitra",
+  "description": "Aplikasi mitra SurePath untuk mengelola nasabah, penawaran, dan komisi.",
+  "start_url": "/agapps",
+  "scope": "/agapps",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "background_color": "#003B2F",
+  "theme_color": "#003B2F",
+  "orientation": "portrait",
+  "lang": "id",
+  "icons": [
+    { "src": "/pwa-192x192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/pwa-512x512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/pwa-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

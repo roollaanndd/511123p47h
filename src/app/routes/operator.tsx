@@ -3,6 +3,7 @@ import { RevampedPortalLoader as PortalLoader } from '../../routes/RevampedPorta
 import PortalErrorBoundary from '../../routes/PortalErrorBoundary';
 import { hasAppAccess } from '../routeHelpers';
 import type { AppRouteProps } from '../routeHelpers';
+import { InstallPrompt } from '../../../components/InstallPrompt';
 
 const OperatorLogin  = lazy(() => import('../../../components/operator/OperatorLogin'));
 const OperatorPortal = lazy(() => import('../../../components/operator/OperatorPortal'));
@@ -19,21 +20,27 @@ export const OperatorRoutes: React.FC<AppRouteProps> = ({
 
   if (currentUser && hasAppAccess(currentUser, 'OPERATOR')) {
     return (
-      <PortalErrorBoundary onReset={onLogout}>
-        <Suspense fallback={<PortalLoader />}>
-          <OperatorPortal operator={currentUser} onLogout={onLogout} lang={lang} />
-        </Suspense>
-      </PortalErrorBoundary>
+      <>
+        <InstallPrompt lang={lang} />
+        <PortalErrorBoundary onReset={onLogout}>
+          <Suspense fallback={<PortalLoader />}>
+            <OperatorPortal operator={currentUser} onLogout={onLogout} lang={lang} />
+          </Suspense>
+        </PortalErrorBoundary>
+      </>
     );
   }
 
   // Direct navigation while signed out (and denial for every other role).
   return (
-    <Suspense fallback={<PortalLoader lang={lang} />}>
-      <OperatorLogin
-        onLoginSuccess={user => { onAuthSuccess(user); navigate('/operatorapp'); }}
-        onBack={() => navigate('/')}
-      />
-    </Suspense>
+    <>
+      <InstallPrompt lang={lang} />
+      <Suspense fallback={<PortalLoader lang={lang} />}>
+        <OperatorLogin
+          onLoginSuccess={user => { onAuthSuccess(user); navigate('/operatorapp'); }}
+          onBack={() => navigate('/')}
+        />
+      </Suspense>
+    </>
   );
 };

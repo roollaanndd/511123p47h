@@ -1,6 +1,5 @@
 import React, { lazy, Suspense } from 'react';
 import { RevampedPortalLoader as PortalLoader } from '../../routes/RevampedPortalLoader';
-import { InstallPrompt } from '../../../components/InstallPrompt';
 import type { AppRouteProps } from '../routeHelpers';
 import { RecoveryGateRoutes, AuthEntryRoutes, SelectAppRoutes, DefaultAuthGateRoutes } from './auth';
 import { StandaloneRoutes } from './standalone';
@@ -76,7 +75,7 @@ export const AppRoutes: React.FC<AppRouteProps> = (props) => {
     darkMode: props.darkMode,
     setDarkMode: props.setDarkMode,
     navigate: props.navigate,
-    onSignIn: () => props.navigate('/login'),
+    onSignIn: () => props.navigate('/choose-app'),
   });
   if (publicContent) return publicContent;
 
@@ -131,7 +130,6 @@ export const AppRoutes: React.FC<AppRouteProps> = (props) => {
             setDarkMode={props.setDarkMode}
           />
         </Suspense>
-        <InstallPrompt lang={props.lang} />
       </React.Fragment>
     );
   }

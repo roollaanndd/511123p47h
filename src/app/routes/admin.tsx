@@ -4,6 +4,7 @@ import PortalErrorBoundary from '../../routes/PortalErrorBoundary';
 import { ADMIN_ROLES } from '../routeHelpers';
 import type { AppRouteProps } from '../routeHelpers';
 import { UserRole } from '../../../types';
+import { InstallPrompt } from '../../../components/InstallPrompt';
 
 const AdminLogin  = lazy(() => import('../../../components/admin/AdminLogin'));
 const AdminPortal = lazy(() => import('../../../components/admin/AdminPortal'));
@@ -23,12 +24,15 @@ export const AdminRoutes: React.FC<AppRouteProps> = ({
   if (!currentUser) {
     if (pathname === '/admin' || pathname.startsWith('/admin/')) {
       return (
-        <Suspense fallback={<PortalLoader lang={lang} />}>
-          <AdminLogin
-            onLoginSuccess={user => { onAuthSuccess(user); navigate('/admin'); }}
-            onBack={() => navigate('/')}
-          />
-        </Suspense>
+        <>
+          <InstallPrompt lang={lang} />
+          <Suspense fallback={<PortalLoader lang={lang} />}>
+            <AdminLogin
+              onLoginSuccess={user => { onAuthSuccess(user); navigate('/admin'); }}
+              onBack={() => navigate('/')}
+            />
+          </Suspense>
+        </>
       );
     }
     return null;
@@ -45,17 +49,20 @@ export const AdminRoutes: React.FC<AppRouteProps> = ({
       return null;
     }
     return (
-      <PortalErrorBoundary onReset={onLogout}>
-        <Suspense fallback={<PortalLoader />}>
-          <AdminPortal
-            onLogout={onLogout}
-            products={products}
-            setProducts={setProducts}
-            userRole={currentUser.role}
-            currentUser={currentUser}
-          />
-        </Suspense>
-      </PortalErrorBoundary>
+      <>
+        <InstallPrompt lang={lang} />
+        <PortalErrorBoundary onReset={onLogout}>
+          <Suspense fallback={<PortalLoader />}>
+            <AdminPortal
+              onLogout={onLogout}
+              products={products}
+              setProducts={setProducts}
+              userRole={currentUser.role}
+              currentUser={currentUser}
+            />
+          </Suspense>
+        </PortalErrorBoundary>
+      </>
     );
   }
   return null;

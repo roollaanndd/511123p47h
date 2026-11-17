@@ -19,7 +19,14 @@ export default defineConfig(() => {
           // update controller and foreground update checks can be attached there.
           injectRegister: null,
           registerType: 'autoUpdate',
-          includeAssets: ['apple-touch-icon.png', 'pwa-192x192.png', 'pwa-512x512.png', 'pwa-maskable-512.png'],
+          // The repository owns the manifest files so each role entry can
+          // point to its own install identity and scope.
+          manifest: false,
+          includeAssets: [
+            'apple-touch-icon.png', 'pwa-192x192.png', 'pwa-512x512.png', 'pwa-maskable-512.png',
+            'manifest.webmanifest', 'manifest-customer.webmanifest', 'manifest-agent.webmanifest',
+            'manifest-operator.webmanifest', 'manifest-admin.webmanifest',
+          ],
           workbox: {
             maximumFileSizeToCacheInBytes: 10 * 1024 * 1024,
             skipWaiting: true,
@@ -69,66 +76,6 @@ export default defineConfig(() => {
                 handler: 'CacheFirst',
                 options: { cacheName: 'google-fonts-woff', expiration: { maxEntries: 24, maxAgeSeconds: 60 * 60 * 24 * 365 } },
               },
-            ],
-          },
-          manifest: {
-            // `id` pins the app's identity across start_url changes — without it
-            // a future start_url edit registers as a *different* app and the
-            // browser stops recognising the installed copy.
-            id: '/',
-            name: 'SurePath – Asuransi Digital',
-            short_name: 'SurePath',
-            description: 'Platform asuransi digital terpercaya Indonesia. Beli asuransi mobil, jiwa, perjalanan & properti. Klaim cepat via HP.',
-            // Brand emerald for PWA status bar when installed — was #ffffff (looked like a generic web page, not an app)
-            theme_color: '#003B2F',
-            background_color: '#003B2F',
-            display: 'standalone',
-            // Falls back gracefully when a browser doesn't do standalone.
-            display_override: ['standalone', 'minimal-ui'],
-            orientation: 'portrait',
-            start_url: '/',
-            scope: '/',
-            lang: 'id',
-            categories: ['finance', 'business'],
-            icons: [
-              {
-                src: 'pwa-192x192.png',
-                sizes: '192x192',
-                type: 'image/png',
-                purpose: 'any',
-              },
-              {
-                src: 'pwa-512x512.png',
-                sizes: '512x512',
-                type: 'image/png',
-                purpose: 'any',
-              },
-              {
-                src: 'pwa-maskable-512.png',
-                sizes: '512x512',
-                type: 'image/png',
-                purpose: 'maskable',
-              },
-              {
-                src: 'apple-touch-icon.png',
-                sizes: '180x180',
-                type: 'image/png',
-                purpose: 'any',
-              },
-            ],
-            // Screenshots decide whether Chrome shows the rich install dialog
-            // (big preview + Install button) or the barely-noticeable mini
-            // infobar. The old entry pointed at logo.png and declared it
-            // 3508x2481 — the file is actually 348x400, so Chrome rejected the
-            // screenshot outright and mobile visitors never saw the rich UI.
-            // `form_factor: 'narrow'` is what mobile Chrome looks for; a wide
-            // one is needed as well or desktop falls back to the plain dialog.
-            screenshots: [
-              { src: 'screenshot-1-buy.png', sizes: '1080x1920', type: 'image/png', form_factor: 'narrow', label: 'Beli asuransi kendaraan' },
-              { src: 'screenshot-2-claim.png', sizes: '1080x1920', type: 'image/png', form_factor: 'narrow', label: 'Ajukan klaim dari HP' },
-              { src: 'screenshot-3-dashboard.png', sizes: '1080x1920', type: 'image/png', form_factor: 'narrow', label: 'Dasbor polis' },
-              { src: 'screenshot-4-ai.png', sizes: '1080x1920', type: 'image/png', form_factor: 'narrow', label: 'Pathy — asisten AI' },
-              { src: 'play-store-feature-graphic.png', sizes: '1024x500', type: 'image/png', form_factor: 'wide', label: 'SurePath' },
             ],
           },
         })
