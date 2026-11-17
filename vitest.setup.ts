@@ -12,6 +12,19 @@ if (typeof sessionStorage === 'undefined') {
   };
 }
 
+// Node 26 can expose no localStorage object even when Vitest uses jsdom.
+if (typeof localStorage === 'undefined') {
+  const store: Record<string, string> = {};
+  (globalThis as any).localStorage = {
+    getItem: (key: string) => store[key] ?? null,
+    setItem: (key: string, value: string) => { store[key] = value; },
+    removeItem: (key: string) => { delete store[key]; },
+    clear: () => { Object.keys(store).forEach(k => delete store[k]); },
+    key: (index: number) => Object.keys(store)[index] ?? null,
+    get length() { return Object.keys(store).length; },
+  };
+}
+
 // Polyfill atob/btoa if missing
 if (typeof atob === 'undefined') {
   (globalThis as any).atob = (s: string) => Buffer.from(s, 'base64').toString('utf-8');

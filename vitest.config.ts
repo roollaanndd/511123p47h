@@ -4,6 +4,12 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'jsdom',
+    environmentOptions: {
+      jsdom: {
+        url: 'http://localhost/',
+      },
+    },
+    setupFiles: ['./vitest.setup.ts'],
     include: ['services/__tests__/**/*.test.ts', 'services/__tests__/**/*.test.tsx'],
   },
   define: {
