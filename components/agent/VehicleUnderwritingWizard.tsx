@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, User, ChevronRight, Upload, CheckCircle, AlertTriangle, XCircle, ArrowLeft, Loader2, FileText, Mail, Package, Smartphone } from 'lucide-react';
+import { Search, User, ChevronRight, Upload, CheckCircle, AlertTriangle, XCircle, ArrowLeft, Loader2, FileText, Mail, Package, Smartphone, Coins, ShieldCheck, Star } from 'lucide-react';
 import SearchableSelect from '../car-wizard/SearchableSelect';
 import { Language } from '../../types';
 import { analyzeVehicleSurvey, validateVehiclePhoto, SurveyAnalysisResult } from '../../services/geminiService';
@@ -302,6 +302,10 @@ const VehicleUnderwritingWizard: React.FC<Props> = ({
   // ── Step 4: Coverage ──
   const [province, setProvince] = useState('');
   const [sumInsured, setSumInsured] = useState(initialQuote?.price ?? 0);
+  // Keep a confirmed/manual TSI safe from later vehicle-field changes. When
+  // the agent has not entered one, the vehicle database may fill it from the
+  // matched market value and keep it in sync with the selected year/model.
+  const [sumInsuredSource, setSumInsuredSource] = useState<'AUTO' | 'MANUAL'>(initialQuote?.price ? 'MANUAL' : 'AUTO');
   const [sumInsuredDisplay, setSumInsuredDisplay] = useState(
     initialQuote?.price ? initialQuote.price.toLocaleString('id-ID') : ''
   );
@@ -379,8 +383,15 @@ const VehicleUnderwritingWizard: React.FC<Props> = ({
     const raw = e.target.value.replace(/\D/g, '');
     const num = parseInt(raw, 10) || 0;
     setSumInsured(num);
+    setSumInsuredSource('MANUAL');
     setSumInsuredDisplay(num === 0 ? '' : num.toLocaleString('id-ID'));
   };
+
+  const applyRecommendedSumInsured = useCallback((value: number | null | undefined) => {
+    if (!value || value <= 0 || sumInsuredSource === 'MANUAL') return;
+    setSumInsured(value);
+    setSumInsuredDisplay(value.toLocaleString('id-ID'));
+  }, [sumInsuredSource]);
 
   // ── STNK AI OCR — auto-fill vehicle details from a photographed STNK ──────
   // Calls the same extractStnkOcr service the customer wizard uses. Fills
@@ -435,8 +446,7 @@ const VehicleUnderwritingWizard: React.FC<Props> = ({
             ? getMarketValue(matchedBrand, matchedModel)
             : getMarketValueForMoto(matchedBrand, matchedModel);
           if (mv && mv > 0) {
-            setSumInsured(mv);
-            setSumInsuredDisplay(mv.toLocaleString('id-ID'));
+            applyRecommendedSumInsured(mv);
           }
         }
       }
@@ -472,7 +482,7 @@ const VehicleUnderwritingWizard: React.FC<Props> = ({
     } finally {
       setStnkScanning(false);
     }
-  }, [vehicleType, handleVehicleDetailChange]);
+  }, [vehicleType, handleVehicleDetailChange, applyRecommendedSumInsured]);
 
   const handlePlatePartChange = useCallback((field: 'plateCode' | 'plateNum' | 'plateSuffix', value: string) => {
     setVehicleDetails(prev => {
@@ -759,7 +769,16 @@ const VehicleUnderwritingWizard: React.FC<Props> = ({
     vehicleDetails.engine &&
     vehicleDetails.color;
 
-  const canProceedStep4 = province && sumInsured > 0;
+  // A quote must carry the exact insurer product that the agent selected.
+  // Previously this step could be skipped with only province + TSI filled,
+  // leaving insurer_id/insurer_name empty on the order.
+  const canProceedStep4 = Boolean(
+    province &&
+    sumInsured > 0 &&
+    !loadingProducts &&
+    availableProducts.length > 0 &&
+    selectedInsurerProduct,
+  );
 
   const aiScore = aiResult?.score ?? 0;
   const aiVerdict = aiResult?.auditVerdict ?? '';
@@ -956,15 +975,16 @@ const VehicleUnderwritingWizard: React.FC<Props> = ({
       const mv = isCar
         ? getMarketValue(vehicleDetails.make, model)
         : getMarketValueForMoto(vehicleDetails.make, model);
-      if (mv && mv > 0) {
-        setSumInsured(mv);
-        setSumInsuredDisplay(mv.toLocaleString('id-ID'));
-      }
+      applyRecommendedSumInsured(mv);
     };
 
     const handleMakeChange = (make: string) => {
       handleVehicleDetailChange('make', make);
       handleVehicleDetailChange('model', '');
+      if (sumInsuredSource === 'AUTO') {
+        setSumInsured(0);
+        setSumInsuredDisplay('');
+      }
     };
 
     return (
@@ -1410,78 +1430,88 @@ const VehicleUnderwritingWizard: React.FC<Props> = ({
       {/* Insurer Selection */}
       {province && sumInsured > 0 && coverageType && (
         <SectionCard>
-          <h3 className="font-black text-slate-700 dark:text-slate-200 mb-4 text-sm uppercase tracking-widest">
-            Pilih Perusahaan Asuransi
-          </h3>
+          <div className="flex flex-col gap-1 mb-5">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="font-black text-slate-800 dark:text-slate-100 text-lg tracking-tight">
+                  Pilih perusahaan asuransi
+                </h3>
+                <p className="text-2xs text-slate-500 dark:text-slate-400 mt-1">
+                  Bandingkan pilihan aktif untuk {coverageType === 'COMPREHENSIVE' ? 'Comprehensive' : 'TLO'} sebelum lanjut.
+                </p>
+              </div>
+              <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-emerald-50 dark:bg-emerald-500/10 px-3 py-1.5 text-2xs font-bold text-emerald-700 dark:text-emerald-300">
+                <ShieldCheck size={13} /> Terverifikasi sistem
+              </span>
+            </div>
+          </div>
           {!loadingProducts && excludedByAgeCount > 0 && (
-            <p className="text-[11px] text-ds-amber dark:text-amber-400 font-semibold mb-3 bg-amber-50 dark:bg-amber-500/10 rounded-xl px-3 py-2">
+            <p className="text-2xs text-ds-amber dark:text-amber-400 font-semibold mb-3 bg-amber-50 dark:bg-amber-500/10 rounded-xl px-3 py-2">
               {excludedByAgeCount} mitra asuransi tidak ditampilkan karena melebihi batas maksimal usia kendaraan mereka.
             </p>
           )}
           {loadingProducts ? (
-            <div className="flex items-center gap-2 rounded-xl bg-slate-50 dark:bg-white/5 px-3 py-4 text-xs text-slate-500"><span className="h-4 w-4 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />Memuat daftar asuransi yang sesuai kendaraan dan pertanggungan...</div>
+            <div className="flex items-center gap-3 rounded-2xl border border-emerald-100 dark:border-emerald-500/20 bg-emerald-50/60 dark:bg-emerald-500/5 px-4 py-5 text-xs text-slate-600 dark:text-slate-300"><span className="h-5 w-5 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />Memuat pilihan asuransi yang sesuai kendaraan dan pertanggungan...</div>
           ) : availableProducts.length === 0 ? (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 dark:border-amber-900/40 dark:bg-amber-950/20 px-4 py-3 space-y-1">
-              <p className="text-sm font-bold text-amber-800 dark:text-amber-300">Belum ada mitra yang cocok untuk pilihan ini</p>
-              <p className="text-xs leading-relaxed text-amber-700 dark:text-amber-200">Daftar hanya menampilkan perusahaan yang aktif, produk yang cocok dengan jenis kendaraan/pertanggungan, dan batas usia kendaraan. Coba ubah pertanggungan atau usia kendaraan. Jika tetap kosong, Admin perlu memeriksa menu Mitra Asuransi dan pemetaan produk.</p>
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 dark:border-amber-900/40 dark:bg-amber-950/20 px-4 py-4 space-y-1">
+              <p className="text-sm font-bold text-amber-800 dark:text-amber-300">Belum ada pilihan yang cocok</p>
+              <p className="text-2xs leading-relaxed text-amber-700 dark:text-amber-200">Daftar menyaring perusahaan aktif, coverage, jenis kendaraan, dan batas usia. Coba ubah coverage atau periksa pemetaan produk di Admin.</p>
             </div>
           ) : (
-            <div className="flex flex-col gap-3">
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
               {availableProducts.map(p => {
                 const selected = selectedInsurerProduct?.id === p.id;
                 const breakdown = sumInsured > 0 ? calcPremium(vehicleType, coverageType, sumInsured, zone, addons) : null;
                 const estCoins = breakdown ? Math.floor(breakdown.total * (p.coin_rate ?? 0.05) / 1000) : null;
                 const estComm = breakdown ? Math.round(breakdown.total * p.base_commission_rate) : null;
+                const estimatedTotal = breakdown ? breakdown.total + (p.policy_cost ?? 0) + (p.stamp_duty ?? 10_000) : null;
                 return (
                   <button
                     key={p.id}
                     type="button"
+                    aria-pressed={selected}
                     onClick={() => setSelectedInsurerProduct(selected ? null : p)}
-                    className={`text-left rounded-2xl border-2 p-4 transition ${
+                    className={`group relative text-left rounded-2xl border p-4 transition duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-950 ${
                       selected
-                        ? 'border-ds-green bg-ds-green/10'
-                        : 'border-slate-200 dark:border-white/10 hover:border-ds-green'
+                        ? 'border-emerald-500 bg-emerald-50/70 shadow-[0_12px_30px_-18px_rgba(5,150,105,0.75)] dark:bg-emerald-500/10'
+                        : 'border-slate-200 bg-white hover:border-emerald-300 hover:shadow-[0_12px_30px_-20px_rgba(15,23,42,0.45)] dark:border-white/10 dark:bg-white/[0.03] dark:hover:border-emerald-500/50'
                     }`}
                   >
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="w-9 h-9 rounded-lg bg-white border border-slate-100 flex items-center justify-center p-1 flex-shrink-0" style={{ background: INSURER_BRANDS[p.insurer_code ?? '']?.bg ?? '#ffffff' }}>
+                    {selected && <span className="absolute right-4 top-4 inline-flex items-center gap-1 rounded-full bg-emerald-600 px-2.5 py-1 text-2xs font-bold text-white"><CheckCircle size={12} /> Dipilih</span>}
+                    <div className="flex items-start justify-between gap-3 mb-4 pr-16">
+                      <div className="flex items-center gap-3 min-w-0">
+                      <span className="w-11 h-11 rounded-xl bg-white border border-slate-100 flex items-center justify-center p-1.5 flex-shrink-0 shadow-sm" style={{ background: INSURER_BRANDS[p.insurer_code ?? '']?.bg ?? '#ffffff' }}>
                         {p.insurer_logo_url ? <img loading="lazy" src={p.insurer_logo_url} alt={p.insurer_name ?? p.insurer_code} className="w-full h-full object-contain" /> : <InsurerLogo id={p.insurer_code ?? p.id} size={28} />}
                       </span>
-                      <p className={`font-black text-sm ${selected ? 'text-ds-green' : 'text-slate-700 dark:text-slate-200'}`}>
-                        {p.insurer_name ?? p.insurer_code}
-                      </p>
-                    </div>
-                    {estComm !== null && estCoins !== null ? (
-                      <div className="flex flex-wrap gap-2 mb-2">
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300">
-                          Komisi: {formatIDR(estComm)} ({(p.base_commission_rate * 100).toFixed(1)}%)
-                        </span>
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300">
-                          🪙 {estCoins.toLocaleString()} koin ≈ {formatIDR(estCoins * 1000)}
-                        </span>
+                      <div className="min-w-0">
+                        <p className={`font-black text-sm truncate ${selected ? 'text-emerald-800 dark:text-emerald-300' : 'text-slate-800 dark:text-slate-100'}`}>
+                          {p.insurer_name ?? p.insurer_code}
+                        </p>
+                        <div className="flex items-center gap-1.5 mt-1 text-2xs text-slate-500 dark:text-slate-400">
+                          <Star size={12} className="fill-amber-400 text-amber-400" />
+                          <span className="font-bold">{p.rating ? `${p.rating}/5` : 'Rating belum tersedia'}</span>
+                          {(p as any).is_recommended === true && <span className="text-emerald-700 dark:text-emerald-300">· Direkomendasikan</span>}
+                        </div>
                       </div>
-                    ) : (
-                      <p className="text-[10px] text-slate-400 mb-1">
-                        Komisi {(p.base_commission_rate * 100).toFixed(1)}%
-                      </p>
-                    )}
-                    <p className="text-[10px] text-slate-400">
-                      Maks diskon {(Math.max(0, Math.min(p.max_discount_rate ?? 0, Math.min(0.25, p.base_commission_rate ?? 0))) * 100).toFixed(1)}%
-                      {p.max_vehicle_age_years ? ` · Maks usia ${p.max_vehicle_age_years} thn` : ''}
-                    </p>
-                    <div className="mt-3 border-t border-slate-100 dark:border-white/10 pt-3 space-y-2">
-                      <div className="flex items-center gap-1.5 text-xs">
-                        <span className="flex gap-0.5" aria-label={`Rating ${(p as any).rating ?? 0} dari 5`}>
-                          {[1,2,3,4,5].map(star => <span key={star} className={star <= Math.floor(p.rating ?? 0) ? 'text-amber-500' : 'text-slate-300'}>★</span>)}
-                        </span>
-                        <span className="font-bold text-slate-600 dark:text-slate-300">{(p as any).rating ? `${(p as any).rating}/5` : 'Rating belum tersedia'}</span>
-                      </div>
-                      {Array.isArray((p as any).benefits) && (p as any).benefits.length > 0 && <div><p className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 mb-1">Manfaat utama</p><p className="text-[11px] text-slate-500">{(p as any).benefits.slice(0, 3).join(' · ')}</p></div>}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        {Array.isArray((p as any).advantages) && (p as any).advantages.length > 0 && <div><p className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400">Kelebihan</p><ul className="text-[11px] text-slate-500 list-disc pl-4">{(p as any).advantages.slice(0, 3).map((item: string, i: number) => <li key={i}>{item}</li>)}</ul></div>}
-                        {Array.isArray((p as any).disadvantages) && (p as any).disadvantages.length > 0 && <div><p className="text-[10px] font-bold text-rose-600 dark:text-rose-400">Kekurangan</p><ul className="text-[11px] text-slate-500 list-disc pl-4">{(p as any).disadvantages.slice(0, 3).map((item: string, i: number) => <li key={i}>{item}</li>)}</ul></div>}
                       </div>
                     </div>
+                    <div className="grid grid-cols-2 gap-2 mb-4">
+                      <div className="rounded-xl bg-slate-50 dark:bg-white/5 px-3 py-2.5">
+                        <p className="text-2xs text-slate-500 dark:text-slate-400">Estimasi premi</p>
+                        <p className="text-sm font-black text-slate-800 dark:text-slate-100 mt-0.5">{estimatedTotal ? formatIDR(estimatedTotal) : '—'}</p>
+                      </div>
+                      <div className="rounded-xl bg-amber-50 dark:bg-amber-500/10 px-3 py-2.5">
+                        <p className="text-2xs text-amber-700 dark:text-amber-300 flex items-center gap-1"><Coins size={12} /> Estimasi koin</p>
+                        <p className="text-sm font-black text-amber-800 dark:text-amber-200 mt-0.5">{estCoins !== null ? estCoins.toLocaleString('id-ID') : '—'}</p>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-slate-500 dark:text-slate-400">
+                      {estComm !== null && <span>Komisi {(p.base_commission_rate * 100).toFixed(1)}% · {formatIDR(estComm)}</span>}
+                      <span>Maks diskon {(Math.max(0, Math.min(p.max_discount_rate ?? 0, Math.min(0.25, p.base_commission_rate ?? 0))) * 100).toFixed(1)}%</span>
+                      {p.max_vehicle_age_years ? <span>Maks usia {p.max_vehicle_age_years} thn</span> : null}
+                    </div>
+                    {Array.isArray((p as any).benefits) && (p as any).benefits.length > 0 && <p className="mt-3 border-t border-slate-100 dark:border-white/10 pt-3 text-2xs leading-relaxed text-slate-600 dark:text-slate-300"><span className="font-bold text-emerald-700 dark:text-emerald-300">Manfaat: </span>{(p as any).benefits.slice(0, 2).join(' · ')}</p>}
+                    {selected && <p className="mt-3 text-2xs font-bold text-emerald-700 dark:text-emerald-300">Produk ini akan dipakai untuk perhitungan order dan komisi.</p>}
                   </button>
                 );
               })}
