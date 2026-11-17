@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Lock, Mail, ArrowRight, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { supabase } from '../../services/supabaseService';
 import { checkRateLimit, recordFailedAttempt, clearRateLimit } from '../../services/authService';
@@ -25,6 +25,9 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess, onBack }) => {
   const [showPass, setShowPass]         = useState(false);
   const [loading, setLoading]           = useState(false);
   const [error, setError]               = useState<string | null>(null);
+  // When GIS One Tap cannot display, swap to the official GIS button (popup)
+  const [showGisFallback, setShowGisFallback] = useState(false);
+  const gisFallbackRef = useRef<HTMLDivElement>(null);
 
   const authorizeAdminSession = async (authUser: any, session: any, attemptedEmail?: string) => {
     const normalEmail = String(authUser?.email ?? attemptedEmail ?? '').trim().toLowerCase();
@@ -84,60 +87,79 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess, onBack }) => {
     }
   };
 
-  // Supabase returns here after Google OAuth. Verify the session against the
-  // existing SurePath profile before rendering the admin portal.
-  // Latest-instance ref: the OAuth callback must run exactly once per mount,
-  // but the exhaustive-deps lint (rightly) wants `authorizeAdminSession`
-  // declared — holding it in a ref satisfies both.
   const authorizeRef = useRef(authorizeAdminSession);
   authorizeRef.current = authorizeAdminSession;
-  useEffect(() => {
-    const callbackUrl = new URL(window.location.href);
-    const isOAuthCallback =
-      callbackUrl.searchParams.has('code') ||
-      window.location.hash.includes('access_token=') ||
-      window.location.hash.includes('error=');
-    if (!isOAuthCallback) return;
 
-    let active = true;
-    setLoading(true);
-    setError(null);
-    (async () => {
-      try {
-        const { data, error: sessionError } = await supabase.auth.getSession();
-        if (!active) return;
-        if (sessionError || !data.session || !data.session.user) {
-          setError('Login Google gagal atau sesi tidak valid. Silakan coba lagi.');
-          return;
-        }
-        await authorizeRef.current(data.session.user, data.session, data.session.user.email);
-        if (active) {
-          // Remove OAuth tokens/code from the visible URL after verification.
-          window.history.replaceState({}, document.title, '/admin');
-        }
-      } catch {
-        if (active) setError('Tidak dapat memverifikasi akun Google. Silakan coba lagi.');
-      } finally {
-        if (active) setLoading(false);
-      }
-    })();
-    return () => { active = false; };
-  }, []);
-
-  const handleGoogleLogin = async () => {
-    setLoading(true);
-    setError(null);
+  // ── GIS credential handler ────────────────────────────────────────────────
+  const handleGoogleCredential = useCallback(async (response: { credential: string }) => {
+    setShowGisFallback(false);
+    setLoading(true); setError(null);
     try {
-      const { error: oauthError } = await supabase.auth.signInWithOAuth({
+      const { data, error: e } = await supabase.auth.signInWithIdToken({
         provider: 'google',
-        options: { redirectTo: `${window.location.origin}/admin` },
+        token: response.credential,
       });
-      if (oauthError) setError(`Login Google gagal: ${oauthError.message}`);
+      if (e || !data.session) {
+        setError(e?.message ?? 'Login Google gagal. Silakan coba lagi.');
+        setLoading(false); return;
+      }
+      await authorizeRef.current(data.session.user, data.session, data.session.user.email);
     } catch {
-      setError('Tidak dapat memulai login Google. Silakan coba lagi.');
+      setError('Login Google gagal. Silakan coba lagi.');
     } finally {
       setLoading(false);
     }
+  }, []);
+  const credentialCallbackRef = useRef(handleGoogleCredential);
+  credentialCallbackRef.current = handleGoogleCredential;
+
+  // ── Initialize GIS once the script loads ─────────────────────────────────
+  useEffect(() => {
+    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID as string;
+    if (!clientId) return;
+
+    const init = () => {
+      const g = (window as any).google?.accounts?.id;
+      if (!g) return false;
+      g.initialize({
+        client_id: clientId,
+        callback: (resp: { credential: string }) => credentialCallbackRef.current(resp),
+      });
+      return true;
+    };
+
+    if (!init()) {
+      const poll = setInterval(() => { if (init()) clearInterval(poll); }, 150);
+      return () => clearInterval(poll);
+    }
+  }, []);
+
+  // ── Render GIS fallback button when One Tap cannot display ────────────────
+  useEffect(() => {
+    if (!showGisFallback || !gisFallbackRef.current) return;
+    const g = (window as any).google?.accounts?.id;
+    if (!g) return;
+    g.renderButton(gisFallbackRef.current, {
+      type: 'standard',
+      theme: 'outline',
+      size: 'large',
+      width: gisFallbackRef.current.offsetWidth || 320,
+    });
+  }, [showGisFallback]);
+
+  // ── Google Sign-In (direct GIS — bypasses Supabase OAuth proxy) ──────────
+  const handleGoogleLogin = () => {
+    setError(null); setShowGisFallback(false);
+    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID as string;
+    if (!clientId) { setError('Konfigurasi Google Sign-In tidak ditemukan.'); return; }
+    const g = (window as any).google?.accounts?.id;
+    if (!g) { setError('Google Sign-In belum siap. Muat ulang halaman lalu coba lagi.'); return; }
+
+    g.prompt((notification: any) => {
+      if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+        setShowGisFallback(true);
+      }
+    });
   };
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -336,16 +358,27 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess, onBack }) => {
               <div className="h-px flex-1" style={{ background: 'rgba(6,78,59,0.12)' }} />
             </div>
 
-            <button
-              type="button"
-              onClick={handleGoogleLogin}
-              disabled={loading}
-              className="w-full flex justify-center items-center gap-3 py-3 rounded-xl font-semibold text-sm transition-all duration-200 disabled:opacity-40"
-              style={{ background: 'var(--ds-card2, #ffffff)', color: 'var(--ds-ink2, #334155)', border: '1px solid var(--ds-border, rgba(6,78,59,0.16))', boxShadow: '0 2px 8px rgba(15,23,42,0.04)' }}
-            >
-              <span aria-hidden="true" className="flex items-center justify-center w-5 h-5 rounded-full font-bold" style={{ fontSize: '0.95rem', color: '#4285F4', fontFamily: 'Arial, sans-serif' }}>G</span>
-              Lanjutkan dengan Google
-            </button>
+            {showGisFallback ? (
+              <div className="flex flex-col items-center gap-2">
+                <p className="text-xs text-slate-400">Masuk dengan akun Google kamu:</p>
+                <div ref={gisFallbackRef} className="w-full flex justify-center" />
+                <button type="button" onClick={() => setShowGisFallback(false)}
+                  className="text-xs text-slate-400 hover:text-emerald-600 transition-colors">
+                  ← Kembali
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={handleGoogleLogin}
+                disabled={loading}
+                className="w-full flex justify-center items-center gap-3 py-3 rounded-xl font-semibold text-sm transition-all duration-200 disabled:opacity-40"
+                style={{ background: 'var(--ds-card2, #ffffff)', color: 'var(--ds-ink2, #334155)', border: '1px solid var(--ds-border, rgba(6,78,59,0.16))', boxShadow: '0 2px 8px rgba(15,23,42,0.04)' }}
+              >
+                <span aria-hidden="true" className="flex items-center justify-center w-5 h-5 rounded-full font-bold" style={{ fontSize: '0.95rem', color: '#4285F4', fontFamily: 'Arial, sans-serif' }}>G</span>
+                Lanjutkan dengan Google
+              </button>
+            )}
           </div>
         </div>
 

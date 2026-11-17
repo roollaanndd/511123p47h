@@ -281,6 +281,11 @@
     // Track SPA route changes
     window.__gtagReady = true;
   </script>
+
+  <!-- Google Identity Services — loaded async so it never blocks first paint.
+       signInWithIdToken() exchanges the credential for a Supabase session,
+       so the data-gateway JWT flow is unchanged. -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
   <body class="bg-mesh">
     <div id="root"></div>
