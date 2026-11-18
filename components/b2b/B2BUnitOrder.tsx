@@ -33,6 +33,7 @@ import {
   Car, Bike, Construction, Loader2, CheckCircle2, AlertTriangle, ExternalLink,
   Info, ClipboardList, CalendarDays, TrendingDown, ShieldCheck, ShieldAlert,
   Camera, Upload, X, Package, Download, Droplets, Mountain, Flame, Users, Wrench, Sparkles, Building2, Check,
+  ScanLine, FileText,
 } from 'lucide-react';
 import { Language } from '../../types';
 import {
@@ -49,8 +50,14 @@ import {
   listActiveB2BPlans, type SpB2BPlan,
   listActiveInsurers, type SpInsurer,
 } from '../../services/supabaseService';
-import { uploadB2BVehiclePhoto } from '../../services/storage';
-import { generateB2BProposalPdf } from '../../services/b2bProposalPdf';
+import { uploadB2BUnitDocument, uploadB2BVehiclePhoto } from '../../services/storage';
+import { publishAndDownloadQuotation } from '../../services/quotationService';
+import { extractStnkOcr, type StnkOcrResult } from '../../services/stnkOcr';
+import {
+  fromB2BUnitOrder, hasEnoughUsedVehiclePhotos, hasNewVehicleDocument,
+  isPolicyCopyStillValid, validateB2BUnitOrder,
+  type B2BAttachment, type VehicleCondition,
+} from '../../services/b2bUnitOrder';
 
 interface Props {
   clientId: string;
@@ -150,9 +157,20 @@ const B2BUnitOrder: React.FC<Props> = ({ clientId, client, onDone, lang }) => {
   });
   const [plans, setPlans] = useState<SpB2BPlan[]>([]);
   const [planId, setPlanId] = useState<string>('');
-  const [photos, setPhotos] = useState<Array<{ slot: string; label: string; url: string; size_bytes: number }>>([]);
+  // Satu array untuk SEMUA lampiran: foto (BEKAS), BSTK/faktur (BARU),
+  // copy polis, dan STNK hasil pemindaian. Slot menentukan kewajibannya.
+  const [photos, setPhotos] = useState<B2BAttachment[]>([]);
   const [uploadingSlot, setUploadingSlot] = useState<string>('');
   const [photoError, setPhotoError] = useState('');
+  // v2.9.13 — kondisi unit & data pendukung dari STNK/copy polis.
+  const [vehicleCondition, setVehicleCondition] = useState<VehicleCondition>('BEKAS');
+  const [engineNo, setEngineNo] = useState('');
+  const [chassisNo, setChassisNo] = useState('');
+  const [color, setColor] = useState('');
+  const [policyCopyEnabled, setPolicyCopyEnabled] = useState(false);
+  const [policyCopyExpiry, setPolicyCopyExpiry] = useState('');
+  const [ocrBusy, setOcrBusy] = useState(false);
+  const [ocrMessage, setOcrMessage] = useState('');
   // v2.9.7 — pilihan asuransi (opsional). Server memverifikasi ulang; nama
   // insurer tersimpan di `notes` batch sebagai catatan admin.
   const [insurers, setInsurers] = useState<SpInsurer[]>([]);
@@ -288,34 +306,27 @@ const B2BUnitOrder: React.FC<Props> = ({ clientId, client, onDone, lang }) => {
         ? t(`Zone ${built.zone} (from region)`, `Zona ${built.zone} (dari wilayah)`)
         : t('Zone 3 (default — verify)', 'Zona 3 (default — perlu verifikasi)');
 
-  const validate = (): string | null => {
-    if (!nasabahName.trim()) return t('Customer name is required.', 'Nama nasabah wajib diisi.');
-    if (!isHeavy && !make.trim()) return t('Choose the vehicle brand.', 'Pilih merk kendaraan.');
-    if (!isHeavy && !model.trim()) return t('Choose the vehicle type.', 'Pilih tipe kendaraan.');
-    if (!financingValue || Number(financingValue) <= 0) return t('Sum insured must be greater than zero.', 'Nilai pertanggungan (TSI) harus lebih dari nol.');
-    if (isCar && !commercialBody && (!otr || Number(otr) <= 0)) return t('Passenger car needs OTR price for rate banding.', 'Mobil penumpang perlu harga OTR untuk penentuan kategori tarif.');
-    if (modelYear && (Number(modelYear) < 1950 || Number(modelYear) > 2100)) return t('Year looks wrong.', 'Tahun kendaraan tidak masuk akal.');
-    if (!isValidIsoDate(startDate) || startDate < today || startDate > maxStartDate) {
-      return t(
-        `Effective date must be between today and ${START_DATE_MAX_DAYS_AHEAD} days ahead.`,
-        `Tanggal efektif harus antara hari ini dan ${START_DATE_MAX_DAYS_AHEAD} hari ke depan.`,
-      );
-    }
-    if (discountPct.trim() !== '') {
-      const d = Number(discountPct.replace(',', '.'));
-      if (!Number.isFinite(d) || d < 0 || d > discountCapPct) {
-        return t(`Discount must be between 0 and ${discountCapPct}%.`, `Diskon harus antara 0 dan ${discountCapPct}%.`);
-      }
-    }
-    // v2.9.1 — foto kendaraan wajib minimal 3 (depan, belakang, nomor rangka).
-    if (!isHeavy && photos.length < 3) {
-      return t(
-        'Upload at least 3 vehicle photos (front, back, chassis number).',
-        'Unggah minimal 3 foto kendaraan (depan, belakang, nomor rangka).',
-      );
-    }
-    return null;
-  };
+  // Validasi klien mengikuti aturan gateway (server tetap memeriksa ulang).
+  const validate = (): string | null => validateB2BUnitOrder({
+    t,
+    isCar,
+    isHeavy,
+    nasabahName,
+    make,
+    model,
+    modelYear,
+    financingValue,
+    otr,
+    commercialBody,
+    startDate,
+    discountPct,
+    discountCapPct,
+    vehicleCondition,
+    attachments: photos,
+    policyCopyEnabled,
+    policyCopyExpiry,
+    today,
+  });
 
   const handleSubmit = async () => {
     const v = validate();
@@ -357,6 +368,11 @@ const B2BUnitOrder: React.FC<Props> = ({ clientId, client, onDone, lang }) => {
         addons: isHeavy ? undefined : addons,
         planId: planId || null,
         vehiclePhotos: photos.map(p => ({ slot: p.slot, url: p.url, size_bytes: p.size_bytes })),
+        // v2.9.13 — kondisi unit & copy polis divalidasi ulang server.
+        vehicleCondition,
+        policyCopyExpiry: policyCopyEnabled ? policyCopyExpiry : undefined,
+        engineNo: engineNo.trim() || undefined,
+        chassisNo: chassisNo.trim() || undefined,
       }],
     });
     setSubmitting(false);
@@ -385,41 +401,143 @@ const B2BUnitOrder: React.FC<Props> = ({ clientId, client, onDone, lang }) => {
 
   const removePhoto = (slot: string) => setPhotos(prev => prev.filter(p => p.slot !== slot));
 
-  // ── Unduh proposal (PDF, selaras agent app — watermark + aksen oranye) ──
+  /** BSTK / faktur / copy polis — sama seperti foto, tapi menerima PDF. */
+  const handleDocumentUpload = async (slot: string, label: string, file: File | undefined) => {
+    if (!file) return;
+    setPhotoError('');
+    setUploadingSlot(slot);
+    const res = await uploadB2BUnitDocument(clientId, slot, file);
+    setUploadingSlot('');
+    if ('error' in res) { setPhotoError(res.error); return; }
+    setPhotos(prev => [
+      ...prev.filter(p => p.slot !== slot),
+      { slot, label, url: res.url, size_bytes: res.size_bytes },
+    ]);
+  };
+
+  // ── Scan STNK ────────────────────────────────────────────────────────────
+  // Memakai edge function `stnk-ocr` yang sama dengan aplikasi agent. Field
+  // yang lolos validasi mengisi form otomatis; yang gagal tetap bisa diketik
+  // manual, dan pesan statusnya jujur (tidak mengklaim sukses saat ERROR).
+  const handleStnkPick = (file: File) => {
+    setOcrMessage('');
+    setOcrBusy(true);
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const result: StnkOcrResult = await extractStnkOcr(reader.result as string);
+        const readable = result.ok || result.status === 'PARTIAL';
+        if (readable) {
+          const brand = result.brand ?? '';
+          const knownBrand = !isHeavy && brandList.includes(brand);
+          if (brand) {
+            setMake(brand);
+            setManualBrand(!isHeavy && !knownBrand);
+            setManualModel(!isHeavy && !knownBrand);
+          }
+          const models = !isHeavy && knownBrand
+            ? (isMoto ? getModelsForMotoBrand(brand) : getModelsForBrand(brand))
+            : [];
+          const modelName = result.model ?? '';
+          const knownModel = models.find(m => modelName && m.toUpperCase() === modelName.toUpperCase()) ?? modelName;
+          if (modelName) {
+            setModel(knownModel);
+            setManualModel(!knownBrand);
+          }
+          const yearInt = result.year ?? (Number(modelYear) || 0);
+          if (yearInt) setModelYear(String(yearInt));
+          if (result.plate) setPlateNo(result.plate.toUpperCase());
+          if (result.region) setRegionText(result.region);
+          if (result.zone) setZoneOverride(result.zone);
+          if (result.engineNo) setEngineNo(result.engineNo);
+          if (result.vin) setChassisNo(result.vin);
+          if (result.color) setColor(result.color);
+          const price = !isHeavy && brand && knownModel && yearInt
+            ? (isMoto ? getMarketValueForMotoYear(brand, knownModel, yearInt) : getMarketValueForYear(brand, knownModel, yearInt))
+            : null;
+          applyPrice(price);
+          setOcrMessage(t(
+            `STNK read: ${brand || '-'} ${knownModel} ${yearInt || ''}. Vehicle fields filled automatically — check them before submitting.`,
+            `STNK terbaca: ${brand || '-'} ${knownModel} ${yearInt || ''}. Data kendaraan terisi otomatis — periksa kembali sebelum kirim.`,
+          ));
+          // Foto STNK ikut tersimpan sebagai lampiran (tidak dihitung sebagai
+          // foto wajib BEKAS — slot 'stnk' sengaja dikecualikan gateway).
+          const up = await uploadB2BVehiclePhoto(clientId, 'stnk', file);
+          if (!('error' in up)) {
+            setPhotos(prev => [
+              ...prev.filter(p => p.slot !== 'stnk'),
+              { slot: 'stnk', label: 'STNK', url: up.url, size_bytes: up.size_bytes },
+            ]);
+          }
+        } else {
+          setOcrMessage(t(
+            'The STNK could not be read reliably. Fill the vehicle fields manually below.',
+            'STNK tidak terbaca dengan pasti. Isi data kendaraan secara manual di bawah.',
+          ));
+        }
+      } catch (e) {
+        console.error('[B2B] STNK OCR:', e);
+        setOcrMessage(t('Failed to scan the STNK. Try a sharper photo.', 'Gagal memindai STNK. Coba foto yang lebih jelas.'));
+      } finally {
+        setOcrBusy(false);
+      }
+    };
+    reader.onerror = () => {
+      setOcrBusy(false);
+      setOcrMessage(t('Could not read that file.', 'Gagal membaca berkas.'));
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // ── Unduh penawaran ──────────────────────────────────────────────────────
+  // v2.9.13 — B2B tidak punya generator sendiri lagi. Data order dipetakan
+  // ke QuotationSlipData lalu memakai publishAndDownloadQuotation, jadi PDF,
+  // QR e-quotation, kop, dan 4 halaman US Letter SAMA PERSIS dengan agent.
+  const preferredInsurer = insurers.find(i => i.id === preferredInsurerId) ?? null;
   const handleDownloadProposal = async () => {
     const v = validate();
     if (v) { setError(v); return; }
     setError('');
     const companyName = String(client?.company_name ?? client?.companyName ?? client?.name ?? 'Klien B2B').trim() || 'Klien B2B';
     try {
-      await generateB2BProposalPdf({
+      const data = fromB2BUnitOrder({
         companyName,
         nasabahName: nasabahName.trim(),
         nasabahPhone: nasabahPhone.trim() || undefined,
         nasabahAddress: nasabahAddress.trim() || undefined,
         contractNo: contractNo.trim() || undefined,
+        vehicleClass,
+        vehicleCondition,
         make: make.trim() || undefined,
         model: model.trim() || undefined,
         modelYear: Number(modelYear) || undefined,
         plateNo: plateNo.trim() || undefined,
-        regionText: regionText.trim() || undefined,
+        engineNo: engineNo.trim() || undefined,
+        chassisNo: chassisNo.trim() || undefined,
+        color: color.trim() || undefined,
         financingValue: Number(financingValue) || 0,
         otr: isCar ? (Number(otr) || undefined) : undefined,
         tenorMonths,
         coverageStartDate: startDate,
         coverageEndDate: endDate,
-        multiYear: isMultiYear,
-        discountShownOnPolicy: discountShown,
+        insurerName: preferredInsurer?.name,
+        insurerLogoUrl: preferredInsurer?.logo_url ?? undefined,
+        addons: isHeavy ? undefined : addons,
         planName: selectedPlan?.name,
-        planDescription: selectedPlan?.description ?? undefined,
-        planBenefits: selectedPlan?.benefits,
-        planLoadingPct: selectedPlan ? Number(selectedPlan.loading_rate) : 0,
+        planLoading: built.planLoading, // rupiah, bukan loading_rate
+
+        discountShown,
         line: built,
-        photoCount: photos.length,
+        attachments: photos,
+      });
+      await publishAndDownloadQuotation(data, {
+        sourceApp: 'B2B',
+        totalPremiumNumeric: built.totalPremium,
+        orderId: batchResult?.batchId,
       });
     } catch (e) {
-      setError(t('Failed to download proposal.', 'Gagal mengunduh proposal.'));
-      console.error('[B2B] generateB2BProposalPdf:', e);
+      setError(t('Failed to download quotation.', 'Gagal mengunduh penawaran.'));
+      console.error('[B2B] publishAndDownloadQuotation:', e);
     }
   };
 
@@ -442,8 +560,12 @@ const B2BUnitOrder: React.FC<Props> = ({ clientId, client, onDone, lang }) => {
     { id: 'vehicle',  label: t('Vehicle', 'Kendaraan'),       done: isHeavy ? Number(financingValue) > 0 : (!!make.trim() && !!model.trim() && Number(financingValue) > 0) },
     { id: 'customer', label: t('Customer', 'Nasabah'),        done: !!nasabahName.trim() },
     { id: 'plan',     label: t('Plan',     'Paket'),          done: true /* opsional */ },
-    { id: 'photos',   label: t('Photos',   'Foto'),           done: isHeavy || photos.length >= 3 },
-  ], [vehicleClass, coverage, isHeavy, make, model, financingValue, nasabahName, photos.length, t]);
+    { id: 'docs',     label: t('Documents', 'Lampiran'),      done: isHeavy || (
+      vehicleCondition === 'BARU'
+        ? hasNewVehicleDocument(photos)
+        : hasEnoughUsedVehiclePhotos(photos)
+    ) },
+  ], [vehicleClass, coverage, isHeavy, make, model, financingValue, nasabahName, photos, vehicleCondition, t]);
   const doneCount = steps.filter(s => s.done).length;
 
   // ── Panel sukses ────────────────────────────────────────────────────────────
@@ -556,6 +678,42 @@ const B2BUnitOrder: React.FC<Props> = ({ clientId, client, onDone, lang }) => {
             </button>
           ))}
         </div>
+
+        {/* v2.9.13 — kondisi unit menentukan lampiran: BARU cukup BSTK/faktur,
+            BEKAS wajib minimal 3 foto. Alat berat dikecualikan. */}
+        {!isHeavy && (
+          <div>
+            <span className={labelCls}>{t('Vehicle condition', 'Kondisi kendaraan')} *</span>
+            <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label={t('Vehicle condition', 'Kondisi kendaraan')}>
+              {([
+                { id: 'BARU' as const, icon: Sparkles, title: t('New', 'Baru'), note: t('BSTK or vehicle invoice is enough — no photos.', 'Cukup BSTK atau faktur kendaraan — tanpa foto.') },
+                { id: 'BEKAS' as const, icon: Car, title: t('Used', 'Bekas'), note: t('At least 3 photos (front, back, chassis).', 'Minimal 3 foto (depan, belakang, rangka).') },
+              ]).map(opt => {
+                const active = vehicleCondition === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    onClick={() => setVehicleCondition(opt.id)}
+                    className={`flex items-start gap-3 rounded-xl border-2 px-3.5 py-3 text-left transition-all active:scale-[0.98] ${
+                      active
+                        ? 'border-emerald-500 bg-emerald-50/60 dark:bg-emerald-500/10'
+                        : 'border-ds-border bg-white dark:bg-ds-card2 hover:border-emerald-400'
+                    }`}
+                  >
+                    <opt.icon size={18} className={`mt-0.5 flex-shrink-0 ${active ? 'text-emerald-600 dark:text-emerald-400' : 'text-ds-ink3'}`} />
+                    <span>
+                      <span className={`block text-sm font-black ${active ? 'text-emerald-700 dark:text-emerald-300' : 'text-ds-ink dark:text-white'}`}>{opt.title}</span>
+                      <span className="block text-2xs text-ds-ink3 leading-relaxed mt-0.5">{opt.note}</span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {isCar && (
           <label className="flex items-center gap-2 cursor-pointer">
@@ -692,6 +850,61 @@ const B2BUnitOrder: React.FC<Props> = ({ clientId, client, onDone, lang }) => {
             'Kendaraan ini tidak ada di daftar harga, jadi isi harga OTR dan nilai pertanggungan sendiri.',
           )}</p>
         )}
+
+        {/* v2.9.13 — Scan STNK (edge function yang sama dengan agent app). */}
+        {!isHeavy && (
+          <div className="rounded-xl border border-sky-200 bg-sky-50/60 dark:border-sky-900 dark:bg-sky-950/25 p-4 space-y-2">
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-xl bg-sky-100 dark:bg-sky-900/40 flex items-center justify-center flex-shrink-0">
+                <ScanLine size={17} className="text-sky-700 dark:text-sky-300" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-black text-sky-900 dark:text-sky-100">
+                  {t('Scan STNK to fill this form', 'Pindai STNK untuk mengisi form ini')}
+                </p>
+                <p className="text-2xs text-sky-800/80 dark:text-sky-200/70 leading-relaxed mt-0.5">
+                  {t(
+                    'Brand, model, year, plate, region, zone, engine/chassis number, and colour are filled automatically. Always check the result.',
+                    'Merk, tipe, tahun, plat, wilayah, zona, no. mesin/rangka, dan warna diisi otomatis. Tetap periksa kembali hasilnya.',
+                  )}
+                </p>
+                <label className={`mt-2 inline-flex items-center gap-1.5 rounded-lg border border-sky-300 bg-white/80 dark:bg-sky-950/40 px-2.5 py-1.5 text-2xs font-black uppercase tracking-widest text-sky-800 dark:text-sky-200 cursor-pointer hover:bg-sky-100 dark:hover:bg-sky-900/50 ${ocrBusy ? 'opacity-60 cursor-wait' : ''}`}>
+                  {ocrBusy ? <Loader2 size={13} className="animate-spin" /> : <ScanLine size={13} />}
+                  {ocrBusy ? t('Scanning…', 'Memindai…') : t('Choose STNK photo', 'Pilih foto STNK')}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="sr-only"
+                    disabled={ocrBusy}
+                    onChange={e => {
+                      const f = e.target.files?.[0];
+                      e.target.value = '';
+                      if (f) handleStnkPick(f);
+                    }}
+                  />
+                </label>
+              </div>
+            </div>
+            {ocrMessage && (
+              <p role="status" className="text-2xs font-bold text-sky-900 dark:text-sky-100 leading-relaxed">{ocrMessage}</p>
+            )}
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div>
+            <label className={labelCls}>{t('Engine number', 'No. mesin')}</label>
+            <input className={inputCls} value={engineNo} onChange={e => setEngineNo(e.target.value.toUpperCase())} placeholder="4A92-1234567" />
+          </div>
+          <div>
+            <label className={labelCls}>{t('Chassis / VIN', 'No. rangka / VIN')}</label>
+            <input className={inputCls} value={chassisNo} onChange={e => setChassisNo(e.target.value.toUpperCase())} placeholder="MHKFS4…" />
+          </div>
+          <div>
+            <label className={labelCls}>{t('Colour', 'Warna')}</label>
+            <input className={inputCls} value={color} onChange={e => setColor(e.target.value)} placeholder={t('e.g. Silver', 'mis. Silver')} />
+          </div>
+        </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
@@ -1078,63 +1291,189 @@ const B2BUnitOrder: React.FC<Props> = ({ clientId, client, onDone, lang }) => {
         </div>
       )}
 
-      {/* Foto kendaraan */}
+      {/* v2.9.13 — Lampiran mengikuti kondisi unit. BARU = BSTK/faktur,
+          BEKAS = minimal 3 foto. Copy polis adalah opsi terpisah. */}
       {!isHeavy && (
         <div className="rounded-2xl border border-ds-border bg-white dark:bg-ds-card2 p-5 space-y-3">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className={labelCls + ' flex items-center gap-1.5'}><Camera size={11} /> {t('Vehicle photos', 'Foto kendaraan')} *</p>
-              <p className="text-2xs text-ds-ink3 mt-0.5">{t('Minimum 3 photos, JPG/PNG up to 10 MB', 'Minimal 3 foto, JPG/PNG maks 10 MB')}</p>
+              <p className={labelCls + ' flex items-center gap-1.5'}>
+                {vehicleCondition === 'BARU' ? <FileText size={11} /> : <Camera size={11} />}
+                {vehicleCondition === 'BARU'
+                  ? t('New vehicle documents', 'Dokumen kendaraan baru') + ' *'
+                  : t('Vehicle photos', 'Foto kendaraan') + ' *'}
+              </p>
+              <p className="text-2xs text-ds-ink3 mt-0.5">
+                {vehicleCondition === 'BARU'
+                  ? t('Upload a BSTK or vehicle invoice (PDF/JPG/PNG, max 10 MB). Vehicle photos are not required.', 'Unggah BSTK atau faktur kendaraan (PDF/JPG/PNG, maks 10 MB). Foto kendaraan tidak diperlukan.')
+                  : t('Minimum 3 photos (front, back, chassis), JPG/PNG up to 10 MB', 'Minimal 3 foto (depan, belakang, rangka), JPG/PNG maks 10 MB')}
+              </p>
             </div>
-            <span className={`text-2xs font-black px-2 py-0.5 rounded-full ${photos.length >= 3 ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-200' : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-200'}`}>
-              {photos.length}/3+
+            <span className={`text-2xs font-black px-2 py-0.5 rounded-full ${vehicleCondition === 'BARU'
+              ? (hasNewVehicleDocument(photos) ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-200' : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-200')
+              : (hasEnoughUsedVehiclePhotos(photos) ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-200' : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-200')}`}>
+              {vehicleCondition === 'BARU'
+                ? (hasNewVehicleDocument(photos) ? t('Complete', 'Lengkap') : t('Required', 'Wajib'))
+                : `${photos.filter(p => /^(depan|belakang|rangka|samping-)/.test(p.slot)).length}/3+`}
             </span>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {PHOTO_SLOTS.map(ps => {
-              const existing = photos.find(p => p.slot === ps.slot);
-              const uploading = uploadingSlot === ps.slot;
-              return (
-                <label key={ps.slot} className="relative aspect-[4/3] rounded-xl border-2 border-dashed border-ds-border hover:border-emerald-400 bg-slate-50/60 dark:bg-ds-card/60 cursor-pointer overflow-hidden transition-colors group">
-                  {existing ? (
-                    <>
-                      {}
-                      <img src={existing.url} className="absolute inset-0 w-full h-full object-cover" alt={ps.label} />
+
+          {vehicleCondition === 'BARU' ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {NEW_DOC_SLOTS.map(ds => {
+                const existing = photos.find(p => p.slot === ds.slot);
+                const uploading = uploadingSlot === ds.slot;
+                return (
+                  <label key={ds.slot} className="relative min-h-[92px] rounded-xl border-2 border-dashed border-ds-border hover:border-emerald-400 bg-slate-50/60 dark:bg-ds-card/60 cursor-pointer overflow-hidden transition-colors group flex items-center gap-3 p-3">
+                    <div className="w-9 h-9 rounded-lg bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center flex-shrink-0">
+                      {uploading ? <Loader2 size={17} className="animate-spin text-emerald-600" /> : <FileText size={17} className="text-emerald-600 dark:text-emerald-300" />}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-black text-ds-ink dark:text-white">{t(ds.labelEn, ds.label)}</p>
+                      <p className="text-2xs text-ds-ink3 truncate">{existing ? existing.label ?? t('Uploaded', 'Terunggah') : t('PDF / JPG / PNG · click to upload', 'PDF / JPG / PNG · klik untuk unggah')}</p>
+                    </div>
+                    {existing && (
                       <button
                         type="button"
-                        onClick={e => { e.preventDefault(); removePhoto(ps.slot); }}
-                        className="absolute top-1.5 right-1.5 rounded-full bg-rose-600 p-1 text-white opacity-0 group-hover:opacity-100 transition-opacity shadow-md"
-                        aria-label={t('Remove photo', 'Hapus foto')}
+                        onClick={e => { e.preventDefault(); removePhoto(ds.slot); }}
+                        className="rounded-full bg-rose-600 p-1 text-white shadow-md"
+                        aria-label={t('Remove document', 'Hapus dokumen')}
                       >
                         <X size={12} />
                       </button>
-                      <p className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/70 to-transparent px-2 py-1 text-2xs font-black text-white">{t(ps.labelEn, ps.label)}</p>
-                    </>
-                  ) : (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 text-center p-2">
-                      {uploading
-                        ? <Loader2 size={20} className="animate-spin text-emerald-500" />
-                        : <Upload size={20} className="text-ds-ink3 group-hover:text-emerald-500 transition-colors" />}
-                      <p className="text-2xs font-black text-ds-ink2">{t(ps.labelEn, ps.label)}</p>
-                      <p className="text-2xs text-ds-ink3">{uploading ? t('Uploading…', 'Mengunggah…') : t('Click to upload', 'Klik untuk unggah')}</p>
-                    </div>
-                  )}
-                  <input
-                    type="file"
-                    accept="image/jpeg,image/png"
-                    className="sr-only"
-                    disabled={uploading}
-                    onChange={e => {
-                      const f = e.target.files?.[0];
-                      e.target.value = '';
-                      if (f) handlePhotoUpload(ps.slot, ps.label, f);
-                    }}
-                  />
-                </label>
-              );
-            })}
-          </div>
+                    )}
+                    <input
+                      type="file"
+                      accept="application/pdf,image/jpeg,image/png"
+                      className="sr-only"
+                      disabled={uploading}
+                      onChange={e => {
+                        const f = e.target.files?.[0];
+                        e.target.value = '';
+                        if (f) handleDocumentUpload(ds.slot, t(ds.labelEn, ds.label), f);
+                      }}
+                    />
+                  </label>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {PHOTO_SLOTS.map(ps => {
+                const existing = photos.find(p => p.slot === ps.slot);
+                const uploading = uploadingSlot === ps.slot;
+                return (
+                  <label key={ps.slot} className="relative aspect-[4/3] rounded-xl border-2 border-dashed border-ds-border hover:border-emerald-400 bg-slate-50/60 dark:bg-ds-card/60 cursor-pointer overflow-hidden transition-colors group">
+                    {existing ? (
+                      <>
+                        <img src={existing.url} className="absolute inset-0 w-full h-full object-cover" alt={ps.label} />
+                        <button
+                          type="button"
+                          onClick={e => { e.preventDefault(); removePhoto(ps.slot); }}
+                          className="absolute top-1.5 right-1.5 rounded-full bg-rose-600 p-1 text-white opacity-0 group-hover:opacity-100 transition-opacity shadow-md"
+                          aria-label={t('Remove photo', 'Hapus foto')}
+                        >
+                          <X size={12} />
+                        </button>
+                        <p className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/70 to-transparent px-2 py-1 text-2xs font-black text-white">{t(ps.labelEn, ps.label)}</p>
+                      </>
+                    ) : (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 text-center p-2">
+                        {uploading
+                          ? <Loader2 size={20} className="animate-spin text-emerald-500" />
+                          : <Upload size={20} className="text-ds-ink3 group-hover:text-emerald-500 transition-colors" />}
+                        <p className="text-2xs font-black text-ds-ink2">{t(ps.labelEn, ps.label)}</p>
+                        <p className="text-2xs text-ds-ink3">{uploading ? t('Uploading…', 'Mengunggah…') : t('Click to upload', 'Klik untuk unggah')}</p>
+                      </div>
+                    )}
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png"
+                      className="sr-only"
+                      disabled={uploading}
+                      onChange={e => {
+                        const f = e.target.files?.[0];
+                        e.target.value = '';
+                        if (f) handlePhotoUpload(ps.slot, ps.label, f);
+                      }}
+                    />
+                  </label>
+                );
+              })}
+            </div>
+          )}
           {photoError && <p className="text-xs font-bold text-rose-600" role="alert">{photoError}</p>}
+        </div>
+      )}
+
+      {/* v2.9.13 — Copy polis hanya boleh dilampirkan bila masih berlaku. */}
+      {!isHeavy && (
+        <div className="rounded-2xl border border-ds-border bg-white dark:bg-ds-card2 p-5 space-y-3">
+          <label className="flex items-start gap-2.5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={policyCopyEnabled}
+              onChange={e => {
+                setPolicyCopyEnabled(e.target.checked);
+                if (!e.target.checked) {
+                  removePhoto(POLICY_COPY_SLOT);
+                  setPolicyCopyExpiry('');
+                }
+              }}
+              className="w-4 h-4 mt-0.5 accent-emerald-600"
+            />
+            <span>
+              <span className="block text-xs font-black text-ds-ink dark:text-white">
+                {t('Attach a copy of the current policy (optional)', 'Lampirkan copy polis yang masih berlaku (opsional)')}
+              </span>
+              <span className="block text-2xs text-ds-ink3 leading-relaxed mt-0.5">
+                {t('Only allowed if the policy has not expired. Enter its expiry date and upload the file.', 'Hanya boleh bila polis belum kedaluwarsa. Isi tanggal berlakunya dan unggah filenya.')}
+              </span>
+            </span>
+          </label>
+          {policyCopyEnabled && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className={labelCls} htmlFor="policy-copy-expiry">{t('Valid until', 'Masih berlaku sampai')} *</label>
+                <input
+                  id="policy-copy-expiry"
+                  type="date"
+                  className={inputCls}
+                  value={policyCopyExpiry}
+                  min={today}
+                  onChange={e => setPolicyCopyExpiry(e.target.value)}
+                />
+                {policyCopyExpiry && !isPolicyCopyStillValid(policyCopyExpiry, today) && (
+                  <p className="text-2xs font-bold text-rose-600 mt-1" role="alert">
+                    {t('That policy copy is no longer valid.', 'Copy polis tersebut sudah tidak berlaku.')}
+                  </p>
+                )}
+              </div>
+              <label className="relative min-h-[62px] rounded-xl border-2 border-dashed border-ds-border hover:border-emerald-400 bg-slate-50/60 dark:bg-ds-card/60 cursor-pointer overflow-hidden transition-colors flex items-center gap-3 p-3">
+                <FileText size={17} className="text-emerald-600 dark:text-emerald-300 flex-shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-black text-ds-ink dark:text-white">{t('Policy copy', 'Copy polis')}</p>
+                  <p className="text-2xs text-ds-ink3 truncate">
+                    {photos.find(p => p.slot === POLICY_COPY_SLOT)
+                      ? t('Uploaded — click to replace', 'Terunggah — klik untuk ganti')
+                      : t('PDF / JPG / PNG · click to upload', 'PDF / JPG / PNG · klik untuk unggah')}
+                  </p>
+                </div>
+                {uploadingSlot === POLICY_COPY_SLOT && <Loader2 size={16} className="animate-spin text-emerald-500" />}
+                <input
+                  type="file"
+                  accept="application/pdf,image/jpeg,image/png"
+                  className="sr-only"
+                  disabled={uploadingSlot === POLICY_COPY_SLOT}
+                  onChange={e => {
+                    const f = e.target.files?.[0];
+                    e.target.value = '';
+                    if (f) handleDocumentUpload(POLICY_COPY_SLOT, t('Policy copy', 'Copy polis'), f);
+                  }}
+                />
+              </label>
+            </div>
+          )}
         </div>
       )}
 
@@ -1213,10 +1552,10 @@ const B2BUnitOrder: React.FC<Props> = ({ clientId, client, onDone, lang }) => {
           <button
             type="button"
             onClick={handleDownloadProposal}
-            title={t('Download proposal PDF', 'Unduh proposal PDF')}
+            title={t('Download quotation PDF (same format as the agent app)', 'Unduh PDF penawaran (format sama dengan aplikasi agent)')}
             className="shrink-0 inline-flex items-center gap-1.5 rounded-xl border-2 border-indigo-400/70 bg-white dark:bg-ds-card2 px-3 py-2 text-xs font-black uppercase tracking-widest text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/30"
           >
-            <Download size={14} /><span className="hidden sm:inline">{t('Proposal', 'Proposal')}</span>
+            <Download size={14} /><span className="hidden sm:inline">{t('Quotation PDF', 'PDF Penawaran')}</span>
           </button>
           <button
             onClick={handleSubmit}
@@ -1240,6 +1579,13 @@ const PHOTO_SLOTS: Array<{ slot: string; label: string; labelEn: string }> = [
   { slot: 'rangka', label: 'No. Rangka', labelEn: 'Chassis no.' },
   { slot: 'stnk', label: 'STNK', labelEn: 'STNK' },
 ];
+
+// v2.9.13 — dokumen wajib untuk unit BARU, dan opsi copy polis.
+const NEW_DOC_SLOTS: Array<{ slot: string; label: string; labelEn: string }> = [
+  { slot: 'bstk', label: 'BSTK', labelEn: 'BSTK' },
+  { slot: 'faktur', label: 'Faktur kendaraan', labelEn: 'Vehicle invoice' },
+];
+const POLICY_COPY_SLOT = 'copy-polis';
 
 const ADDON_LABELS: Record<string, string> = {
   flood: 'Banjir',

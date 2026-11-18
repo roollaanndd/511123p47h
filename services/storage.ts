@@ -318,6 +318,33 @@ export async function uploadB2BVehiclePhoto(
   return { url: data.signedUrl, size_bytes: prepared.file.size };
 }
 
+/** v2.9.13 — lampiran order unit B2B selain foto (BSTK/faktur/copy polis).
+ *  Sama seperti foto: private bucket + signed URL 60 hari, tanpa tulis ke
+ *  tabel submissions (order satuan hidup sebagai batch, bukan submission). */
+export async function uploadB2BUnitDocument(
+  clientId: string,
+  slot: string,
+  file: File,
+): Promise<{ url: string; size_bytes: number } | { error: string }> {
+  const prepared = prepareB2BDocument(file);
+  if ('error' in prepared) return { error: prepared.error };
+  if (!/^image\//.test(prepared.file.type) && prepared.file.type !== 'application/pdf') {
+    return { error: 'Lampiran harus berupa PDF, JPG, atau PNG.' };
+  }
+  const ext = (file.name.split('.').pop() ?? 'pdf').toLowerCase();
+  const safeSlot = (slot || 'dokumen').replace(/[^a-z0-9-]/gi, '').slice(0, 24) || 'dokumen';
+  const path = `${clientId}/unit-documents/${safeSlot}-${Date.now()}.${ext}`;
+  const { error: upErr } = await supabase.storage
+    .from('b2b-documents')
+    .upload(path, prepared.file, { upsert: false, contentType: prepared.file.type });
+  if (upErr) return { error: `Unggah ditolak server: ${upErr.message}` };
+  const { data, error } = await supabase.storage
+    .from('b2b-documents')
+    .createSignedUrl(path, 60 * 24 * 60 * 60);
+  if (error || !data?.signedUrl) return { error: `Gagal membuat URL lampiran: ${error?.message ?? 'URL kosong'}` };
+  return { url: data.signedUrl, size_bytes: prepared.file.size };
+}
+
 /** Upload an app navigation icon managed from the admin dashboard. */
 export async function uploadPortalIcon(file: File, iconKey: string): Promise<string | null> {
   const ext = safeExt(file.name, ALLOWED_IMAGE_TYPES, 'png');
