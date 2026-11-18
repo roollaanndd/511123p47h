@@ -82,3 +82,22 @@ jobs:
           code=$(post_sql /tmp/comments.sql /tmp/comments.json)
           echo "::notice::verify_comment_http=${code}"
           echo "::notice::verify_comments=$(jq -c . /tmp/comments.json | head -c 800)"
+
+          # Pastikan bundle data-gateway yang terdeploy benar-benar memuat
+          # validasi v2.9.13 (bukan hanya workflow deploy yang hijau).
+          code=$(curl -sS -o /tmp/functions.json -w '%{http_code}' \
+            "https://api.supabase.com/v1/projects/${REF}/functions" \
+            -H "Authorization: Bearer ${TOK}")
+          echo "::notice::functions_list_http=${code}"
+          FN_ID=$(jq -r '.[] | select(.name == "data-gateway") | .id' /tmp/functions.json | head -1)
+          echo "::notice::data_gateway_id=${FN_ID}"
+          if [ -n "$FN_ID" ]; then
+            code=$(curl -sS -o /tmp/fn.json -w '%{http_code}' \
+              "https://api.supabase.com/v1/projects/${REF}/functions/${FN_ID}" \
+              -H "Authorization: Bearer ${TOK}")
+            echo "::notice::function_detail_http=${code}"
+            echo "::notice::function_keys=$(jq -r 'keys | join(",")' /tmp/fn.json | head -c 300)"
+            SRC=$(jq -r '.source // .content // ""' /tmp/fn.json)
+            echo "::notice::deployed_has_unit_condition=$(printf '%s' "$SRC" | grep -c 'vehicleCondition !== undefined')"
+            echo "::notice::deployed_has_policy_copy=$(printf '%s' "$SRC" | grep -c 'policyCopyExpiry')"
+          fi
