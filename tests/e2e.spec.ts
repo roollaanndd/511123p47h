@@ -155,8 +155,16 @@ test.describe('UI smoke tests', () => {
     await expect(page).toHaveTitle(/SurePath/i);
   });
 
-  test('login page renders form fields', async ({ page }) => {
+  // FIX v2.9.11: `/login` kini app chooser ("Pilih aplikasi untuk masuk") —
+  // form login per-role pindah ke /custapp, /agapps, /operatorapp, /admin.
+  test('login entry shows the app chooser', async ({ page }) => {
     await page.goto(`${BASE_URL}/login`);
+    await expect(page.getByRole('heading', { name: /pilih aplikasi/i })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('link', { name: /^Nasabah/ })).toBeVisible();
+  });
+
+  test('login page renders form fields', async ({ page }) => {
+    await page.goto(`${BASE_URL}/custapp`);
     await expect(page.locator('input[type="email"]').first()).toBeVisible({ timeout: 10_000 });
   });
 
@@ -173,7 +181,7 @@ test.describe('UI smoke tests', () => {
 
   test('mobile login controls are accessible and do not overflow', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto(`${BASE_URL}/login`);
+    await page.goto(`${BASE_URL}/custapp`);
     await expect(page.locator('input[type="email"]').first()).toHaveAttribute('aria-label', /Email address|Alamat email/i);
     await expect(page.locator('input[type="password"]').first()).toHaveAttribute('aria-label', /Password|Kata sandi/i);
     await expect(page.getByRole('button', { name: /show password|tampilkan kata sandi/i })).toBeVisible();
