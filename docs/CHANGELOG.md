@@ -1,5 +1,50 @@
 # SurePath - Changelog
 
+## v2.9.11 - 2026-11-18
+
+### Google sign-in kini smooth setelah popup ditutup + sinkronisasi e2e login
+
+**Perbaikan Google sign-in (`services/googleAuth.ts`)** — laporan owner:
+popup One Tap yang ditutup pengguna tidak muncul lagi saat klik sign-in
+berikutnya.
+
+- **Root cause**: One Tap `prompt()` punya cooldown peramban/FedCM. Setelah
+  pengguna menutup popup, panggilan `prompt()` berikutnya di-skip diam-diam
+  (skipped moment, mis. `auto_cancel`) — dan kode lama menolak login dengan
+  pesan menyesatkan "popup diblokir". Klik kedua memang tidak akan pernah
+  menampilkan popup sampai cooldown habis.
+- **Fix**: saat prompt di-skip/tidak tampil (bukan user_cancel yang baru saja
+  terjadi), tampilkan overlay dialog berisi **tombol Google resmi** via
+  `renderButton` (theme outline, shape pill, "Lanjutkan dengan Google",
+  locale id). Klik tombol resmi tidak kena cooldown, selalu membuka pemilih
+  akun, dan credential-nya masuk lewat callback `initialize` yang sama →
+  `supabase.auth.signInWithIdToken` dengan nonce yang sama.
+- **Pesan error jujur per-reason**: `user_cancel` → "dibatalkan" (tanpa
+  memaksa modal lagi); renderButton tidak tersedia (klien GIS lama) → pesan
+  jelas; watchdog 5 menit mencegah spinner menggantung selamanya.
+- Overlay bisa ditutup dengan Esc / klik backdrop / tombol Batal; ditutup
+  otomatis saat sesi berhasil.
+- 6 unit test baru (`services/__tests__/googleAuth.test.ts`) meminat kontrak:
+  cooldown → tombol resmi muncul, nonce raw↔hash konsisten, Esc → batal,
+  user_cancel → tanpa overlay, alur One Tap normal tak berubah, GIS lama
+  tanpa renderButton → pesan jelas.
+
+**Sinkronisasi e2e login (`tests/e2e.spec.ts`)** — memperbaiki
+`browser-smoke-tests` yang merah di main:
+
+- `/login` kini app chooser "Pilih aplikasi untuk masuk" (efek rework
+  install role-specific apps); form login pindah ke `/custapp`, `/agapps`,
+  `/operatorapp`, `/admin`.
+- Test "login page renders form fields" & "mobile login controls…" diarahkan
+  ke `/custapp`; test baru memverifikasi chooser (`/login`) dengan heading
+  "Pilih aplikasi untuk masuk" dan link Nasabah.
+
+**Penutupan drift versi**: `versionName` gradle tertinggal di 2.9.6 dan
+`versionCode` 84 padahal `src/version.ts` sudah 2.9.10 — kini keduanya
+konsisten: **2.9.11 / versionCode 85**.
+
+---
+
 ## v2.9.10 - 2026-11-16
 
 ### B2B — Welcome card & KPI cards redesign (tanpa warna hijau)
