@@ -16,6 +16,7 @@
 //     truth both that action and record_tc_acceptance now read from.
 import type { GatewayContext, ActionResult } from './types.ts';
 import { setActiveBulkRateConfig, type BulkRateConfig } from '../../_shared/b2bFleetRating.ts';
+import { clayPatch } from './clayFields.ts';
 
 const json = (body: unknown, status = 200): ActionResult => ({ status, body });
 const CAN_EDIT_RATES = ['MASTER_ADMIN', 'ADMIN', 'FINANCE_MANAGER'];
@@ -114,7 +115,7 @@ export async function handleB2BSettingsAction(action: string, ctx: GatewayContex
     // Dikelola admin di dashboard (admin_*), dibaca klien B2B (list_active_b2b_plans).
     case 'list_active_b2b_plans': {
       if (!caller.spUser && !caller.isAdmin) return json({ error: 'No profile' }, 403);
-      const { data, error } = await db.from('sp_b2b_plans').select('id, code, name, description, loading_rate, benefits, pros, cons, sort_order').eq('is_active', true).order('sort_order', { ascending: true });
+      const { data, error } = await db.from('sp_b2b_plans').select('id, code, name, description, loading_rate, benefits, pros, cons, sort_order, accent_color, icon, featured').eq('is_active', true).order('sort_order', { ascending: true });
       if (error) return json({ error: error.message }, 400);
       return json({ data: data ?? [] });
     }
@@ -138,6 +139,10 @@ export async function handleB2BSettingsAction(action: string, ctx: GatewayContex
       const benefits = Array.isArray(params.benefits) ? params.benefits.map(String).slice(0, 20) : [];
       const pros = Array.isArray(params.pros) ? params.pros.map((x: unknown) => String(x).slice(0, 160)).filter(Boolean).slice(0, 12) : [];
       const cons = Array.isArray(params.cons) ? params.cons.map((x: unknown) => String(x).slice(0, 160)).filter(Boolean).slice(0, 12) : [];
+      // v2.9.15 — aksen/ikon/flag unggulan paket mengikuti aturan yang sama
+      // dengan insurer. Admin form selalu mengirim ketiganya.
+      const clay = clayPatch(params, { icon: 'sparkles' });
+      if (!clay.ok) return json({ error: clay.error }, 400);
       const payload = {
         code,
         name: name.slice(0, 80),
@@ -148,6 +153,9 @@ export async function handleB2BSettingsAction(action: string, ctx: GatewayContex
         cons,
         is_active: params.is_active === false ? false : true,
         sort_order: Number(params.sort_order) || 0,
+        accent_color: clay.patch.accent_color ?? null,
+        icon: (clay.patch.icon as string | undefined) ?? 'sparkles',
+        featured: clay.patch.featured === true,
         updated_at: new Date().toISOString(),
       };
       if (params.id) {

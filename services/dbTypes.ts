@@ -405,6 +405,12 @@ export interface SpInsurer {
   pic_email?: string;
   pic_phone?: string;
   logo_url?: string;
+  // v2.9.15 — kustomisasi tampilan clay di picker B2B (via gateway).
+  accent_color?: string | null;
+  icon?: string | null;
+  sort_order?: number;
+  highlight_bullets?: string[] | null;
+  featured?: boolean;
   created_at?: string;
 }
 

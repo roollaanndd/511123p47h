@@ -9,6 +9,7 @@ import {
   adminListB2BPlans, adminSaveB2BPlan, adminDeleteB2BPlan,
   type SpB2BPlan,
 } from '../../services/supabaseService';
+import { CLAY_ICON_OPTIONS } from '../../services/clayTheme';
 
 const fmtPct = (n: number) => `${(n * 100).toFixed(1).replace(/\.0$/, '')}%`;
 
@@ -23,12 +24,16 @@ interface EditState {
   cons: string;            // v2.9.2 — one per line
   is_active: boolean;
   sort_order: string;
+  accent_color: string;
+  icon: string;
+  featured: boolean;
 }
 
 const EMPTY: EditState = {
   code: '', name: '', description: '', loading_rate: '0',
   benefits: '', pros: '', cons: '',
   is_active: true, sort_order: '0',
+  accent_color: '#475569', icon: 'sparkles', featured: false,
 };
 
 function toEditState(p: SpB2BPlan): EditState {
@@ -40,6 +45,9 @@ function toEditState(p: SpB2BPlan): EditState {
     cons: (p.cons ?? []).join('\n'),
     is_active: p.is_active,
     sort_order: String(p.sort_order ?? 0),
+    accent_color: p.accent_color ?? '#475569',
+    icon: p.icon ?? 'sparkles',
+    featured: p.featured ?? false,
   };
 }
 
@@ -86,6 +94,9 @@ const B2BPlansAdmin: React.FC = () => {
       cons,
       is_active: edit.is_active,
       sort_order: Number(edit.sort_order) || 0,
+      accent_color: /^#[0-9a-fA-F]{6}$/.test(edit.accent_color) ? edit.accent_color : null,
+      icon: edit.icon,
+      featured: edit.featured,
     });
     setSaving(false);
     if (!res) { setError('Gagal menyimpan paket. Coba lagi.'); return; }
@@ -213,6 +224,48 @@ const B2BPlansAdmin: React.FC = () => {
                 />
               </div>
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-2xs font-black uppercase tracking-widest text-ds-ink3 mb-1 block">Warna aksen kartu</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    aria-label="Warna aksen kartu"
+                    value={/^#[0-9a-fA-F]{6}$/.test(edit.accent_color) ? edit.accent_color : '#475569'}
+                    onChange={e => setEdit({ ...edit, accent_color: e.target.value.toUpperCase() })}
+                    className="h-9 w-12 flex-shrink-0 rounded-lg border border-ds-border bg-white dark:bg-ds-card p-0.5 cursor-pointer"
+                  />
+                  <input
+                    className="w-full bg-white dark:bg-ds-card border border-ds-border rounded-xl px-3 py-2 text-sm font-bold outline-none focus:border-emerald-500/50 uppercase"
+                    value={edit.accent_color}
+                    onChange={e => setEdit({ ...edit, accent_color: e.target.value.toUpperCase().slice(0, 7) })}
+                    placeholder="#475569"
+                    maxLength={7}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-2xs font-black uppercase tracking-widest text-ds-ink3 mb-1 block">Ikon kartu</label>
+                <select
+                  className="w-full bg-white dark:bg-ds-card border border-ds-border rounded-xl px-3 py-2 text-sm font-bold outline-none focus:border-emerald-500/50"
+                  value={edit.icon}
+                  onChange={e => setEdit({ ...edit, icon: e.target.value })}
+                >
+                  {CLAY_ICON_OPTIONS.map(o => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <label className="flex items-center gap-2 text-xs font-bold text-ds-ink2">
+              <input
+                type="checkbox"
+                checked={edit.featured}
+                onChange={e => setEdit({ ...edit, featured: e.target.checked })}
+                className="w-4 h-4 accent-emerald-600"
+              />
+              Tandai sebagai rekomendasi
+            </label>
             <div>
               <label className="text-2xs font-black uppercase tracking-widest text-ds-ink3 mb-1 block">Nama paket *</label>
               <input

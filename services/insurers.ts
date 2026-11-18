@@ -66,8 +66,8 @@ export async function getInsurers(): Promise<SpInsurer[]> {
 }
 
 /** Daftar insurer aktif untuk UI klien/agent — via gateway. Field terbatas
- *  pada id/code/name/description/logo_url: kontak PIC dan konfig API sengaja
- *  TIDAK dikirim ke klien non-admin. */
+ *  pada identitas + kustomisasi tampilan clay (v2.9.15): kontak PIC dan
+ *  konfig API sengaja TIDAK dikirim ke klien non-admin. */
 export async function listActiveInsurers(): Promise<SpInsurer[]> {
   const { data, error } = await callGateway('list_active_insurers', {});
   if (error) { console.error('listActiveInsurers:', error); return []; }

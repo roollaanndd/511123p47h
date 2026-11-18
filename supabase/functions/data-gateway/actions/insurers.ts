@@ -1,6 +1,7 @@
 // insurers.ts — 21 actions
 // Auto-generated from data-gateway/index.ts split
 import type { GatewayContext, ActionResult } from './types.ts';
+import { clayPatch, parseHighlightBullets } from './clayFields.ts';
 
 // json() helper — returns ActionResult (main index.ts converts to Response)
 const json = (body: unknown, status = 200): ActionResult => ({ status, body });
@@ -41,10 +42,12 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
     // id/code/name/logo yang dikembalikan, tanpa kontak PIC atau API config.
     case 'list_active_insurers': {
         if (!caller.authId) return json({ error: 'Login required' }, 401);
+        // v2.9.15 — field tampilan clay ikut dikirim, bukan kontak PIC/API.
         const { data, error } = await db.from('sp_insurers')
-          .select('id, code, name, description, logo_url')
+          .select('id, code, name, description, logo_url, accent_color, icon, sort_order, highlight_bullets, featured')
           .eq('is_active', true)
-          .order('name');
+          .order('sort_order', { ascending: true })
+          .order('name', { ascending: true });
         if (error) return json({ error: error.message }, 400);
         return json({ data: data ?? [] });
       }
@@ -203,12 +206,23 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
 
     case 'admin_create_insurer': {
         if (!caller.isAdmin) return json({ error: 'Forbidden: admin only' }, 403);
+        const clay = clayPatch(params, { icon: 'building' });
+        const bullets = parseHighlightBullets(params.highlight_bullets);
+        const sortOrder = Number(params.sort_order ?? 0);
+        if (!clay.ok || !bullets.ok || !Number.isFinite(sortOrder)) {
+          return json({ error: clay.error ?? 'sort_order / highlight_bullets tidak valid' }, 400);
+        }
         const { data, error } = await db.from('sp_insurers').insert({
           name: String(params.name ?? ''), code: String(params.code ?? ''),
           description: String(params.description ?? ''), is_active: true,
           admin_name: String(params.admin_name ?? ''), admin_email: String(params.admin_email ?? ''),
           pic_name: String(params.pic_name ?? ''), pic_email: String(params.pic_email ?? ''),
           pic_phone: String(params.pic_phone ?? ''),
+          ...clay.patch,
+          icon: (clay.patch.icon as string | undefined) ?? 'building',
+          sort_order: Math.max(-999, Math.min(999, Math.trunc(sortOrder))),
+          highlight_bullets: bullets.value,
+          featured: clay.patch.featured === true,
         }).select().single();
         if (error) return json({ error: error.message }, 400);
         logActivity(null, null, 'INSURER_CREATED', { insurer_id: (data as any)?.id, name: params.name });
@@ -222,6 +236,21 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
         const ALLOWED = ['name', 'code', 'description', 'is_active', 'admin_name', 'admin_email', 'pic_name', 'pic_email', 'pic_phone', 'logo_url'];
         const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
         for (const k of ALLOWED) { if (k in params) updates[k] = params[k]; }
+        // v2.9.15 — patch hanya field yang dikirim; toggle status tidak boleh
+        // menghapus warna/ikon/bullet yang sudah diatur admin.
+        const clay = clayPatch(params, { icon: 'building' });
+        if (!clay.ok) return json({ error: clay.error }, 400);
+        Object.assign(updates, clay.patch);
+        if ('sort_order' in params) {
+          const sortOrder = Number(params.sort_order);
+          if (!Number.isFinite(sortOrder)) return json({ error: 'sort_order tidak valid' }, 400);
+          updates.sort_order = Math.max(-999, Math.min(999, Math.trunc(sortOrder)));
+        }
+        if ('highlight_bullets' in params) {
+          const bullets = parseHighlightBullets(params.highlight_bullets);
+          if (!bullets.ok) return json({ error: 'highlight_bullets harus array string' }, 400);
+          updates.highlight_bullets = bullets.value;
+        }
         const { data, error } = await db.from('sp_insurers').update(updates).eq('id', insurerId).select().maybeSingle();
         if (error) return json({ error: error.message }, 400);
         return json({ data });

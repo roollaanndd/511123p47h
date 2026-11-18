@@ -33,7 +33,7 @@ import {
   Car, Bike, Construction, Loader2, CheckCircle2, AlertTriangle, ExternalLink,
   Info, ClipboardList, CalendarDays, TrendingDown, ShieldCheck, ShieldAlert,
   Camera, Upload, X, Package, Download, Droplets, Mountain, Flame, Users, Wrench, Sparkles, Building2, Check,
-  ScanLine, FileText,
+  ScanLine, FileText, Shield, Landmark, Umbrella, Star, Award, Zap, CircleDot,
 } from 'lucide-react';
 import { Language } from '../../types';
 import {
@@ -58,6 +58,26 @@ import {
   isPolicyCopyStillValid, validateB2BUnitOrder,
   type B2BAttachment, type VehicleCondition,
 } from '../../services/b2bUnitOrder';
+import { normalizeAccent, normalizeBullets, normalizeIcon } from '../../services/clayTheme';
+
+// v2.9.15 — ikon kustom admin. Kuncinya identik dengan CLAY_ICON_OPTIONS dan
+// validasi gateway; fallback Building2 bila data lama belum punya ikon.
+const CLAY_ICON_MAP: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
+  building: Building2,
+  shield: Shield,
+  'shield-check': ShieldCheck,
+  landmark: Landmark,
+  umbrella: Umbrella,
+  star: Star,
+  award: Award,
+  sparkles: Sparkles,
+  zap: Zap,
+  'circle-dot': CircleDot,
+};
+const ClayIcon: React.FC<{ icon?: string | null; size?: number; className?: string }> = ({ icon, size = 18, className }) => {
+  const Icon = CLAY_ICON_MAP[normalizeIcon(icon)] ?? Building2;
+  return <Icon size={size} className={className} />;
+};
 
 interface Props {
   clientId: string;
@@ -1103,13 +1123,14 @@ const B2BUnitOrder: React.FC<Props> = ({ clientId, client, onDone, lang }) => {
         </div>
       </div>
 
-      {/* Paket asuransi B2B — kartu modern dengan plus/minus + highlight */}
+      {/* Paket asuransi B2B — clay tier cards. Aksen & ikon dari admin, bukan
+          gradasi hijau. Loading tetap dihitung dari rate set aktif. */}
       {plans.length > 0 && (
-        <div className="rounded-2xl border border-ds-border bg-gradient-to-br from-indigo-50/60 via-white to-orange-50/40 dark:from-indigo-950/30 dark:via-ds-card2 dark:to-orange-950/20 p-5 space-y-4">
+        <div className="clay-panel p-5 space-y-4">
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className={labelCls + ' flex items-center gap-1.5'}><Package size={11} /> {t('Insurance plan', 'Paket asuransi')}</p>
-              <p className="text-2xs text-ds-ink3 mt-0.5">{t('Pick a plan — pros & cons are set by admin', 'Pilih paket — kelebihan dan kekurangan dikelola admin')}</p>
+              <p className="text-2xs text-ds-ink3 mt-0.5">{t('Pick a plan — details are set by admin', 'Pilih paket — detail dikelola admin')}</p>
             </div>
             {selectedPlan && (
               <button
@@ -1121,28 +1142,31 @@ const B2BUnitOrder: React.FC<Props> = ({ clientId, client, onDone, lang }) => {
               </button>
             )}
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+          <div className="clay-grid">
             {/* Tanpa paket — kartu polos tanpa loading */}
             <PlanCard
               label={t('No plan', 'Tanpa paket')}
               description={t('Standard price, no plan loading', 'Harga standar, tanpa loading paket')}
               active={!planId}
-              accent="slate"
+              icon="shield"
               loadingPct={null}
+              lang={lang}
               onClick={() => setPlanId('')}
             />
-            {plans.map((p, i) => (
+            {plans.map(p => (
               <PlanCard
                 key={p.id}
                 label={p.name}
                 description={p.description}
                 active={planId === p.id}
-                accent={PLAN_ACCENTS[i % PLAN_ACCENTS.length]}
+                accentColor={p.accent_color}
+                icon={p.icon}
                 loadingPct={p.loading_rate}
                 benefits={p.benefits}
                 pros={p.pros}
                 cons={p.cons}
-                featured={p.loading_rate === 0.05 /* mid-tier default: Standard */}
+                featured={p.featured === true}
+                lang={lang}
                 onClick={() => setPlanId(p.id)}
               />
             ))}
@@ -1150,22 +1174,13 @@ const B2BUnitOrder: React.FC<Props> = ({ clientId, client, onDone, lang }) => {
         </div>
       )}
 
-      {/* Pilihan perusahaan asuransi — v2.9.7. Preferensi klien yang
-          disimpan di `notes` batch; premi tidak berubah (tarif OJK sama di
-          seluruh insurer). Admin melihat pilihan ini saat meng-assign. */}
+      {/* Pilihan perusahaan asuransi — v2.9.15. Preferensi klien disimpan di
+          `notes` batch; premi tidak berubah (tarif OJK sama di seluruh
+          insurer). Warna, ikon, urutan, poin detail, dan flag unggulan berasal
+          dari admin — tidak ada data yang dikarang di klien. */}
       {insurers.length > 0 && (
-        <div
-          className="relative overflow-hidden rounded-2xl p-5 space-y-4 border border-white/60 dark:border-white/10"
-          style={{
-            background: 'linear-gradient(135deg, rgba(255,255,255,0.75) 0%, rgba(236,253,245,0.55) 100%)',
-            backdropFilter: 'blur(14px) saturate(140%)',
-            WebkitBackdropFilter: 'blur(14px) saturate(140%)',
-            boxShadow: 'inset 0 1px 0 0 rgba(255,255,255,0.6), 0 10px 32px -18px rgba(15,23,42,0.18)',
-          }}
-        >
-          <div aria-hidden className="absolute -right-16 -top-16 h-48 w-48 rounded-full bg-emerald-300/30 blur-3xl pointer-events-none" />
-          <div aria-hidden className="absolute -left-10 -bottom-10 h-40 w-40 rounded-full bg-indigo-300/20 blur-3xl pointer-events-none" />
-          <div className="relative flex items-start justify-between gap-3">
+        <div className="clay-panel p-5 space-y-4">
+          <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className={labelCls + ' flex items-center gap-1.5'}>
                 <Building2 size={11} /> {t('Preferred insurer', 'Pilihan perusahaan asuransi')}
@@ -1187,41 +1202,31 @@ const B2BUnitOrder: React.FC<Props> = ({ clientId, client, onDone, lang }) => {
               </button>
             )}
           </div>
-          <div className="relative grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="clay-grid">
             {insurers.map(ins => {
               const selected = preferredInsurerId === ins.id;
+              const accent = normalizeAccent(ins.accent_color);
+              const bullets = normalizeBullets(ins.highlight_bullets);
               return (
                 <button
                   key={ins.id}
                   type="button"
                   onClick={() => setPreferredInsurerId(selected ? '' : ins.id)}
                   aria-pressed={selected}
-                  className={`group relative text-left rounded-2xl border-2 p-3.5 transition-all duration-200 overflow-hidden ${
-                    selected
-                      ? 'border-emerald-500 bg-white dark:bg-ds-card shadow-[0_12px_32px_-14px_rgba(5,150,105,0.45)]'
-                      : 'border-white/70 dark:border-white/10 bg-white/70 dark:bg-ds-card2/80 hover:border-emerald-400 hover:-translate-y-0.5'
-                  }`}
-                  style={{
-                    backdropFilter: 'blur(10px) saturate(130%)',
-                    WebkitBackdropFilter: 'blur(10px) saturate(130%)',
-                  }}
+                  data-pressable
+                  className="clay-tile"
+                  style={{ '--clay-accent': accent } as React.CSSProperties}
                 >
-                  {selected && (
-                    <span className="absolute top-2 right-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-600 text-white shadow-md">
-                      <Check size={11} />
-                    </span>
+                  <span className="clay-accent-bar" aria-hidden />
+                  {ins.featured === true && (
+                    <span className="clay-featured">{t('Recommended', 'Unggulan')}</span>
                   )}
-                  <div className="flex items-center gap-3">
-                    <div className="h-11 w-11 rounded-xl bg-white dark:bg-ds-card flex items-center justify-center border border-slate-200 dark:border-ds-border overflow-hidden flex-shrink-0">
+                  <div className="flex items-center gap-3 pr-16">
+                    <div className="clay-icon-well">
                       {ins.logo_url ? (
-                        <img
-                          src={ins.logo_url}
-                          alt={ins.name}
-                          className="h-full w-full object-contain"
-                          loading="lazy"
-                        />
+                        <img src={ins.logo_url} alt="" className="h-full w-full object-contain p-1" loading="lazy" />
                       ) : (
-                        <Building2 size={18} className="text-emerald-600" />
+                        <ClayIcon icon={ins.icon} size={19} />
                       )}
                     </div>
                     <div className="min-w-0 flex-1">
@@ -1234,6 +1239,24 @@ const B2BUnitOrder: React.FC<Props> = ({ clientId, client, onDone, lang }) => {
                   {ins.description && (
                     <p className="mt-2 text-2xs text-ds-ink3 leading-snug line-clamp-2">{ins.description}</p>
                   )}
+                  <div className="clay-detail">
+                    <div className="clay-detail-inner">
+                      <p className="text-2xs font-black uppercase tracking-widest text-ds-ink2">
+                        {t('Why this insurer', 'Kenapa asuransi ini')}
+                      </p>
+                      {bullets.length > 0 ? (
+                        bullets.map((b, i) => <p key={i} className="clay-bullet">{b}</p>)
+                      ) : (
+                        <p className="clay-bullet">
+                          {ins.description || t('No specific details from admin yet.', 'Belum ada detail khusus dari admin.')}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="clay-select-row">
+                    <span className="clay-check"><Check size={11} strokeWidth={3} /></span>
+                    <span>{selected ? t('Selected', 'Terpilih') : t('Select insurer', 'Pilih asuransi')}</span>
+                  </div>
                 </button>
               );
             })}
@@ -1630,131 +1653,109 @@ const PreviewRow: React.FC<{ label: string; value: string }> = ({ label, value }
   </div>
 );
 
-/* ─── Kartu paket asuransi (v2.9.2) ──────────────────────────────────────────
- * Kartu modern berbentuk "tier card" dengan aksen warna per paket, loading
- * tag di sudut, dua kolom plus-minus di bawah, dan highlight untuk paket
- * unggulan ("featured" → badge "Rekomendasi" oranye).
- *   accent: tema warna panel + icon bar, bukan loading.
- *   loadingPct: + = tambah premi (amber), 0 = netral (slate), − = diskon (emerald).
- *   pros / cons: dari admin dashboard (sp_b2b_plans). Dipotong 5 item di kartu.
+/* ─── Kartu paket asuransi clay (v2.9.15) ───────────────────────────────────
+ * Tier card dengan aksen/ikon dari admin (sp_b2b_plans). Loading ditampilkan
+ * netral/amber — tidak ada gradasi hijau. Pros/cons tetap jujur dari admin.
  */
-type PlanAccent = 'indigo' | 'emerald' | 'orange' | 'violet' | 'slate';
-const PLAN_ACCENTS: PlanAccent[] = ['indigo', 'orange', 'violet', 'emerald'];
-const PLAN_ACCENT: Record<PlanAccent, { ring: string; ringActive: string; bg: string; dot: string; text: string; grad: string }> = {
-  indigo:  { ring: 'border-indigo-200/60 dark:border-indigo-900/40',   ringActive: 'border-indigo-500 ring-2 ring-indigo-500/30',   bg: 'bg-indigo-50/60 dark:bg-indigo-950/30',   dot: 'bg-indigo-500',   text: 'text-indigo-700 dark:text-indigo-300',   grad: 'from-indigo-500 to-indigo-400' },
-  emerald: { ring: 'border-emerald-200/60 dark:border-emerald-900/40', ringActive: 'border-emerald-500 ring-2 ring-emerald-500/30', bg: 'bg-emerald-50/60 dark:bg-emerald-950/30', dot: 'bg-emerald-500', text: 'text-emerald-700 dark:text-emerald-300', grad: 'from-emerald-500 to-emerald-400' },
-  orange:  { ring: 'border-orange-200/60 dark:border-orange-900/40',   ringActive: 'border-orange-500 ring-2 ring-orange-500/30',   bg: 'bg-orange-50/60 dark:bg-orange-950/30',   dot: 'bg-orange-500',   text: 'text-orange-700 dark:text-orange-300',   grad: 'from-orange-500 to-amber-400' },
-  violet:  { ring: 'border-violet-200/60 dark:border-violet-900/40',   ringActive: 'border-violet-500 ring-2 ring-violet-500/30',   bg: 'bg-violet-50/60 dark:bg-violet-950/30',   dot: 'bg-violet-500',   text: 'text-violet-700 dark:text-violet-300',   grad: 'from-violet-500 to-purple-400' },
-  slate:   { ring: 'border-slate-200/60 dark:border-slate-700/50',     ringActive: 'border-slate-500 ring-2 ring-slate-400/30',     bg: 'bg-slate-50/60 dark:bg-slate-900/40',     dot: 'bg-slate-500',   text: 'text-slate-700 dark:text-slate-300',     grad: 'from-slate-500 to-slate-400' },
-};
-
 interface PlanCardProps {
   label: string;
   description?: string | null;
   active: boolean;
-  accent: PlanAccent;
+  accentColor?: string | null;
+  icon?: string | null;
   /** null untuk "Tanpa paket", 0/+n/−n untuk paket dengan/sans loading. */
   loadingPct: number | null;
   benefits?: string[];
   pros?: string[];
   cons?: string[];
   featured?: boolean;
+  lang: Language;
   onClick: () => void;
 }
 const PlanCard: React.FC<PlanCardProps> = ({
-  label, description, active, accent, loadingPct, benefits, pros, cons, featured, onClick,
+  label, description, active, accentColor, icon, loadingPct, benefits, pros, cons, featured, lang, onClick,
 }) => {
-  const c = PLAN_ACCENT[accent];
+  const t = (en: string, id: string) => (lang === Language.EN ? en : id);
+  const accent = normalizeAccent(accentColor, '#475569');
   const loadingLabel =
     loadingPct == null ? null :
     loadingPct > 0 ? `+${(loadingPct * 100).toFixed(1).replace(/\.0$/, '')}%` :
     loadingPct < 0 ? `${(loadingPct * 100).toFixed(1).replace(/\.0$/, '')}%` :
     '0%';
   const loadingTone =
-    loadingPct == null ? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300' :
-    loadingPct > 0 ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-200' :
-    loadingPct < 0 ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-200' :
-    'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300';
+    loadingPct == null || loadingPct <= 0
+      ? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
+      : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-200';
   return (
     <button
       type="button"
       onClick={onClick}
       aria-pressed={active}
       data-pressable
-      className={[
-        'relative text-left rounded-2xl border-2 overflow-hidden transition-all',
-        'bg-white dark:bg-ds-card2',
-        // hover: hilangkan modifier /60 atau /40 agar warna border lebih
-        // pekat saat hover (border-indigo-200/60 → hover:border-indigo-200).
-        active ? c.ringActive + ' shadow-md' : c.ring + ' hover:' + c.ring.replace(/\/\d+/g, ''),
-      ].join(' ')}
+      className="clay-tile p-4"
+      style={{ '--clay-accent': accent } as React.CSSProperties}
     >
+      <span className="clay-accent-bar" aria-hidden />
       {featured && (
-        <span className="absolute top-2.5 right-2.5 text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-gradient-to-r from-orange-500 to-amber-400 text-white shadow">
-          Rekomendasi
-        </span>
+        <span className="clay-featured">{t('Recommended', 'Rekomendasi')}</span>
       )}
-      {/* Bar gradient atas */}
-      <div className={`h-1 w-full bg-gradient-to-r ${c.grad}`} aria-hidden />
-      <div className={`p-4 ${active ? c.bg : ''}`}>
-        <div className="flex items-center gap-2 mb-1">
-          <span className={`inline-block w-1.5 h-1.5 rounded-full ${c.dot}`} />
-          <p className={`text-sm font-black ${active ? c.text : 'text-ds-ink dark:text-white'}`}>{label}</p>
-        </div>
-        <div className="flex items-start justify-between gap-2 mb-2">
-          {description ? (
-            <p className="text-2xs text-ds-ink3 line-clamp-2 flex-1">{description}</p>
-          ) : <span />}
-          {loadingLabel !== null && (
-            <span className={`text-2xs font-black px-2 py-0.5 rounded-full shrink-0 ${loadingTone}`}>
-              {loadingLabel}
-            </span>
-          )}
-        </div>
-        {/* Manfaat utama (kalau ada) */}
-        {benefits && benefits.length > 0 && (
-          <ul className="mt-2 space-y-0.5">
-            {benefits.slice(0, 3).map((b, i) => (
-              <li key={i} className="text-2xs font-bold text-ds-ink2 flex items-start gap-1">
-                <CheckCircle2 size={10} className="mt-0.5 flex-shrink-0 text-emerald-500" /> {b}
-              </li>
-            ))}
-          </ul>
-        )}
-        {/* Plus / minus */}
-        {((pros && pros.length) || (cons && cons.length)) && (
-          <div className="mt-3 pt-3 border-t border-ds-border/60 grid grid-cols-2 gap-x-3 gap-y-1">
-            <div>
-              <p className="text-[9px] font-black uppercase tracking-widest text-emerald-700 dark:text-emerald-400 mb-1 flex items-center gap-1">
-                <span className="w-1 h-1 rounded-full bg-emerald-500" /> Plus
-              </p>
-              {(pros ?? []).slice(0, 5).map((it, i) => (
-                <p key={i} className="text-[11px] leading-snug text-ds-ink2 flex items-start gap-1 mb-0.5">
-                  <span className="text-emerald-500 shrink-0 font-black">+</span>{it}
-                </p>
-              ))}
-              {!pros?.length && <p className="text-[11px] text-ds-ink3 italic">—</p>}
-            </div>
-            <div>
-              <p className="text-[9px] font-black uppercase tracking-widest text-rose-700 dark:text-rose-400 mb-1 flex items-center gap-1">
-                <span className="w-1 h-1 rounded-full bg-rose-500" /> Minus
-              </p>
-              {(cons ?? []).slice(0, 5).map((it, i) => (
-                <p key={i} className="text-[11px] leading-snug text-ds-ink2 flex items-start gap-1 mb-0.5">
-                  <span className="text-rose-500 shrink-0 font-black">−</span>{it}
-                </p>
-              ))}
-              {!cons?.length && <p className="text-[11px] text-ds-ink3 italic">—</p>}
-            </div>
-          </div>
-        )}
-        {/* Checkmark aktif */}
-        {active && (
-          <div className="mt-3 flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400">
-            <CheckCircle2 size={12} /> Terpilih
-          </div>
+      <div className={`flex items-center gap-2 mb-1 ${featured ? 'pr-20' : ''}`}>
+        <span className="clay-icon-well" style={{ width: 28, height: 28, borderRadius: 9 }}>
+          <ClayIcon icon={icon} size={13} />
+        </span>
+        <p className={`text-sm font-black ${active ? 'text-ds-ink' : 'text-ds-ink dark:text-white'}`}>{label}</p>
+      </div>
+      <div className="flex items-start justify-between gap-2 mb-2">
+        {description ? (
+          <p className="text-2xs text-ds-ink3 line-clamp-2 flex-1">{description}</p>
+        ) : <span />}
+        {loadingLabel !== null && (
+          <span className={`text-2xs font-black px-2 py-0.5 rounded-full shrink-0 ${loadingTone}`}>
+            {loadingLabel}
+          </span>
         )}
       </div>
+      {benefits && benefits.length > 0 && (
+        <ul className="mt-2 space-y-0.5">
+          {benefits.slice(0, 3).map((b, i) => (
+            <li key={i} className="text-2xs font-bold text-ds-ink2 flex items-start gap-1">
+              <Check size={10} className="mt-0.5 flex-shrink-0" style={{ color: accent }} /> {b}
+            </li>
+          ))}
+        </ul>
+      )}
+      {((pros && pros.length) || (cons && cons.length)) && (
+        <div className="mt-3 pt-3 border-t border-ds-border/60 grid grid-cols-2 gap-x-3 gap-y-1">
+          <div>
+            <p className="text-[9px] font-black uppercase tracking-widest text-ds-ink2 mb-1 flex items-center gap-1">
+              <span className="w-1 h-1 rounded-full" style={{ background: accent }} /> Plus
+            </p>
+            {(pros ?? []).slice(0, 5).map((it, i) => (
+              <p key={i} className="text-[11px] leading-snug text-ds-ink2 flex items-start gap-1 mb-0.5">
+                <span className="shrink-0 font-black" style={{ color: accent }}>+</span>{it}
+              </p>
+            ))}
+            {!pros?.length && <p className="text-[11px] text-ds-ink3 italic">—</p>}
+          </div>
+          <div>
+            <p className="text-[9px] font-black uppercase tracking-widest text-rose-700 dark:text-rose-400 mb-1 flex items-center gap-1">
+              <span className="w-1 h-1 rounded-full bg-rose-500" /> Minus
+            </p>
+            {(cons ?? []).slice(0, 5).map((it, i) => (
+              <p key={i} className="text-[11px] leading-snug text-ds-ink2 flex items-start gap-1 mb-0.5">
+                <span className="text-rose-500 shrink-0 font-black">−</span>{it}
+              </p>
+            ))}
+            {!cons?.length && <p className="text-[11px] text-ds-ink3 italic">—</p>}
+          </div>
+        </div>
+      )}
+      {active && (
+        <div className="clay-select-row">
+          <span className="clay-check"><Check size={11} strokeWidth={3} /></span>
+          <span>{t('Selected', 'Terpilih')}</span>
+        </div>
+      )}
     </button>
   );
 };
