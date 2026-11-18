@@ -510,7 +510,7 @@ Deno.serve(async (req) => {
           actorEmail: null,
           action: 'bulk_paid',
           summary: `${batch.company_name ?? 'Klien B2B'} melunasi ${batch.batch_number} senilai Rp ${actualPaid.toLocaleString('id-ID')} (${batch.item_count} unit).`,
-          detail: { amount: actualPaid, payment_method, xendit_invoice_id: payment.xendit_invoice_id ?? null },
+          detail: { amount: actualPaid, payment_method, xendit_invoice_id: xendit_invoice_id ?? null },
           ip: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null,
           userAgent: req.headers.get('user-agent')?.slice(0, 255) ?? null,
         });
@@ -560,7 +560,7 @@ Deno.serve(async (req) => {
           actorEmail: null,
           action: 'bulk_invoice_expired',
           summary: `Invoice ${reverted.data.batch_number} kadaluarsa; batch dikembalikan ke SUBMITTED agar bisa ditagih ulang.`,
-          detail: { xendit_invoice_id: payment.xendit_invoice_id ?? null },
+          detail: { xendit_invoice_id: xendit_invoice_id ?? null },
           ip: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null,
           userAgent: req.headers.get('user-agent')?.slice(0, 255) ?? null,
         });
