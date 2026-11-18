@@ -89,6 +89,10 @@ export interface SpB2BBatchItem {
   plan_id: string | null;
   plan_loading: number;
   vehicle_photos: Array<{ slot: string; url: string; size_bytes?: number | null; uploaded_at?: string }>;
+  /** v2.9.13 — order unit: BARU (BSTK/faktur) atau BEKAS (foto). Impor massal: BEKAS. */
+  vehicle_condition: 'BARU' | 'BEKAS';
+  /** v2.9.13 — tanggal berlaku copy polis yang dilampirkan (YYYY-MM-DD). */
+  policy_copy_expiry: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -127,6 +131,10 @@ export interface CreateB2BBulkItemInput {
   addons?: FleetAddOns;
   planId?: string | null;
   vehiclePhotos?: Array<{ slot: string; url: string; size_bytes?: number }>;
+  /** v2.9.13 — kondisi unit (BARU → BSTK/faktur, BEKAS → minimal 3 foto). */
+  vehicleCondition?: 'BARU' | 'BEKAS';
+  /** v2.9.13 — wajib bila slot copy-polis dilampirkan; harus >= hari ini. */
+  policyCopyExpiry?: string;
 }
 
 export async function createB2BBulkBatch(input: {

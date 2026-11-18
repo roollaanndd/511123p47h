@@ -61,6 +61,10 @@ interface ClientItemInput {
   addons?: FleetAddOns;
   planId?: string | null;          // id paket sp_b2b_plans, server yang resolve loading_rate
   vehiclePhotos?: Array<{ slot: string; url: string; size_bytes?: number }>;
+  // v2.9.13 — kondisi unit & copy polis. Hanya dikirim order satuan; impor
+  // massal memakai default BEKAS / NULL.
+  vehicleCondition?: 'BARU' | 'BEKAS';
+  policyCopyExpiry?: string;       // YYYY-MM-DD, harus >= hari pengajuan
 }
 
 // Tanggal efektif boleh hari ini s/d 60 hari ke depan. Sehari kelonggaran di
@@ -152,6 +156,49 @@ function validateItem(raw: unknown, index: number): { item: ClientItemInput; err
     }
   }
 
+  // v2.9.13 — aturan baru HANYA untuk order satuan (yang mengirim array
+  // vehiclePhotos). Baris impor massal tidak mengirimnya dan tetap lewat.
+  // Impor massal tidak mengirim `vehicleCondition`; order satuan selalu
+  // mengirimnya. Attachment saja tidak cukup untuk mengubah perilaku lama.
+  const isUnitOrder = r.vehicleCondition !== undefined;
+  let vehicleCondition: 'BARU' | 'BEKAS' = 'BEKAS';
+  if (r.vehicleCondition !== undefined) {
+    const c = String(r.vehicleCondition).toUpperCase();
+    if (c !== 'BARU' && c !== 'BEKAS') {
+      return { error: `Baris ${index + 1}: kondisi kendaraan tidak valid.` };
+    }
+    vehicleCondition = c as 'BARU' | 'BEKAS';
+  }
+  let policyCopyExpiry: string | undefined;
+  if (r.policyCopyExpiry) {
+    const s = String(r.policyCopyExpiry).trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(s) || Number.isNaN(Date.parse(`${s}T00:00:00Z`))) {
+      return { error: `Baris ${index + 1}: tanggal berlaku copy polis tidak valid.` };
+    }
+    const todayUtc = new Date().toISOString().slice(0, 10);
+    if (s < todayUtc) {
+      return { error: `Baris ${index + 1}: copy polis harus masih berlaku (tanggal berlaku hari ini atau setelahnya).` };
+    }
+    policyCopyExpiry = s;
+  }
+  const hasPolicyCopy = vehiclePhotos.some(p => p.slot === 'copy-polis');
+  if (hasPolicyCopy && !policyCopyExpiry) {
+    return { error: `Baris ${index + 1}: copy polis wajib mencantumkan tanggal masih berlaku.` };
+  }
+  if (policyCopyExpiry && !hasPolicyCopy) {
+    return { error: `Baris ${index + 1}: tanggal copy polis tanpa lampiran copy polis.` };
+  }
+  if (isUnitOrder && vehicleClass !== 'HEAVY_EQUIPMENT') {
+    const newDoc = vehiclePhotos.some(p => p.slot === 'bstk' || p.slot === 'faktur');
+    const photoCount = vehiclePhotos.filter(p => /^(depan|belakang|rangka|samping-)/.test(p.slot)).length;
+    if (vehicleCondition === 'BARU' && !newDoc) {
+      return { error: `Baris ${index + 1}: kendaraan baru wajib melampirkan BSTK atau faktur kendaraan.` };
+    }
+    if (vehicleCondition === 'BEKAS' && photoCount < 3) {
+      return { error: `Baris ${index + 1}: kendaraan bekas wajib melampirkan minimal 3 foto (depan, belakang, nomor rangka).` };
+    }
+  }
+
   return {
     item: {
       rowNo: Number(r.rowNo) || index + 1,
@@ -186,6 +233,8 @@ function validateItem(raw: unknown, index: number): { item: ClientItemInput; err
       addons,
       planId,
       vehiclePhotos,
+      vehicleCondition,
+      policyCopyExpiry,
     },
   };
 }
@@ -352,6 +401,8 @@ export async function handleB2BBulkAction(action: string, ctx: GatewayContext): 
           slot: p.slot, url: p.url, size_bytes: p.size_bytes ?? null,
           uploaded_at: new Date().toISOString(),
         })),
+        vehicle_condition: r.vehicleCondition ?? 'BEKAS',
+        policy_copy_expiry: r.policyCopyExpiry ?? null,
       }));
 
       const { error: itemsErr } = await db.from('sp_b2b_batch_items').insert(itemRows);

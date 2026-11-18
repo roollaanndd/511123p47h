@@ -227,6 +227,7 @@ const B2BBulkBatches: React.FC<Props> = ({ lang, allClients }) => {
                   <th className="py-2.5 px-3 font-bold text-[10px] text-slate-500 uppercase tracking-widest text-left">{t('Name', 'Nama')}</th>
                   <th className="py-2.5 px-3 font-bold text-[10px] text-slate-500 uppercase tracking-widest text-left hidden md:table-cell">{t('Vehicle', 'Kendaraan')}</th>
                   <th className="py-2.5 px-3 font-bold text-[10px] text-slate-500 uppercase tracking-widest text-left hidden lg:table-cell">{t('Plate', 'Plat')}</th>
+                  <th className="py-2.5 px-3 font-bold text-[10px] text-slate-500 uppercase tracking-widest text-left hidden xl:table-cell">{t('Attachments', 'Lampiran')}</th>
                   <th className="py-2.5 px-3 font-bold text-[10px] text-slate-500 uppercase tracking-widest text-left hidden md:table-cell">{t('Period', 'Periode')}</th>
                   <th className="py-2.5 px-3 font-bold text-[10px] text-slate-500 uppercase tracking-widest text-right">{t('Premium', 'Premi')}</th>
                 </tr>
@@ -243,6 +244,34 @@ const B2BBulkBatches: React.FC<Props> = ({ lang, allClients }) => {
                       </span>
                     </td>
                     <td className="py-2.5 px-3 text-slate-500 font-mono hidden lg:table-cell">{it.plate_no || '—'}</td>
+                    <td className="py-2.5 px-3 hidden xl:table-cell">
+                      <span className={`inline-block rounded-full px-1.5 py-0.5 text-[10px] font-black ${it.vehicle_condition === 'BARU' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
+                        {it.vehicle_condition === 'BARU' ? t('New', 'Baru') : t('Used', 'Bekas')}
+                      </span>
+                      {Array.isArray(it.vehicle_photos) && it.vehicle_photos.length > 0 && (
+                        <span className="flex flex-wrap gap-1 mt-1 max-w-[180px]">
+                          {it.vehicle_photos.slice(0, 4).map((p, idx) => (
+                            <a
+                              key={`${p.slot}-${idx}`}
+                              href={p.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="rounded border border-indigo-200 bg-indigo-50 px-1 py-0.5 text-[10px] font-bold text-indigo-700 hover:bg-indigo-100"
+                            >
+                              {p.slot}
+                            </a>
+                          ))}
+                          {it.vehicle_photos.length > 4 && (
+                            <span className="text-[10px] font-bold text-slate-500">+{it.vehicle_photos.length - 4}</span>
+                          )}
+                        </span>
+                      )}
+                      {it.policy_copy_expiry && (
+                        <span className="block text-[10px] font-bold text-slate-500 mt-0.5">
+                          {t('Policy until', 'Polis s/d')} {fmtDate(it.policy_copy_expiry)}
+                        </span>
+                      )}
+                    </td>
                     <td className="py-2.5 px-3 text-slate-600 hidden md:table-cell">
                       <span className="whitespace-nowrap tabular-nums">
                         {it.coverage_start_date && it.coverage_end_date

@@ -1,5 +1,43 @@
 # SurePath - Changelog
 
+## v2.9.13 - 2026-11-18
+
+### PDF B2B identik dengan agent, scan STNK, dan lampiran sesuai kondisi unit
+
+Tiga permintaan owner atas order unit B2B:
+
+**PDF B2B = PDF agent**
+
+- Generator A4 terpisah `services/b2bProposalPdf.ts` DIHAPUS. `B2BUnitOrder`
+  kini memetakan order ke `QuotationSlipData` lewat `fromB2BUnitOrder`
+  (`services/b2bUnitOrder.ts`) lalu memanggil `publishAndDownloadQuotation(...,
+  { sourceApp: 'B2B' })`. Hasilnya US Letter 4 halaman, kop/QR e-quotation,
+  dan alur `deliverPdf()` WebView-safe **sama persis** dengan aplikasi agent.
+- Tombol unduh berganti label "PDF Penawaran"; QR tetap mengarah ke
+  `https://myinsurepath.com/q/{code}` dan snapshot tersimpan dengan source B2B.
+
+**Scan STNK auto-fill**
+
+- Kartu **Pindai STNK** memakai edge function `stnk-ocr` yang sama dengan agent.
+- Hasil yang terbaca mengisi merk, tipe, tahun, plat, wilayah, zona, no. mesin,
+  no. rangka/VIN, dan warna — termasuk harga pasar referensi. Foto STNK ikut
+  tersimpan sebagai lampiran.
+- OCR gagal/`ERROR` tidak mengklaim sukses: pesan jujur dan semua field tetap
+  bisa diisi manual.
+
+**Lampiran mengikuti kondisi & copy polis yang masih berlaku**
+
+- PILIH **Baru** → cukup BSTK **atau** faktur kendaraan (PDF/JPG/PNG); foto
+  tidak diwajibkan. Pilih **Bekas** → minimal 3 foto (depan, belakang, rangka/
+  samping); alat berat dikecualikan.
+- Copy polis bersifat opsional, hanya boleh dilampirkan bila tanggal berlakunya
+  ≥ hari pengajuan. Field `vehicle_condition` dan `policy_copy_expiry` disimpan
+  di `sp_b2b_batch_items` (migrasi `20261118110000_b2b_unit_condition_policy.sql`)
+  dan divalidasi ulang oleh gateway (server tetap authoritative).
+- Detail batch B2B menampilkan kondisi unit, tautan lampiran, dan tanggal
+  berlaku copy polis.
+- 4 unit test baru di `services/__tests__/b2bUnitOrder.test.ts`.
+
 ## v2.9.12 - 2026-11-18
 
 ### B2B bulk: file sumber terlacak & bisa diunduh ulang admin + log aktivitas khusus B2B
