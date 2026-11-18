@@ -73,10 +73,12 @@ const B2BPortal: React.FC<Props> = ({ client, onLogout, lang }) => {
   // data". Banner jujur + tombol coba lagi, baik di dashboard maupun layar
   // daftar (yang memuat data masing-masing).
   const [loadError, setLoadError] = useState(false);
+  const [loadErrorDetail, setLoadErrorDetail] = useState('');
 
   const loadData = async () => {
     if (!client?.id) return;
     setLoadError(false);
+    setLoadErrorDetail('');
     try {
       if (isMaster) {
         const [subs, qs, batches, clients] = await Promise.all([
@@ -105,6 +107,7 @@ const B2BPortal: React.FC<Props> = ({ client, onLogout, lang }) => {
       setInitialLoading(false);
     } catch (error) {
       console.error('Unable to load B2B portal data:', error);
+      setLoadErrorDetail(error instanceof Error ? error.message : String(error));
       setLoadError(true);
       setInitialLoading(false);
     }
@@ -221,6 +224,7 @@ const B2BPortal: React.FC<Props> = ({ client, onLogout, lang }) => {
             lang={lang}
             loading={initialLoading}
             loadError={loadError}
+            loadErrorDetail={loadErrorDetail}
             onRetry={() => { loadData(); }}
           />
         );

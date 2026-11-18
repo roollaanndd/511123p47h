@@ -39,6 +39,9 @@ interface Props {
   /** v2.8.6 — portal data failed to load; show an honest banner with a retry
    *  button instead of a dashboard that silently reads as "no data at all". */
   loadError?: boolean;
+  /** v2.9.14 — alasan teknis singkat supaya klien bisa menyampaikan detail
+   *  ke support tanpa membuka console. Tidak menampilkan token/URL. */
+  loadErrorDetail?: string;
   onRetry?: () => void;
 }
 
@@ -70,7 +73,7 @@ const fmtDate = (iso: string, lang: Language) =>
 
 const B2BDashboard: React.FC<Props> = ({
   client, submissions, quotes, bulkBatches, onNavigate, onNavigateBulk,
-  onPathyOpen, companyByClient, lang, loading = false, loadError, onRetry,
+  onPathyOpen, companyByClient, lang, loading = false, loadError, loadErrorDetail, onRetry,
 }) => {
   const t = (en: string, id: string) => (lang === Language.EN ? en : id);
   const companyName = client?.company_name ?? client?.name ?? 'Perusahaan';
@@ -247,6 +250,11 @@ const B2BDashboard: React.FC<Props> = ({
             <p className="text-xs text-amber-700 dark:text-amber-200/80 mt-0.5">
               {t('Numbers below may be incomplete.', 'Angka di bawah bisa jadi tidak lengkap.')}
             </p>
+            {loadErrorDetail && (
+              <p className="mt-1 text-[10px] font-mono text-amber-700/80 dark:text-amber-200/60 break-words">
+                Detail: {loadErrorDetail.slice(0, 180)}
+              </p>
+            )}
           </div>
           {onRetry && (
             <button type="button" onClick={onRetry}
