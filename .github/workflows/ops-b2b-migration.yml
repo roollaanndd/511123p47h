@@ -1,0 +1,75 @@
+name: One-shot - apply B2B unit condition migration
+
+# Workflow operasional sementara: menjalankan migrasi v2.9.13 lewat Supabase
+# Management API memakai repo secret. Tidak mencetak nilai secret. File ini
+# akan dihapus setelah migrasi terverifikasi.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Apply migration and verify
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+        run: |
+          set -euo pipefail
+          TOK="${SUPABASE_ACCESS_TOKEN//[[:space:]]/}"
+          REF="${PROJECT_REF//[[:space:]]/}"
+          API="https://api.supabase.com/v1/projects/${REF}/database/query"
+
+          post_sql() {
+            local file="$1" out="$2" code
+            code=$(curl -sS -o "$out" -w '%{http_code}' -X POST "$API" \
+              -H "Authorization: Bearer ${TOK}" -H 'Content-Type: application/json' \
+              -d "$(jq -Rs '{query: .}' < "$file")")
+            echo "$code"
+          }
+
+          MIG="supabase/migrations/20261118110000_b2b_unit_condition_policy.sql"
+          code=$(post_sql "$MIG" /tmp/mig.json)
+          echo "::notice::migration_http=${code}"
+          if [ "$code" != "200" ] && [ "$code" != "201" ]; then
+            echo "::error::Migration failed HTTP ${code}: $(head -c 600 /tmp/mig.json)"
+            exit 1
+          fi
+
+          cat > /tmp/verify.sql <<'SQL'
+          select column_name, data_type, is_nullable, column_default
+          from information_schema.columns
+          where table_schema = 'public'
+            and table_name = 'sp_b2b_batch_items'
+            and column_name in ('vehicle_condition', 'policy_copy_expiry')
+          order by column_name;
+          SQL
+          code=$(post_sql /tmp/verify.sql /tmp/verify.json)
+          echo "::notice::verify_column_http=${code}"
+          echo "::notice::verify_columns=$(jq -c . /tmp/verify.json | head -c 800)"
+
+          cat > /tmp/constraint.sql <<'SQL'
+          select conname, pg_get_constraintdef(oid) as def
+          from pg_constraint
+          where conname = 'sp_b2b_batch_items_vehicle_condition';
+          SQL
+          code=$(post_sql /tmp/constraint.sql /tmp/constraint.json)
+          echo "::notice::verify_constraint_http=${code}"
+          echo "::notice::verify_constraint=$(jq -c . /tmp/constraint.json | head -c 500)"
+
+          cat > /tmp/comments.sql <<'SQL'
+          select column_name, col_description('public.sp_b2b_batch_items'::regclass, ordinal_position) as comment
+          from information_schema.columns
+          where table_schema = 'public'
+            and table_name = 'sp_b2b_batch_items'
+            and column_name in ('vehicle_condition', 'policy_copy_expiry')
+          order by column_name;
+          SQL
+          code=$(post_sql /tmp/comments.sql /tmp/comments.json)
+          echo "::notice::verify_comment_http=${code}"
+          echo "::notice::verify_comments=$(jq -c . /tmp/comments.json | head -c 800)"
