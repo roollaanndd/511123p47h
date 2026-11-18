@@ -33,6 +33,15 @@ jobs:
             echo "$code"
           }
 
+          cat > /tmp/columns.sql <<'SQL'
+          select column_name, data_type
+          from information_schema.columns
+          where table_schema = 'public' and table_name = 'sp_b2b_batch_items'
+          order by ordinal_position;
+          SQL
+          code=$(post_sql /tmp/columns.sql /tmp/columns-before.json)
+          echo "::notice::columns_before=$(jq -c . /tmp/columns-before.json | head -c 2000)"
+
           MIG="supabase/migrations/20261118110000_b2b_unit_condition_policy.sql"
           code=$(post_sql "$MIG" /tmp/mig.json)
           echo "::notice::migration_http=${code}"

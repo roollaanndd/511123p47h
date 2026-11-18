@@ -2,7 +2,10 @@
 -- Order satuan memakai tabel batch yang sama dengan impor massal; baris impor
 -- tidak mengirim kedua field ini dan tetap memakai default BEKAS/NULL.
 
+-- vehicle_photos ikut diamankan: migration lama 20261113120000 belum tentu
+-- pernah terpasang di produksi, sementara gateway selalu menulis kolom ini.
 alter table public.sp_b2b_batch_items
+  add column if not exists vehicle_photos jsonb not null default '[]'::jsonb,
   add column if not exists vehicle_condition text not null default 'BEKAS',
   add column if not exists policy_copy_expiry date;
 
@@ -22,5 +25,3 @@ comment on column public.sp_b2b_batch_items.vehicle_condition is
   'Kondisi unit pada order satuan: BARU (cukup BSTK/faktur) atau BEKAS (wajib foto). Impor massal memakai BEKAS.';
 comment on column public.sp_b2b_batch_items.policy_copy_expiry is
   'Tanggal berlaku copy polis yang dilampirkan. Gateway menolak tanggal sebelum hari pengajuan.';
-comment on column public.sp_b2b_batch_items.vehicle_photos is
-  'Array lampiran order unit: [{slot, url, uploaded_at, size_bytes}]. Slot foto: depan/belakang/samping-*/rangka/stnk. Slot dokumen: bstk/faktur/copy-polis.';
