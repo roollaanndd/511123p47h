@@ -1,5 +1,24 @@
 # SurePath - Changelog
 
+## v2.9.15 - 2026-11-19
+
+### B2B: picker insurer & kartu paket claymorphism, dikustomisasi admin
+
+- Picker insurer dan kartu paket tidak lagi memakai kaca/gradasi hijau.
+  Keduanya jadi clay tile netral dengan rim terang, bayangan offset + blur,
+  dan state terpilih yang **tertekan** (bukan menyala).
+- Arah kursor atau focus keyboard ke salah satu insurer menaikkan tile ~6 px,
+  memperterang pinggiran aksen, dan membuka ribbon detail berisi poin yang
+  ditulis admin. Di perangkat tanpa hover, detail selalu terlihat.
+- Admin dashboard kini mengatur per insurer: warna aksen, ikon, urutan tampil,
+  sampai 5 poin detail hover, dan flag unggulan. Paket B2B mendapat warna
+  aksen, ikon, dan flag rekomendasi. Urutan mengikuti `sort_order`, bukan nama.
+- Semua field baru lewat `data-gateway` (validasi hex/ikon/bullet); RLS
+  deny-all dan service-role tetap dipertahankan. `sp_insurers` tidak dibuka
+  untuk update langsung — upload logo pun kini melewati gateway.
+- Migrasi `20261119120000_b2b_clay_customization.sql`; deploy ulang
+  `data-gateway` wajib karena aksi gateway berubah.
+
 ## v2.9.14 - 2026-11-18
 
 ### B2B: sesi kedaluwarsa tidak lagi membuat dashboard/batch ikut merah

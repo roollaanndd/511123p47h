@@ -451,6 +451,10 @@ export interface SpB2BPlan {
   cons: string[];              // v2.9.2 — kekurangan / batasan
   is_active: boolean;
   sort_order: number;
+  // v2.9.15 — kustomisasi kartu paket clay (via gateway).
+  accent_color?: string | null;
+  icon?: string | null;
+  featured?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -478,6 +482,9 @@ export async function adminSaveB2BPlan(input: {
   cons?: string[];
   is_active?: boolean;
   sort_order?: number;
+  accent_color?: string | null;
+  icon?: string;
+  featured?: boolean;
 }): Promise<SpB2BPlan | null> {
   const { data, error } = await callGateway('admin_save_b2b_plan', input);
   if (error) { console.error('adminSaveB2BPlan:', error); return null; }

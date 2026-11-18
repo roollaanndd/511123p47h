@@ -8,6 +8,7 @@ import {
 } from '../../services/ojkRates';
 import ModuleIcon from '../shared/ModuleIcon';
 import InsurerApiConfig from './InsurerApiConfig';
+import { CLAY_ICON_OPTIONS } from '../../services/clayTheme';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -23,6 +24,11 @@ interface SpInsurer {
   pic_email?: string;
   pic_phone?: string;
   logo_url?: string;
+  accent_color?: string | null;
+  icon?: string | null;
+  sort_order?: number;
+  highlight_bullets?: string[] | null;
+  featured?: boolean;
   created_at?: string;
 }
 
@@ -173,6 +179,12 @@ interface InsurerFormData {
   pic_name: string;
   pic_email: string;
   pic_phone: string;
+  // v2.9.15 — kustomisasi clay picker B2B.
+  accent_color: string;
+  icon: string;
+  sort_order: string;
+  highlight_bullets: string;
+  featured: boolean;
 }
 
 interface InsurerModalProps {
@@ -192,6 +204,11 @@ const InsurerModal: React.FC<InsurerModalProps> = ({ initial, onSave, onClose })
     pic_name: initial?.pic_name ?? '',
     pic_email: initial?.pic_email ?? '',
     pic_phone: initial?.pic_phone ?? '',
+    accent_color: initial?.accent_color ?? '#64748B',
+    icon: initial?.icon ?? 'building',
+    sort_order: String(initial?.sort_order ?? 0),
+    highlight_bullets: (initial?.highlight_bullets ?? []).join('\n'),
+    featured: initial?.featured ?? false,
   });
   const [saving, setSaving] = useState(false);
   const [logoUrl, setLogoUrl] = useState(initial?.logo_url ?? '');
@@ -204,7 +221,8 @@ const InsurerModal: React.FC<InsurerModalProps> = ({ initial, onSave, onClose })
     setLogoUploading(true);
     const url = await uploadInsurerLogo(initial.id, file);
     if (url) {
-      await supabase.from('sp_insurers').update({ logo_url: url }).eq('id', initial.id);
+      // v2.9.15 — lewat gateway, bukan update RLS langsung.
+      await callGateway('admin_update_insurer', { insurer_id: initial.id, logo_url: url });
       setLogoUrl(url);
     }
     setLogoUploading(false);
@@ -272,6 +290,76 @@ const InsurerModal: React.FC<InsurerModalProps> = ({ initial, onSave, onClose })
             onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
             placeholder="Deskripsi singkat perusahaan..."
           />
+        </div>
+        {/* v2.9.15 — tampilan clay di picker B2B */}
+        <div className="rounded-2xl border border-ds-border bg-ds-card2/60 p-4 space-y-3">
+          <SectionLabel>Tampilan di picker B2B</SectionLabel>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-2xs font-black uppercase tracking-widest text-ds-ink3 mb-1 block">Warna aksen</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="color"
+                  aria-label="Warna aksen"
+                  value={/^#[0-9a-fA-F]{6}$/.test(form.accent_color) ? form.accent_color : '#64748B'}
+                  onChange={e => setForm(f => ({ ...f, accent_color: e.target.value.toUpperCase() }))}
+                  className="h-9 w-12 flex-shrink-0 rounded-lg border border-ds-border bg-transparent p-0.5 cursor-pointer"
+                />
+                <input
+                  className={inputCls}
+                  value={form.accent_color}
+                  onChange={e => setForm(f => ({ ...f, accent_color: e.target.value.toUpperCase().slice(0, 7) }))}
+                  placeholder="#64748B"
+                  maxLength={7}
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-2xs font-black uppercase tracking-widest text-ds-ink3 mb-1 block">Ikon</label>
+              <select
+                className={inputCls}
+                value={form.icon}
+                onChange={e => setForm(f => ({ ...f, icon: e.target.value }))}
+              >
+                {CLAY_ICON_OPTIONS.map(o => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4 items-end">
+            <div>
+              <label className="text-2xs font-black uppercase tracking-widest text-ds-ink3 mb-1 block">Urutan tampil</label>
+              <input
+                className={inputCls}
+                value={form.sort_order}
+                onChange={e => setForm(f => ({ ...f, sort_order: e.target.value }))}
+                inputMode="numeric"
+              />
+            </div>
+            <label className="flex items-center gap-2 text-xs font-bold text-ds-ink2 pb-2">
+              <input
+                type="checkbox"
+                checked={form.featured}
+                onChange={e => setForm(f => ({ ...f, featured: e.target.checked }))}
+                className="w-4 h-4 accent-emerald-600"
+              />
+              Tandai unggulan
+            </label>
+          </div>
+          <div>
+            <label className="text-2xs font-black uppercase tracking-widest text-ds-ink3 mb-1 block">
+              Poin detail saat hover/focus (satu per baris)
+            </label>
+            <textarea
+              className={`${inputCls} resize-none`}
+              rows={3}
+              value={form.highlight_bullets}
+              onChange={e => setForm(f => ({ ...f, highlight_bullets: e.target.value }))}
+              placeholder={'Klaim prioritas\nBengkel resmi/ATPM\nJaringan luas'}
+            />
+            <p className="text-2xs text-ds-ink3 mt-1">Maksimal 5 poin. Hanya ini yang ditampilkan sebagai detail insurer.</p>
+          </div>
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
@@ -926,15 +1014,22 @@ const InsurerAdmin: React.FC = () => {
 
   useEffect(() => { fetchInsurers(); }, [fetchInsurers]);
 
+  const toClayPayload = (data: InsurerFormData) => ({
+    ...data,
+    accent_color: /^#[0-9a-fA-F]{6}$/.test(data.accent_color) ? data.accent_color : null,
+    sort_order: Number(data.sort_order) || 0,
+    highlight_bullets: data.highlight_bullets.split(/\n+/).map(s => s.trim()).filter(Boolean).slice(0, 5),
+  });
+
   const handleAdd = async (data: InsurerFormData) => {
-    await callGateway('admin_create_insurer', data as any);
+    await callGateway('admin_create_insurer', toClayPayload(data) as any);
     setShowAdd(false);
     fetchInsurers();
   };
 
   const handleEdit = async (data: InsurerFormData) => {
     if (!editTarget) return;
-    await callGateway('admin_update_insurer', { insurer_id: editTarget.id, ...data });
+    await callGateway('admin_update_insurer', { insurer_id: editTarget.id, ...toClayPayload(data) });
     setEditTarget(null);
     fetchInsurers();
   };
