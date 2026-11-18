@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { RefreshCw, ChevronDown, ChevronUp, Plus, Trash2, CheckCircle2, AlertTriangle, FileText, Heart, Upload, Loader2, Building2, Copy, KeyRound } from 'lucide-react';
+import { RefreshCw, ChevronDown, ChevronUp, Plus, Trash2, CheckCircle2, AlertTriangle, FileText, Heart, Upload, Loader2, Building2, Copy, KeyRound, FileDown, History } from 'lucide-react';
 import {
   getAllB2BSubmissions,
   updateB2BSubmissionStatus,
@@ -11,6 +11,8 @@ import {
   adminAssignB2BBulkInsurer,
   uploadB2BBulkMasterPolicy,
   adminListB2BUsers,
+  adminGetB2BBulkSourceUrl,
+  adminListB2BActivity,
   setMitraTempPassword,
   supabase,
   type SpB2BSubmission,
@@ -18,6 +20,7 @@ import {
   type SpLifeApplication,
   type SpB2BBatch,
   type SpB2BUser,
+  type SpB2BActivityEntry,
 } from '../../services/supabaseService';
 import ModuleIcon from '../shared/ModuleIcon';
 import { useConfirmDialog } from '../ui';
@@ -471,6 +474,18 @@ const BulkBatchCard: React.FC<{ batch: SpB2BBatch; insurers: InsurerOption[]; on
   const [assigningInsurer, setAssigningInsurer] = useState(false);
   const [err, setErr] = useState('');
 
+  // v2.9.12 — file sumber klien kini terlacak (source_file_path) dan bisa
+  // diunduh ulang admin lewat signed URL gateway (diaudit di log aktivitas).
+  const [downloadingSource, setDownloadingSource] = useState(false);
+  const handleDownloadSource = async () => {
+    if (downloadingSource) return;
+    setDownloadingSource(true);
+    const res = await adminGetB2BBulkSourceUrl(batch.id);
+    setDownloadingSource(false);
+    if ('error' in res) { onToast(res.error); return; }
+    window.open(res.url, '_blank', 'noopener');
+  };
+
   // FIX v2.8.20 (audit 2026-11-11): admin sebelumnya tidak bisa melihat isi
   // baris batch — kartu hanya menampilkan agregat, padahal aksi gateway
   // b2b_bulk_get_batch sudah tersedia. Panel detail menampilkan item per baris
@@ -537,6 +552,27 @@ const BulkBatchCard: React.FC<{ batch: SpB2BBatch; insurers: InsurerOption[]; on
           <p className="font-bold text-ds-ink dark:text-white text-sm">{batch.company_name}</p>
           <p className="text-xs text-ds-ink3">{batch.item_count} unit · {fmtIDRBulk(batch.total_amount)}</p>
           <p className="text-xs text-ds-ink3">{fmtDate(batch.created_at)}</p>
+          {/* v2.9.12 — file sumber klien: nama + ukuran tampil, dan admin bisa
+              mengunduh ulang aslinya lewat signed URL gateway (diaudit). */}
+          {batch.source_file_name && (
+            <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+              <span className="text-2xs text-ds-ink3 font-mono truncate max-w-[220px]" title={batch.source_file_name}>
+                📄 {batch.source_file_name}{batch.source_file_size ? ` · ${(batch.source_file_size / 1024).toFixed(0)} KB` : ''}
+              </span>
+              {batch.source_file_path ? (
+                <button
+                  onClick={handleDownloadSource}
+                  disabled={downloadingSource}
+                  className="inline-flex items-center gap-1 text-2xs font-bold text-ds-green hover:underline disabled:opacity-50"
+                >
+                  {downloadingSource ? <Loader2 size={11} className="animate-spin" /> : <FileDown size={11} />}
+                  Unduh file sumber
+                </button>
+              ) : (
+                <span className="text-2xs text-ds-ink3" title="Diimpor sebelum v2.9.12 — path file tidak terekam">file tidak terlacak</span>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -900,7 +936,7 @@ const UsersSection: React.FC<{ onToast: (msg: string) => void }> = ({ onToast })
 const BULK_STATUSES = ['SUBMITTED', 'INVOICED', 'PAID', 'ISSUED', 'CANCELLED'];
 
 const B2BAdminView: React.FC = () => {
-  const [tab, setTab] = useState<'b2b' | 'bulk' | 'life' | 'users'>('b2b');
+  const [tab, setTab] = useState<'b2b' | 'bulk' | 'life' | 'users' | 'activity'>('b2b');
   const [b2bSubs, setB2bSubs] = useState<SpB2BSubmission[]>([]);
   const [bulkBatches, setBulkBatches] = useState<SpB2BBatch[]>([]);
   const [lifeApps, setLifeApps] = useState<SpLifeApplication[]>([]);
@@ -971,6 +1007,7 @@ const B2BAdminView: React.FC = () => {
         <TabBtn active={tab === 'bulk'} onClick={() => setTab('bulk')} icon={<ModuleIcon id="documents" size={22} />} label="Bulk Batches" badge={bulkAwaitingPayment + bulkAwaitingIssuance} />
         <TabBtn active={tab === 'life'} onClick={() => setTab('life')} icon={<ModuleIcon id="family_health" size={22} />} label="Life Applications" />
         <TabBtn active={tab === 'users'} onClick={() => setTab('users')} icon={<Building2 size={22} />} label="Pengguna Korporat" />
+        <TabBtn active={tab === 'activity'} onClick={() => setTab('activity')} icon={<History size={22} />} label="Aktivitas" />
         <button onClick={load} className="ml-auto p-2 rounded-xl text-ds-ink3 hover:text-ds-ink2 dark:hover:text-ds-ink">
           <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
         </button>
@@ -987,7 +1024,7 @@ const B2BAdminView: React.FC = () => {
         {tab === 'life' && ['ALL', ...LIFE_STATUSES].map(f => (
           <FilterPill key={f} label={f} active={lifeFilter === f} onClick={() => setLifeFilter(f)} />
         ))}
-        {tab !== 'users' && (
+        {tab !== 'users' && tab !== 'activity' && (
           <div className="ml-auto relative flex-shrink-0">
             <input
               value={searchQ}
@@ -1035,6 +1072,8 @@ const B2BAdminView: React.FC = () => {
           )
         ) : tab === 'users' ? (
           <UsersSection onToast={showToast} />
+        ) : tab === 'activity' ? (
+          <B2BActivitySection />
         ) : (
           visibleLife.length === 0 ? (
             <Empty />
@@ -1045,6 +1084,127 @@ const B2BAdminView: React.FC = () => {
           )
         )}
       </div>
+    </div>
+  );
+};
+
+// ─── B2B activity log section (v2.9.12) ──────────────────────────────────────
+
+// Label aksi yang manusiawi (Indonesia) — aksi tak dikenal ditampilkan mentah
+// agar log dari versi mendatang tetap terbaca.
+const B2B_ACTION_LABEL: Record<string, string> = {
+  bulk_batch_created: 'Pengajuan impor massal',
+  bulk_batch_viewed: 'Detail batch dibuka',
+  bulk_invoice_created: 'Invoice dibuat',
+  bulk_paid: 'Pembayaran diterima',
+  bulk_invoice_expired: 'Invoice kadaluarsa',
+  bulk_insurer_assigned: 'Insurer ditugaskan',
+  bulk_master_policy_issued: 'Polis induk diterbitkan',
+  bulk_insurer_uploaded_master_policy: 'Polis induk diunggah insurer',
+  bulk_source_file_downloaded: 'File sumber diunduh',
+};
+
+const B2B_ACTOR_CLS: Record<string, string> = {
+  B2B_CLIENT: 'bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-300',
+  ADMIN: 'bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-300',
+  MASTER_ADMIN: 'bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-300',
+  INSURER: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
+  SYSTEM: 'bg-slate-100 text-ds-ink2 dark:bg-white/10',
+};
+
+const B2BActivitySection: React.FC = () => {
+  const [entries, setEntries] = useState<SpB2BActivityEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [q, setQ] = useState('');
+  const [limit, setLimit] = useState(100);
+  const [hasMore, setHasMore] = useState(false);
+
+  const load = useCallback(async (lim: number) => {
+    setLoading(true);
+    const rows = await adminListB2BActivity({ limit: lim + 1 });
+    if (rows.length > lim) { setHasMore(true); rows.pop(); } else { setHasMore(false); }
+    setEntries(rows);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { void load(limit); }, [load, limit]);
+
+  // Pencarian klien-side: menyentuh ringkasan, aktor, nomor batch, aksi —
+  // cukup untuk "apa yang klien X lakukan minggu ini" tanpa query server baru.
+  const visible = entries.filter(e => {
+    if (!q) return true;
+    const n = q.toLowerCase();
+    return (e.summary ?? '').toLowerCase().includes(n)
+      || (e.actor_email ?? '').toLowerCase().includes(n)
+      || (e.batch_number ?? '').toLowerCase().includes(n)
+      || (e.action ?? '').toLowerCase().includes(n);
+  });
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2 flex-wrap">
+        <input
+          value={q}
+          onChange={e => setQ(e.target.value)}
+          placeholder="Cari ringkasan / aktor / batch…"
+          className="w-64 px-3 py-1.5 text-xs rounded-lg border border-ds-border bg-white dark:bg-ds-card2 outline-none focus:border-indigo-400"
+        />
+        <button onClick={() => void load(limit)} className="ml-auto inline-flex items-center gap-1.5 text-xs font-bold text-ds-green hover:underline">
+          <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Muat ulang
+        </button>
+      </div>
+
+      {loading && entries.length === 0 ? (
+        <div className="flex items-center justify-center py-16 text-ds-ink3 text-sm gap-2">
+          <RefreshCw size={16} className="animate-spin" /> Memuat log aktivitas…
+        </div>
+      ) : visible.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 text-ds-ink3">
+          <History size={44} className="mb-3" />
+          <p className="text-sm">{q ? 'Tidak ada entri yang cocok.' : 'Belum ada aktivitas B2B tercatat.'}</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {visible.map(e => {
+            const label = B2B_ACTION_LABEL[e.action] ?? e.action;
+            const actorCls = B2B_ACTOR_CLS[e.actor_role ?? ''] ?? 'bg-slate-100 text-ds-ink2 dark:bg-white/10';
+            return (
+              <div key={e.id} className="p-3 bg-white dark:bg-ds-card2 border border-ds-border rounded-2xl">
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-ds-ink dark:text-white">{label}</p>
+                    <p className="text-xs text-ds-ink2 mt-0.5 break-words">{e.summary}</p>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
+                    {e.actor_role && (
+                      <span className={`rounded-full px-2 py-0.5 text-2xs font-black ${actorCls}`}>{e.actor_role}</span>
+                    )}
+                    {e.batch_number && (
+                      <span className="font-mono text-2xs font-black px-2 py-0.5 rounded-full bg-slate-100 dark:bg-white/10 text-ds-ink2">{e.batch_number}</span>
+                    )}
+                  </div>
+                </div>
+                <div className="mt-1.5 flex items-center gap-2 flex-wrap text-2xs text-ds-ink3">
+                  <span>{new Date(e.created_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                  {e.actor_email && <span>· {e.actor_email}</span>}
+                  {e.ip && <span className="font-mono">· {e.ip}</span>}
+                </div>
+                {e.detail && Object.keys(e.detail).length > 0 && (
+                  <details className="mt-1.5">
+                    <summary className="cursor-pointer text-2xs font-bold text-ds-green select-none">Detail</summary>
+                    <pre className="mt-1.5 p-2 rounded-lg bg-slate-50 dark:bg-ds-card text-2xs overflow-x-auto text-ds-ink2">{JSON.stringify(e.detail, null, 2)}</pre>
+                  </details>
+                )}
+              </div>
+            );
+          })}
+          {hasMore && (
+            <button onClick={() => setLimit(l => l + 100)} className="w-full py-2.5 rounded-xl border border-ds-border text-xs font-bold text-ds-ink2 hover:bg-slate-50 dark:hover:bg-white/5">
+              Muat lebih banyak
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 };

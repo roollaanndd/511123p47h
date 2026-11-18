@@ -1,5 +1,59 @@
 # SurePath - Changelog
 
+## v2.9.12 - 2026-11-18
+
+### B2B bulk: file sumber terlacak & bisa diunduh ulang admin + log aktivitas khusus B2B
+
+Hasil audit alur impor massal armada B2B yang menemukan celah provenance:
+file asli klien diunggah ke bucket privat `b2b-documents` tapi PATH-nya tidak
+pernah disimpan — file sukses jadi yatim yang tak pernah bisa ditemukan lagi,
+upload gagal hilang tanpa jejak, dan admin tidak punya cara apa pun untuk
+melihat atau mengunduh file sumber.
+
+**Provenance file sumber**
+
+- Migrasi `20261118090000_b2b_bulk_audit.sql` (WAJIB dijalankan owner via
+  Supabase CLI): kolom `source_file_path/source_file_size/source_file_mime`
+  di `sp_b2b_batches`.
+- `uploadB2BBulkSourceFile` kini mengembalikan PATH server + ukuran/MIME
+  (bukan lagi `getPublicUrl()` yang pasti 404 di bucket privat).
+- Wizard impor (`B2BBulkImport`): upload file DITUNGGU sebelum batch dibuat;
+  upload gagal → pengajuan tidak terkirim dengan pesan jujur (dulu
+  fire-and-forget `.catch(() => {})`).
+- Admin dashboard (`B2BAdminView` → tab Bulk Batches): nama + ukuran file
+  sumber tampil di setiap card, tombol **Unduh file sumber** meminta signed
+  URL 300 detik via aksi gateway baru `admin_b2b_bulk_source_url` (aksi ini
+  diaudit). Batch lama tanpa path ditandai "file tidak terlacak" — jujur,
+  bukan link kosong.
+
+**Log aktivitas khusus B2B**
+
+- Tabel baru `sp_b2b_activity_log` (deny-all RLS, tulis via service-role
+  gateway, baca via aksi admin baru `admin_b2b_activity_log`) — menjawab
+  "klien X melakukan apa, kapan, pada batch mana, senilai berapa", tanpa PII.
+- Helper `_shared/b2bActivityLog.ts` (`logB2BActivity`, fire-and-forget).
+  Titik tulis: pengajuan batch, detail dibuka, invoice dibuat, pembayaran
+  diterima (webhook Xendit), invoice kadaluarsa, insurer ditugaskan, polis
+  induk diterbitkan, polis diunggah insurer, file sumber diunduh admin.
+- Tab admin baru **Aktivitas**: pencarian, badge aktor (klien/admin/insurer/
+  sistem), nomor batch, IP, detail JSON, load-more.
+- Pertahanan berlapis: trigger audit DB di `sp_b2b_batches` (UPDATE/DELETE →
+  `sp_audit_log`, pola 20260714) — perubahan status/polis/nominal terlihat
+  apa pun yang menulisnya.
+
+**Template Excel resmi**
+
+- Tombol baru di wizard: **Unduh template Excel resmi**
+  (`Template_Impor_Massal_SurePath.xlsx`). Header kolom memakai label PERSIS
+  milik parser (`FIELD_LABELS`), jadi auto-map menemukan semuanya 1:1 tanpa
+  pemetaan manual; berisi 2 baris contoh.
+
+**Kerja rumah**
+
+- 12 unit test baru (`b2bBulkProvenance.test.ts`, `b2bBulkTemplate.test.ts`).
+- Desain flow pengajuan polis B2B + output artifacts selain Excel:
+  `docs/B2B_SUBMISSION_FLOW.md`.
+
 ## v2.9.11 - 2026-11-18
 
 ### Google sign-in kini smooth setelah popup ditutup + sinkronisasi e2e login

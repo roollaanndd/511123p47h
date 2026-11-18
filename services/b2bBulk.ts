@@ -18,6 +18,11 @@ export interface SpB2BBatch {
   company_name: string;
   product_type: string;
   source_file_name: string | null;
+  // v2.9.12 — provenance file sumber: PATH di bucket privat b2b-documents
+  // (bukan URL), plus ukuran/MIME. Batch lama: null.
+  source_file_path: string | null;
+  source_file_size: number | null;
+  source_file_mime: string | null;
   item_count: number;
   total_premium_gross: number;
   total_discount: number;
@@ -127,6 +132,8 @@ export interface CreateB2BBulkItemInput {
 export async function createB2BBulkBatch(input: {
   companyName: string;
   sourceFileName?: string;
+  /** v2.9.12 — PATH storage file sumber yang diunggah dulu via uploadB2BBulkSourceFile. */
+  sourceFile?: { path: string; size: number; mime: string };
   items: CreateB2BBulkItemInput[];
   /** v2.9.7 — pilihan asuransi klien. Server verifikasi dan simpan sebagai
    *  catatan batch; admin melihatnya saat meng-assign insurer. */
@@ -135,6 +142,9 @@ export async function createB2BBulkBatch(input: {
   const { data, error } = await callGateway('b2b_bulk_create_batch', {
     company_name: input.companyName,
     source_file_name: input.sourceFileName,
+    source_file_path: input.sourceFile?.path,
+    source_file_size: input.sourceFile?.size,
+    source_file_mime: input.sourceFile?.mime,
     items: input.items,
     preferred_insurer_id: input.preferredInsurerId ?? undefined,
   });
@@ -248,16 +258,73 @@ export async function adminAssignB2BBulkInsurer(batchId: string, insurerId: stri
 
 // ─── Document upload (reuses the b2b-documents bucket) ────────────────────
 
-export async function uploadB2BBulkSourceFile(clientId: string, batchNumberHint: string, file: File): Promise<string | null> {
+// FIX v2.9.12: file sumber klien sebelumnya diunggah fire-and-forget dan
+// fungsi ini mengembalikan getPublicUrl() yang pasti 404 (bucket privat) —
+// alamat file tidak pernah terekam, admin tidak bisa mengunduh ulang. Kini
+// mengembalikan PATH storage + metadata (yang disimpan ke sp_b2b_batches lewat
+// createB2BBulkBatch), dan pemanggil WAJIB menunggu hasilnya.
+export interface B2BBulkSourceUpload {
+  path: string;
+  size: number;
+  mime: string;
+}
+
+export async function uploadB2BBulkSourceFile(clientId: string, batchNumberHint: string, file: File): Promise<B2BBulkSourceUpload | { error: string }> {
   const ext = (file.name.split('.').pop() ?? 'bin').toLowerCase();
   const path = `${clientId}/bulk-source/${batchNumberHint}-${Date.now()}.${ext}`;
   // Tipe MIME ditentukan dari ekstensi bila peramban tidak memberinya (lihat storage.ts).
   const prepared = prepareB2BDocument(file);
-  if ('error' in prepared) { console.error('uploadB2BBulkSourceFile:', prepared.error); return null; }
-  const { error } = await supabase.storage.from('b2b-documents').upload(path, prepared.file, { upsert: true, contentType: prepared.file.type });
-  if (error) { console.error('uploadB2BBulkSourceFile:', error); return null; }
-  const { data } = supabase.storage.from('b2b-documents').getPublicUrl(path);
-  return data.publicUrl;
+  if ('error' in prepared) { console.error('uploadB2BBulkSourceFile:', prepared.error); return { error: prepared.error }; }
+  const { data, error } = await supabase.storage.from('b2b-documents').upload(path, prepared.file, { upsert: true, contentType: prepared.file.type });
+  if (error || !data) {
+    console.error('uploadB2BBulkSourceFile:', error);
+    return { error: error?.message ?? 'Gagal mengunggah file sumber.' };
+  }
+  // data.path adalah path yang BENAR sesuai server (aman terhadap perbedaan
+  // sanitasi); jangan bangun path manual di sisi klien.
+  return { path: data.path, size: prepared.file.size, mime: prepared.file.type || 'application/octet-stream' };
+}
+
+/** Admin: minta tautan unduh berumur pendek untuk file sumber sebuah batch. */
+export interface B2BBulkSourceDownload {
+  file_name: string | null;
+  file_size: number | null;
+  file_mime: string | null;
+  url: string;
+}
+
+export async function adminGetB2BBulkSourceUrl(batchId: string): Promise<B2BBulkSourceDownload | { error: string }> {
+  const { data, error } = await callGateway('admin_b2b_bulk_source_url', { batch_id: batchId });
+  if (error) return { error };
+  return data as B2BBulkSourceDownload;
+}
+
+// ─── B2B activity log (v2.9.12) ────────────────────────────────────────────
+
+export interface SpB2BActivityEntry {
+  id: string;
+  created_at: string;
+  client_id: string | null;
+  actor_role: string | null;
+  actor_email: string | null;
+  batch_id: string | null;
+  batch_number: string | null;
+  action: string;
+  summary: string;
+  detail: Record<string, unknown> | null;
+  ip: string | null;
+  user_agent: string | null;
+}
+
+export async function adminListB2BActivity(opts: { limit?: number; offset?: number; clientId?: string; batchId?: string } = {}): Promise<SpB2BActivityEntry[]> {
+  const { data, error } = await callGateway('admin_b2b_activity_log', {
+    limit: opts.limit,
+    offset: opts.offset,
+    client_id: opts.clientId,
+    batch_id: opts.batchId,
+  });
+  if (error) { console.error('adminListB2BActivity:', error); return []; }
+  return (data ?? []) as SpB2BActivityEntry[];
 }
 
 // FIX 2026-11-05: b2b-documents is a PRIVATE bucket. The previous version of

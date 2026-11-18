@@ -18,6 +18,7 @@ import {
   type FleetAddOns,
 } from '../../_shared/b2bFleetRating.ts';
 import { loadActiveBulkRateConfig } from './b2bSettings.ts';
+import { logB2BActivity } from '../../_shared/b2bActivityLog.ts';
 
 const json = (body: unknown, status = 200): ActionResult => ({ status, body });
 const ok = (data: unknown): ActionResult => json({ data });
@@ -214,6 +215,14 @@ export async function handleB2BBulkAction(action: string, ctx: GatewayContext): 
         ?? 'Klien B2B',
       ).trim() || 'Klien B2B';
       const sourceFileName = params.source_file_name ? String(params.source_file_name).slice(0, 255) : null;
+      // v2.9.12 — provenance file sumber. Frontend mengunggah file asli ke
+      // b2b-documents SEBELUM memanggil aksi ini dan mengirim PATH storage-nya
+      // (bucket privat — path, bukan URL). Tanpa ini file asli jadi yatim:
+      // tersimpan di bucket tapi alamatnya tidak terekam di mana pun.
+      const sourceFilePath = params.source_file_path ? String(params.source_file_path).trim() : null;
+      const sourceFileSize = Number.isFinite(Number(params.source_file_size))
+        ? Math.round(Number(params.source_file_size)) : null;
+      const sourceFileMime = params.source_file_mime ? String(params.source_file_mime).slice(0, 100) : null;
 
       // v2.9.7 — preferensi asuransi dari klien. Diverifikasi ke sp_insurers
       // agar tidak nyampah kolom notes dengan ID hantu; namanya saja yang
@@ -284,6 +293,9 @@ export async function handleB2BBulkAction(action: string, ctx: GatewayContext): 
         client_id: clientId,
         company_name: companyName,
         source_file_name: sourceFileName,
+        source_file_path: sourceFilePath,
+        source_file_size: sourceFileSize,
+        source_file_mime: sourceFileMime,
         item_count: totals.itemCount,
         total_premium_gross: totals.totalPremiumGross,
         total_discount: totals.totalDiscount,
@@ -357,6 +369,29 @@ export async function handleB2BBulkAction(action: string, ctx: GatewayContext): 
         read: false,
       }).then(() => {}, () => {});
 
+      // v2.9.12 — jejak khusus B2B (kaya konteks; tanpa PII).
+      logB2BActivity(db, {
+        clientId,
+        batchId: batch.id,
+        batchNumber: batch.batch_number,
+        actorRole: caller.role,
+        actorEmail: caller.email,
+        action: 'bulk_batch_created',
+        summary: `${companyName} mengajukan impor massal ${totals.itemCount} unit, total Rp ${totals.totalAmount.toLocaleString('id-ID')}.`,
+        detail: {
+          source_file_name: sourceFileName,
+          source_file_path: sourceFilePath,
+          source_file_size: sourceFileSize,
+          item_count: totals.itemCount,
+          total_premium_net: totals.totalPremiumNet,
+          total_admin_fee: totals.totalAdminFee,
+          total_amount: totals.totalAmount,
+          preferred_insurer: preferredInsurerNote,
+        },
+        ip: ctx.reqIp,
+        userAgent: ctx.reqUserAgent,
+      });
+
       return ok({ batch, totals });
     }
 
@@ -415,6 +450,20 @@ export async function handleB2BBulkAction(action: string, ctx: GatewayContext): 
         const { data: plans } = await db.from('sp_b2b_plans').select('id, name, code, loading_rate').in('id', planIds);
         for (const p of plans ?? []) plansMap[p.id] = { name: p.name, code: p.code, loading_rate: Number(p.loading_rate) };
       }
+
+      // v2.9.12 — audit akses: siapa membuka detail batch (klien ATAU admin).
+      logB2BActivity(db, {
+        clientId: batch.client_id,
+        batchId: batch.id,
+        batchNumber: batch.batch_number,
+        actorRole: caller.isAdmin ? (caller.role ?? 'ADMIN') : caller.role,
+        actorEmail: caller.email,
+        action: 'bulk_batch_viewed',
+        summary: `${caller.email || 'Pengguna'} membuka detail batch ${batch.batch_number}.`,
+        detail: { viewer_role: caller.isAdmin ? 'admin' : 'b2b_client', item_count: batch.item_count },
+        ip: ctx.reqIp,
+        userAgent: ctx.reqUserAgent,
+      });
 
       return ok({
         batch: { ...batch, master_policy_signed_url: masterPolicySignedUrl },
@@ -542,6 +591,21 @@ export async function handleB2BBulkAction(action: string, ctx: GatewayContext): 
       await db.from('sp_b2b_batch_items').update({ status: 'ISSUED', policy_number: policyNumber, updated_at: ts }).eq('batch_id', batchId);
 
       const { data: signed } = await db.storage.from('b2b-documents').createSignedUrl(masterPolicyPath, 300);
+
+      // v2.9.12 — audit terbitan polis induk oleh admin.
+      logB2BActivity(db, {
+        clientId: updated.client_id,
+        batchId,
+        batchNumber: updated.batch_number,
+        actorRole: caller.role ?? 'ADMIN',
+        actorEmail: caller.email,
+        action: 'bulk_master_policy_issued',
+        summary: `Polis induk ${policyNumber} diterbitkan untuk ${updated.batch_number}.`,
+        detail: { master_policy_number: policyNumber, master_policy_path: masterPolicyPath, insurer_name: insurerName, actor: 'admin' },
+        ip: ctx.reqIp,
+        userAgent: ctx.reqUserAgent,
+      });
+
       return ok({ ...updated, master_policy_signed_url: signed?.signedUrl ?? null });
     }
 
@@ -563,6 +627,21 @@ export async function handleB2BBulkAction(action: string, ctx: GatewayContext): 
       }).eq('id', batchId).select().maybeSingle();
       if (error) return err(error.message, 400);
       if (!data) return err('Batch not found', 404);
+
+      // v2.9.12 — audit penetapan insurer.
+      logB2BActivity(db, {
+        clientId: data.client_id,
+        batchId,
+        batchNumber: data.batch_number,
+        actorRole: caller.role ?? 'ADMIN',
+        actorEmail: caller.email,
+        action: 'bulk_insurer_assigned',
+        summary: `Admin menugaskan ${insurer.name} menerbitkan polis untuk ${data.batch_number}.`,
+        detail: { insurer_id: insurerId, insurer_name: insurer.name, batch_status: data.status },
+        ip: ctx.reqIp,
+        userAgent: ctx.reqUserAgent,
+      });
+
       return ok(data);
     }
 
@@ -642,7 +721,7 @@ export async function handleB2BBulkAction(action: string, ctx: GatewayContext): 
       if (new Date(authToken.expires_at) < new Date()) return err('Token expired', 410);
 
       const { data: batch, error: batchErr } = await db.from('sp_b2b_batches')
-        .select('id, status, insurer_id, company_name, batch_number').eq('id', batchId).maybeSingle();
+        .select('id, status, insurer_id, client_id, company_name, batch_number').eq('id', batchId).maybeSingle();
       if (batchErr) return err(batchErr.message, 400);
       if (!batch || batch.insurer_id !== authToken.insurer_id) return err('Batch not found or not assigned to your insurer', 404);
       if (batch.status !== 'PAID') return err(`Batch belum berstatus PAID (status: ${batch.status})`, 409);
@@ -667,6 +746,20 @@ export async function handleB2BBulkAction(action: string, ctx: GatewayContext): 
         read: false,
       }).then(() => {}, () => {});
 
+      // v2.9.12 — audit terbitan oleh insurer (token-authed).
+      logB2BActivity(db, {
+        clientId: batch.client_id,
+        batchId,
+        batchNumber: batch.batch_number,
+        actorRole: 'INSURER',
+        actorEmail: null,
+        action: 'bulk_insurer_uploaded_master_policy',
+        summary: `Insurer mengunggah polis induk ${policyNumber || '(no number)'} untuk ${batch.batch_number}.`,
+        detail: { master_policy_number: policyNumber || null, master_policy_path: path, insurer_id: authToken.insurer_id },
+        ip: ctx.reqIp,
+        userAgent: ctx.reqUserAgent,
+      });
+
       const { data: signed } = await db.storage.from('b2b-documents').createSignedUrl(path, 300);
       return ok({ ...updated, master_policy_signed_url: signed?.signedUrl ?? null });
     }
@@ -674,6 +767,70 @@ export async function handleB2BBulkAction(action: string, ctx: GatewayContext): 
     case 'admin_b2b_bulk_list_batches': {
       if (!caller.isAdmin) return err('Forbidden: admin only', 403);
       const { data, error } = await db.from('sp_b2b_batches').select('*').order('created_at', { ascending: false });
+      if (error) return err(error.message, 400);
+      return ok(data ?? []);
+    }
+
+    // ── Admin: tautan unduh (berumur pendek) file sumber upload massal ─────
+    // v2.9.12. File asli klien berada di bucket privat b2b-documents pada
+    // sp_b2b_batches.source_file_path; admin tidak bisa (dan tidak boleh)
+    // membuat tautannya sendiri dari peramban. Aksi ini menge-sign URL 300
+    // detik dan mengaudit unduhannya. Batch lama (sebelum kolom ada) tanpa
+    // path mendapat pesan jujur, bukan link kosong.
+    case 'admin_b2b_bulk_source_url': {
+      if (!caller.isAdmin) return err('Forbidden: admin only', 403);
+      const batchId = String(params.batch_id ?? '');
+      if (!batchId) return err('batch_id required', 400);
+      const { data: batch, error: batchErr } = await db.from('sp_b2b_batches')
+        .select('id, batch_number, company_name, client_id, source_file_name, source_file_path, source_file_size, source_file_mime')
+        .eq('id', batchId).maybeSingle();
+      if (batchErr) return err(batchErr.message, 400);
+      if (!batch) return err('Batch not found', 404);
+      if (!batch.source_file_path) {
+        return err('File sumber tidak tercatat untuk batch ini (diimpor sebelum v2.9.12 atau tanpa file).', 404);
+      }
+      const { data: signed, error: signErr } = await db.storage
+        .from('b2b-documents')
+        .createSignedUrl(batch.source_file_path, 300);
+      if (signErr || !signed) {
+        return err(signErr?.message ?? 'File sumber tidak dapat ditemukan di storage.', 404);
+      }
+
+      logB2BActivity(db, {
+        clientId: batch.client_id,
+        batchId: batch.id,
+        batchNumber: batch.batch_number,
+        actorRole: caller.role ?? 'ADMIN',
+        actorEmail: caller.email,
+        action: 'bulk_source_file_downloaded',
+        summary: `Admin mengunduh file sumber ${batch.source_file_name ?? '(tanpa nama)'} dari ${batch.batch_number}.`,
+        detail: { file_name: batch.source_file_name, file_size: batch.source_file_size, file_mime: batch.source_file_mime },
+        ip: ctx.reqIp,
+        userAgent: ctx.reqUserAgent,
+      });
+
+      return ok({
+        file_name: batch.source_file_name,
+        file_size: batch.source_file_size,
+        file_mime: batch.source_file_mime,
+        url: signed.signedUrl,
+      });
+    }
+
+    // ── Admin: baca log aktivitas B2B ───────────────────────────────────────
+    // v2.9.12. Terbaru dulu, halaman 1..500 baris, bisa difilter per klien
+    // dan/atau per batch. RLS tabel deny-all, jadi satu-satunya pintu baca.
+    case 'admin_b2b_activity_log': {
+      if (!caller.isAdmin) return err('Forbidden: admin only', 403);
+      const limit = Math.min(Math.max(Number(params.limit) || 100, 1), 500);
+      const offset = Math.max(Number(params.offset) || 0, 0);
+      let q = db.from('sp_b2b_activity_log')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .range(offset, offset + limit - 1);
+      if (params.client_id) q = q.eq('client_id', String(params.client_id));
+      if (params.batch_id) q = q.eq('batch_id', String(params.batch_id));
+      const { data, error } = await q;
       if (error) return err(error.message, 400);
       return ok(data ?? []);
     }
