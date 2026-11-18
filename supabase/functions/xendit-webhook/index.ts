@@ -1,5 +1,6 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { logB2BActivity } from '../_shared/b2bActivityLog.ts';
 
 // Server-to-server: called by Xendit payment gateway (no browser CORS needed).
 const CORS = { 'Content-Type': 'application/json' };
@@ -499,6 +500,20 @@ Deno.serve(async (req) => {
           metadata: { batch_id: batch.id, amount: paid_amount, payment_method },
           read:     false,
         });
+
+        // v2.9.12 — audit: batch lunas (aktor: sistem webhook Xendit).
+        logB2BActivity(supabase, {
+          clientId: batch.client_id,
+          batchId: batch.id,
+          batchNumber: batch.batch_number,
+          actorRole: 'SYSTEM',
+          actorEmail: null,
+          action: 'bulk_paid',
+          summary: `${batch.company_name ?? 'Klien B2B'} melunasi ${batch.batch_number} senilai Rp ${actualPaid.toLocaleString('id-ID')} (${batch.item_count} unit).`,
+          detail: { amount: actualPaid, payment_method, xendit_invoice_id: xendit_invoice_id ?? null },
+          ip: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null,
+          userAgent: req.headers.get('user-agent')?.slice(0, 255) ?? null,
+        });
       }
 
       return new Response('ok', { status: 200, headers: CORS });
@@ -526,11 +541,30 @@ Deno.serve(async (req) => {
 
     // If EXPIRED — revert the B2B batch so the client can re-invoice it.
     if (normalizedStatus === 'EXPIRED' && payment.batch_id) {
-      await supabase
+      const reverted = await supabase
         .from('sp_b2b_batches')
         .update({ status: 'SUBMITTED', updated_at: new Date().toISOString() })
         .eq('id', payment.batch_id)
-        .eq('status', 'INVOICED');
+        .eq('status', 'INVOICED')
+        .select('id, batch_number, client_id, company_name')
+        .maybeSingle();
+
+      // v2.9.12 — audit: invoice kadaluarsa, batch dikembalikan agar klien
+      // bisa membuat invoice baru.
+      if (reverted.data) {
+        logB2BActivity(supabase, {
+          clientId: reverted.data.client_id,
+          batchId: reverted.data.id,
+          batchNumber: reverted.data.batch_number,
+          actorRole: 'SYSTEM',
+          actorEmail: null,
+          action: 'bulk_invoice_expired',
+          summary: `Invoice ${reverted.data.batch_number} kadaluarsa; batch dikembalikan ke SUBMITTED agar bisa ditagih ulang.`,
+          detail: { xendit_invoice_id: xendit_invoice_id ?? null },
+          ip: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null,
+          userAgent: req.headers.get('user-agent')?.slice(0, 255) ?? null,
+        });
+      }
     }
 
     return new Response('ok', { status: 200, headers: CORS });

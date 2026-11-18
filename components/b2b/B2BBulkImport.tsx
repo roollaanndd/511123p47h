@@ -14,7 +14,11 @@ import {
   type VehicleClass, type Zone,
 } from '../../services/b2bFleetRating';
 import { downloadBulkQuoteExcel, quoteRowFromLineItem } from '../../services/b2bBulkQuoteExcel';
-import { createB2BBulkBatch, createB2BBulkInvoice, uploadB2BBulkSourceFile } from '../../services/supabaseService';
+import { downloadBulkTemplate } from '../../services/b2bBulkTemplate';
+import {
+  createB2BBulkBatch, createB2BBulkInvoice, uploadB2BBulkSourceFile,
+  type B2BBulkSourceUpload,
+} from '../../services/supabaseService';
 
 interface Props {
   clientId: string;
@@ -139,6 +143,25 @@ const B2BBulkImport: React.FC<Props> = ({ clientId, client, onDone, lang }) => {
   const handleSubmit = async () => {
     setSubmitting(true);
     setError('');
+
+    // v2.9.12 — file sumber diunggah dan DITUNGGU sebelum batch dibuat, lalu
+    // path-nya disimpan bersama batch. Dulu ini fire-and-forget (.catch(=>{}))
+    // setelah batch jadi: upload gagal menghilang tanpa jejak, upload sukses
+    // jadi file yatim yang tak pernah bisa diunduh ulang oleh admin.
+    let sourceFile: B2BBulkSourceUpload | null = null;
+    if (file) {
+      const up = await uploadB2BBulkSourceFile(clientId, `pending-${Date.now()}`, file);
+      if ('error' in up) {
+        setError(t(
+          'The source file could not be uploaded, nothing was submitted. Please try again.',
+          'File sumber gagal diunggah, pengajuan belum dikirim. Silakan coba lagi.',
+        ) + ` (${up.error})`);
+        setSubmitting(false);
+        return;
+      }
+      sourceFile = up;
+    }
+
     const payloadItems = rawRows.map((r, i) => {
       const built = items[i];
       return {
@@ -170,6 +193,7 @@ const B2BBulkImport: React.FC<Props> = ({ clientId, client, onDone, lang }) => {
     const result = await createB2BBulkBatch({
       companyName: client?.company_name ?? '',
       sourceFileName: fileName,
+      sourceFile: sourceFile ?? undefined,
       items: payloadItems,
     });
 
@@ -178,8 +202,6 @@ const B2BBulkImport: React.FC<Props> = ({ clientId, client, onDone, lang }) => {
       setSubmitting(false);
       return;
     }
-
-    if (file) uploadB2BBulkSourceFile(clientId, result.batch.batch_number, file).catch(() => {});
 
     setBatchResult({ batchId: result.batch.id, batchNumber: result.batch.batch_number });
     setStep('done');
@@ -221,6 +243,17 @@ const B2BBulkImport: React.FC<Props> = ({ clientId, client, onDone, lang }) => {
             onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) handleFile(f); }}
           />
         </label>
+
+        {/* v2.9.12 — template resmi: label kolomnya persis FIELD_LABELS parser,
+            jadi auto-map menemukan semuanya tanpa pemetaan manual. */}
+        <button
+          type="button"
+          onClick={() => downloadBulkTemplate()}
+          className="flex items-center justify-center gap-2 text-xs font-bold text-ds-green hover:underline"
+        >
+          <FileDown size={14} />
+          {t('Download the official Excel template', 'Unduh template Excel resmi')}
+        </button>
 
         {error && (
           <div className="flex items-start gap-2 rounded-xl bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 p-3 text-xs text-rose-700 dark:text-rose-300">

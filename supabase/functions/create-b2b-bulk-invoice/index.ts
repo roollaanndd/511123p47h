@@ -2,6 +2,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
 import { verifyAuth } from '../_shared/auth.ts';
+import { logB2BActivity } from '../_shared/b2bActivityLog.ts';
 
 // ─── Create Xendit Invoice for a B2B bulk batch ─────────────────────────────
 //
@@ -141,6 +142,20 @@ Deno.serve(async (req) => {
     }
 
     await supabase.from('sp_b2b_batches').update({ status: 'INVOICED', updated_at: new Date().toISOString() }).eq('id', batch.id).eq('status', 'SUBMITTED');
+
+    // v2.9.12 — audit: invoice agregat dibuat (siapa, batch, nominal).
+    logB2BActivity(supabase, {
+      clientId: batch.client_id,
+      batchId: batch.id,
+      batchNumber: batch.batch_number,
+      actorRole: caller.isAdmin ? 'ADMIN' : 'B2B_CLIENT',
+      actorEmail: caller.email ?? null,
+      action: 'bulk_invoice_created',
+      summary: `Invoice pembayaran Rp ${totalAmount.toLocaleString('id-ID')} dibuat untuk ${batch.batch_number} (${batch.item_count} unit).`,
+      detail: { xendit_invoice_id, external_id, amount: totalAmount, item_count: batch.item_count, invoice_url },
+      ip: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? req.headers.get('x-real-ip') ?? null,
+      userAgent: req.headers.get('user-agent')?.slice(0, 255) ?? null,
+    });
 
     return json(CORS, {
       invoice_url,
