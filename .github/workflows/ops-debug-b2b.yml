@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Read edge logs
+      - name: Probe database and logs
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
@@ -16,10 +16,28 @@ jobs:
           set -uo pipefail
           TOK="${SUPABASE_ACCESS_TOKEN//[[:space:]]/}"
           REF="${PROJECT_REF//[[:space:]]/}"
-          SQL="SELECT timestamp, event_message FROM logs WHERE source_name = 'edge_logs' ORDER BY timestamp DESC LIMIT 40"
+
+          q() {
+            local label="$1" sql="$2" code out
+            out=/tmp/q-${label}.json
+            code=$(curl -sS -o "$out" -w '%{http_code}' -X POST \
+              "https://api.supabase.com/v1/projects/${REF}/database/query" \
+              -H "Authorization: Bearer ${TOK}" -H 'Content-Type: application/json' \
+              -d "$(printf '%s' "$sql" | jq -Rs '{query: .}')")
+            echo "::notice::q_${label}_http=${code}"
+            echo "::notice::q_${label}_body=$(head -c 1500 "$out" | tr '\n' ' ')"
+          }
+
+          q auth_users "select count(*)::int as total from auth.users;"
+          q sp_users "select count(*)::int as total, count(*) filter (where role='B2B_CLIENT')::int as b2b from public.sp_users;"
+          q policies "select count(*)::int as total from public.sp_policy_orders;"
+          q batches "select count(*)::int as total from public.sp_b2b_batches;"
+          q rls_batches "select relrowsecurity, relforcerowsecurity from pg_class where oid='public.sp_b2b_batches'::regclass;"
+
+          SQL="SELECT timestamp, event_message FROM logs WHERE source_name = 'edge_logs' ORDER BY timestamp DESC LIMIT 10"
           code=$(curl -sS -G -o /tmp/logs.json -w '%{http_code}' \
             "https://api.supabase.com/v1/projects/${REF}/analytics/endpoints/logs" \
             -H "Authorization: Bearer ${TOK}" \
             --data-urlencode "sql=${SQL}")
           echo "::notice::logs_http=${code}"
-          echo "::notice::logs_body=$(head -c 12000 /tmp/logs.json | tr '\n' ' ')"
+          echo "::notice::logs_body=$(head -c 10000 /tmp/logs.json | tr '\n' ' ')"
