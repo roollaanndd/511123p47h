@@ -28,15 +28,12 @@ export interface GatewayResponse {
   [key: string]: unknown;
 }
 
-export async function callGateway(
+async function postToGateway(
+  token: string,
   action: string,
   params?: Record<string, unknown>,
   options?: { idempotencyKey?: string },
 ): Promise<GatewayResponse> {
-  const { data: { session } } = await supabase.auth.getSession();
-  const token = session?.access_token;
-  if (!token) return { error: 'Not authenticated' };
-
   try {
     // FIX v1.49.1: Add 15-second timeout to prevent infinite loading
     const controller = new AbortController();
@@ -83,6 +80,47 @@ export async function callGateway(
     }
     return { error: String(e?.message ?? e) };
   }
+}
+
+async function currentAccessToken(): Promise<string | undefined> {
+  const { data: { session } } = await supabase.auth.getSession();
+  return session?.access_token ?? undefined;
+}
+
+async function refreshedAccessToken(): Promise<string | undefined> {
+  try {
+    const { data } = await supabase.auth.refreshSession();
+    return data.session?.access_token ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export async function callGateway(
+  action: string,
+  params?: Record<string, unknown>,
+  options?: { idempotencyKey?: string },
+): Promise<GatewayResponse> {
+  let token = await currentAccessToken();
+  if (!token) token = await refreshedAccessToken();
+  if (!token) return { error: 'Not authenticated' };
+
+  let res = await postToGateway(token, action, params, options);
+  // 401 / "invalid token" berarti gateway menolak SEBELUM aksi dijalankan,
+  // jadi retry setelah refresh tidak bisa menggandakan efek samping. Ini
+  // menutup race saat access token kedaluwarsa di tengah sesi B2B yang
+  // sudah lama dibuka (panel batch + dashboard ikut merah karenanya).
+  const authRejected = res.status === 401
+    || res.error === 'Not authenticated'
+    || res.error === 'Unauthorized: invalid token'
+    || res.error === 'Unauthorized: missing bearer token';
+  if (authRejected) {
+    const fresh = await refreshedAccessToken();
+    if (fresh && fresh !== token) {
+      res = await postToGateway(fresh, action, params, options);
+    }
+  }
+  return res;
 }
 
 // Like callGateway, but for the small set of PUBLIC_ACTIONS (data-gateway/index.ts)

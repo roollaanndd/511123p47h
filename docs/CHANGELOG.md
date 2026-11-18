@@ -1,5 +1,16 @@
 # SurePath - Changelog
 
+## v2.9.14 - 2026-11-18
+
+### B2B: sesi kedaluwarsa tidak lagi membuat dashboard/batch ikut merah
+
+- `callGateway` kini mencoba refresh sesi sekali bila gateway menolak dengan
+  401/`invalid token`, lalu mengulang aksi. Retry hanya terjadi setelah gateway
+  menolak lebih awal, jadi tidak ada efek samping ganda untuk aksi tulis.
+- Banner "Sebagian data dashboard belum dapat dimuat" kini menampilkan detail
+  error singkat supaya klien bisa melaporkan akar masalah tanpa membuka console.
+- Workflow diagnostik sementara `ops-debug-b2b.yml` dihapus setelah selesai.
+
 ## v2.9.13 - 2026-11-18
 
 ### PDF B2B identik dengan agent, scan STNK, dan lampiran sesuai kondisi unit
