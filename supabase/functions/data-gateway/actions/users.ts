@@ -27,9 +27,15 @@ export async function handleUsersAction(action: string, ctx: GatewayContext): Pr
           emailConfirmedAt: caller.emailConfirmedAt,
           spUser: caller.spUser,
         });
+        // v2.9.16: hash/salt PIN adalah rahasia server — jangan pernah ikut
+        // dalam profil yang dikirim ke browser. Klien hanya butuh statusnya.
+        const safeProfile: Record<string, any> = { ...caller.spUser };
+        delete safeProfile.pin_hash;
+        delete safeProfile.pin_salt;
+        safeProfile.pin_configured = Boolean(caller.spUser.pin_hash);
         return json({
           data: {
-            ...caller.spUser,
+            ...safeProfile,
             trust_tier: verdict.tier,
             trust_grandfathered: verdict.grandfathered,
             trust_reasons: verdict.alasan,

@@ -25,8 +25,11 @@ export const isNoiseAction = (action: string): boolean =>
   ACTIVITY_NOISE_ACTIONS.has(action);
 
 /** Kunci yang nilainya TIDAK PERNAH disalin ke jejak, apa pun labelnya. */
+// `(?:^|_)pin(?:_|$)` sengaja berbatas kata: menolak `pin`, `pin_hash`,
+// `agent_pin`, tapi tidak menghilangkan kunci tidak bersalah seperti
+// `shipping` (yang kebetulan mengandung substring "pin").
 const DENY_VALUE_PATTERN =
-  /pass|sandi|secret|token|otp|ktp|nik|foto|photo|image|base64|signature|cvv|rekening|birth|dob|ssn/i;
+  /(?:^|_)pin(?:_|$)|pass|sandi|secret|token|otp|ktp|nik|foto|photo|image|base64|signature|cvv|rekening|birth|dob|ssn/i;
 
 /** Kunci yang nilainya aman dan menjawab "apa yang dikerjakan". Urutan di
  *  sini juga urutan tampil di kolom Detail. */
