@@ -791,6 +791,15 @@ Lighthouse mobile (build produksi lokal): **skor 64 → 82**, FCP 3.8→2.4s, LC
 | Agent | demo.agent@myinsurepath.com | Demo1234! |
 | Admin | demo.admin@myinsurepath.com | Demo1234! |
 
+## v2.9.13 — rollout produksi (2026-11-18)
+- PR #389 (merge `158563f`): PDF B2B dipetakan ke `QuotationSlipData` + `publishAndDownloadQuotation` (generator agent, US Letter 4 halaman + QR e-quote, `sourceApp: 'B2B'`); `b2bProposalPdf.ts` dihapus. Scan STNK via `stnk-ocr` auto-fill field kendaraan, jujur saat ERROR. BARU cukup BSTK/faktur, BEKAS minimal 3 foto; copy polis opsional wajib expiry >= today. Field `vehicle_condition` + `policy_copy_expiry` di `sp_b2b_batch_items`.
+- Migrasi `20261118110000_b2b_unit_condition_policy.sql` dipakai via Management API. **Penting:** migrations `20261113120000` belum terpasang di produksi (kolom `vehicle_photos` tidak ada), jadi migrasi v2.9.13 diperbaiki (PR #391) untuk menambahkan `vehicle_photos` secara defensif. Verifikasi: kolom, constraint CHECK, dan komentar terbukti ada.
+- Deploy: workflow `deploy-edge-functions.yml` di-dispatch; `data-gateway` sukses. Endpoint publik `get_public_quotation` merespons `{"error":"Quotation not found"}` (artinya hidup).
+- Bundle produksi `myinsurepath.com` = 2.9.13; chunk `B2BUnitOrder-BDSKFvOa.js` memuat semua marker fitur.
+- workflow one-shot `ops-b2b-migration.yml` dipakai untuk menjalankan SQL via secret GitHub lalu dihapus (PR #393). Token Supabase tidak pernah tersedia lokal; semua operasi DB lewat secret di Actions.
+- `Supabase Preview` check gagal sejak `884f1c2` (sebelum rilis ini): "Remote migration versions not found in local migrations directory" = drift lama, bukan regresi.
+- Checkout owner tetap di branch `redesign/uiux-all-apps`; ref lokal `main` di-fast-forward ke `22ceab9` tanpa mengganti branch aktif.
+
 ## Backlog
 - [ ] `styles.css` ada komentar berisi `*/` yang bikin warning css-syntax-error saat minify (pre-existing, non-blocking)
 - [ ] `vercel.json`: aturan `Cache-Control: immutable` untuk `*.js` ikut kena `/sw.js`. Browser melewati HTTP cache saat memeriksa SW dan Vercel purge tiap deploy, jadi tidak merusak — tapi lebih rapi kalau `sw.js` dikecualikan.
