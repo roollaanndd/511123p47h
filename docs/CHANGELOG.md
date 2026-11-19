@@ -48,6 +48,28 @@
   `sp_insurer_activity_log.details` beserta `key` objek.
 - Tanda tangan SigV4 diverifikasi silang dengan botocore 1.44.6 dan dikunci
   sebagai known-answer test (`services/__tests__/emailR2Integration.test.ts`).
+- Identitas pengirim dipisah per alur: `security@` untuk reset PIN,
+  `policies@` untuk review/reminder insurer, `notifications@` untuk digest
+  admin, `noreply@` sebagai fallback. Semua bisa ditimpa lewat
+  `RESEND_FROM_<ALUR>` atau `RESEND_FROM` tanpa mengubah kode.
+- Enam template email Auth Supabase (konfirmasi, reset kata sandi, login OTP,
+  perubahan email, undangan, verifikasi ulang) kini hidup di
+  `supabase/templates/email/`. Hijau `#059669`, tanpa gradient, tanpa gambar
+  eksternal, tabel + inline CSS, lebar 560 px. Variabel wajib
+  (`{{ .ConfirmationURL }}`, `{{ .Token }}`) dijaga
+  `scripts/check-email-templates.mjs` yang ikut berjalan di `npm run lint`.
+- Workflow **Apply email templates (Supabase Auth)** menerapkan template satu per
+  satu lewat Management API. Default `dry_run=true`; menerapkan ke produksi
+  menuntut `dry_run=false` **dan** `confirm_production=APPLY`. SMTP dan Site URL
+  tidak disentuh.
+- Pratinjau keenam template: `surepath-proposals/email-preview.html`.
+
+- Workflow baru **Setup Resend domain + mailer** (dispatch-only): membuat domain
+  di Resend, menulis DKIM/SPF ke Cloudflare bila token punya izin DNS,
+  memverifikasi, lalu menyetel `RESEND_FROM`. SMTP Supabase Auth hanya disentuh
+  bila `configure_auth_smtp=true`, karena kesalahan di sana memblokir email
+  login pengguna baru.
+
 - **Yang belum aktif:** UI masih memakai Supabase Storage; R2 baru hidup setelah
   `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`
   dipasang dan bucket privat + CORS disiapkan. Tanpa itu ketiga aksi menjawab

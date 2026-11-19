@@ -21,11 +21,17 @@
 
 export interface EmailConfig {
   apiKey: string;
-  /** Default: `SurePath <noreply@myinsurepath.com>` */
+  /** Pengirim default (global). */
   from: string;
   /** Default: https://api.resend.com */
   baseUrl: string;
   timeoutMs: number;
+  /** `RESEND_FROM` diisi eksplisit? Kalau ya, ia menang atas identitas per-alur. */
+  fromExplicit?: boolean;
+  /** Pengirim per alur, hasil `RESEND_FROM_<ALUR>` bila ada. */
+  senders?: Record<string, string>;
+  /** `RESEND_REPLY_TO`; kosong berarti tanpa header Reply-To. */
+  replyTo?: string;
 }
 
 export interface EmailMessage {
@@ -39,6 +45,11 @@ export interface EmailMessage {
   idempotencyKey?: string;
   /** Tag Resend untuk analitik, mis. ['insurer-review']. Jangan taruh PII. */
   tags?: Array<{ name: string; value: string }>;
+  /**
+   * Alur pengirim. Bila kosong, diambil dari `tags[0].value`. Dipakai untuk
+   * memilih identitas pengirim (mis. `policies@` vs `security@`).
+   */
+  flow?: string;
 }
 
 export interface EmailResult {
@@ -59,6 +70,45 @@ export class EmailError extends Error {
 
 const DEFAULT_FROM = 'SurePath <noreply@myinsurepath.com>';
 const DEFAULT_BASE = 'https://api.resend.com';
+
+/**
+ * Identitas pengirim per alur pada domain yang sama.
+ *
+ * Resend tidak "membuat mailbox": begitu `myinsurepath.com` terverifikasi
+ * (DKIM + SPF di `send.`), semua local part sah dipakai sebagai pengirim.
+ * Yang perlu dipisah justru reputasinya: kode reset PIN tidak boleh berbagi
+ * pengirim dengan digest harian, supaya laporan spam pada satu alur tidak
+ * menjatuhkan alur lain.
+ *
+ * Semua nilai bisa ditimpa lewat env `RESEND_FROM_<ALUR>` (huruf besar,
+ * tanda hubung jadi garis bawah), atau seluruhnya lewat `RESEND_FROM`.
+ */
+export const FLOW_FROM: Record<string, string> = {
+  'pin-reset': 'SurePath Keamanan <security@myinsurepath.com>',
+  'insurer-review': 'SurePath Polis <policies@myinsurepath.com>',
+  'insurer-reminder': 'SurePath Polis <policies@myinsurepath.com>',
+  'insurer-email': 'SurePath Polis <policies@myinsurepath.com>',
+  'daily-report': 'SurePath Notifikasi <notifications@myinsurepath.com>',
+  'welcome': 'SurePath <welcome@myinsurepath.com>',
+};
+
+/** `pin-reset` → `RESEND_FROM_PIN_RESET`. */
+export function senderEnvKey(flow: string): string {
+  return `RESEND_FROM_${String(flow).toUpperCase().replace(/[^A-Z0-9]+/g, '_')}`;
+}
+
+/**
+ * Urutan menang: `msg.from` → `RESEND_FROM_<ALUR>` → `RESEND_FROM` (bila diisi)
+ * → identitas bawaan alur → pengirim default.
+ */
+export function resolveSender(cfg: EmailConfig, msg: EmailMessage): string {
+  if (msg.from) return msg.from;
+  const flow = msg.flow ?? msg.tags?.[0]?.value ?? '';
+  if (flow && cfg.senders?.[flow]) return cfg.senders[flow];
+  if (cfg.fromExplicit) return cfg.from;
+  if (flow && FLOW_FROM[flow]) return FLOW_FROM[flow];
+  return cfg.from;
+}
 const DEFAULT_TIMEOUT_MS = 10_000;
 
 /** Escape untuk interpolasi ke HTML email. Selalu pakai ini untuk data pengguna. */
@@ -78,9 +128,18 @@ export function emailConfigFor(
   env: (key: string) => string | undefined = (k) => Deno.env.get(k),
 ): EmailConfig | null {
   if (!apiKey) return null;
+  const globalFrom = env('RESEND_FROM') || '';
+  const senders: Record<string, string> = {};
+  for (const flow of Object.keys(FLOW_FROM)) {
+    const override = env(senderEnvKey(flow));
+    if (override) senders[flow] = override;
+  }
   return {
     apiKey,
-    from: env('RESEND_FROM') || DEFAULT_FROM,
+    from: globalFrom || DEFAULT_FROM,
+    fromExplicit: Boolean(globalFrom),
+    senders,
+    replyTo: env('RESEND_REPLY_TO') || undefined,
     baseUrl: (env('RESEND_BASE_URL') || DEFAULT_BASE).replace(/\/+$/, ''),
     timeoutMs: Number(env('RESEND_TIMEOUT_MS') || DEFAULT_TIMEOUT_MS),
   };
@@ -116,13 +175,14 @@ export async function sendEmail(
   if (!msg.html || !msg.html.trim()) throw new EmailError('Email tanpa isi', 400);
 
   const body: Record<string, unknown> = {
-    from: msg.from || cfg.from,
+    from: resolveSender(cfg, msg),
     to: recipients,
     subject: msg.subject,
     html: msg.html,
   };
   if (msg.text) body.text = msg.text;
-  if (msg.replyTo) body.reply_to = msg.replyTo;
+  const replyTo = msg.replyTo || cfg.replyTo;
+  if (replyTo) body.reply_to = replyTo;
   if (msg.tags?.length) body.tags = msg.tags.slice(0, 20);
 
   const headers: Record<string, string> = {

@@ -10,7 +10,7 @@
     "build": "npm run seo:sitemap && vite build && npm run seo:prerender && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=build-server/server.cjs && npm run check:dist",
     "start": "node build-server/server.cjs",
     "preview": "vite preview",
-    "lint": "node scripts/check-edge-functions.mjs && tsc --noEmit && eslint . && vitest run",
+    "lint": "node scripts/check-edge-functions.mjs && node scripts/check-email-templates.mjs && tsc --noEmit && eslint . && vitest run",
     "lint:fix": "eslint . --fix",
     "lint:ts": "tsc --noEmit",
     "lint:es": "eslint .",

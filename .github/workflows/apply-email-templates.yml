@@ -1,0 +1,121 @@
+name: Apply email templates (Supabase Auth)
+# Menerapkan template email Auth dari repo ke Supabase — bukan menyalin HTML
+# lewat dashboard, supaya desainnya bisa di-review, punya riwayat, dan diuji.
+#
+# Default dry_run=true: hanya memvalidasi dan menampilkan ringkasan. Set
+# dry_run=false untuk benar-benar mengirim PATCH ke Management API.
+#
+# Template yang disentuh: confirmation, recovery, magic-link, email-change,
+# invite, reauthentication. Site URL, redirect allowlist, dan SMTP TIDAK diubah
+# di sini (SMTP punya workflow sendiri: setup-resend-domain.yml).
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'true = validasi saja, false = terapkan ke Supabase'
+        default: 'true'
+      templates:
+        description: 'Daftar kunci dipisah koma, atau all'
+        default: 'all'
+      confirm_production:
+        description: 'Ketik APPLY untuk mengizinkan dry_run=false'
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validasi secret + pengaman produksi
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          CONFIRM: ${{ inputs.confirm_production }}
+        run: |
+          set -euo pipefail
+          [ -n "${SUPABASE_ACCESS_TOKEN//[[:space:]]/}" ] || { echo "::error::Secret SUPABASE_ACCESS_TOKEN kosong."; exit 1; }
+          [ -n "${SUPABASE_PROJECT_REF//[[:space:]]/}" ] || { echo "::error::Secret SUPABASE_PROJECT_REF kosong."; exit 1; }
+          if [ "$DRY_RUN" != "true" ] && [ "$CONFIRM" != "APPLY" ]; then
+            echo "::error::Untuk menerapkan ke produksi, jalankan ulang dengan dry_run=false DAN confirm_production=APPLY."
+            exit 1
+          fi
+
+      - name: Validasi template dari repo
+        run: node scripts/check-email-templates.mjs --json > /tmp/templates.json
+
+      - name: Ringkasan template
+        run: |
+          set -euo pipefail
+          {
+            echo "### Template email Auth"
+            echo ""
+            echo "| Kunci | Ukuran | Subjek | Field API |"
+            echo "|---|---|---|---|"
+            jq -r '.templates[] | "| \(.key) | \(.content|length) char | \(.subject) | \(.contentField) |"' /tmp/templates.json
+            echo ""
+            echo "Mode: **${{ inputs.dry_run == 'true' && 'validasi saja (dry run)' || 'TERAPKAN KE PRODUKSI' }}**"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Terapkan ke Supabase (satu per satu)
+        if: ${{ inputs.dry_run != 'true' }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SELECTED: ${{ inputs.templates }}
+        run: |
+          set -euo pipefail
+          tok="${SUPABASE_ACCESS_TOKEN//[[:space:]]/}"
+          ref="${SUPABASE_PROJECT_REF//[[:space:]]/}"
+          if [ "${SELECTED}" = "all" ] || [ -z "${SELECTED}" ]; then
+            keys=$(jq -r '.templates[].key' /tmp/templates.json)
+          else
+            keys=$(echo "$SELECTED" | tr ',' '\n' | tr -d ' ')
+          fi
+
+          failed=0
+          for key in $keys; do
+            jq -c --arg k "$key" '.templates[] | select(.key == $k)' /tmp/templates.json > /tmp/one.json
+            if [ ! -s /tmp/one.json ]; then
+              echo "::warning::template '$key' tidak dikenal — dilewati"
+              continue
+            fi
+            sfield=$(jq -r '.subjectField' /tmp/one.json)
+            cfield=$(jq -r '.contentField' /tmp/one.json)
+            payload=$(jq -c --arg s "$sfield" --arg c "$cfield" '{($s): .subject, ($c): .content}' /tmp/one.json)
+
+            code=$(curl -sS -o /tmp/resp.json -w '%{http_code}' -X PATCH \
+              --oauth2-bearer "$tok" -H 'Content-Type: application/json' \
+              -d "$payload" \
+              "https://api.supabase.com/v1/projects/$ref/config/auth")
+            if [ "$code" = "200" ]; then
+              echo "::notice::${key}: diterapkan"
+            else
+              echo "::error::${key}: HTTP ${code} — $(jq -c '{message, error}' /tmp/resp.json 2>/dev/null || true)"
+              failed=1
+            fi
+          done
+          exit "$failed"
+
+      - name: Ingatkan langkah uji
+        if: always()
+        run: |
+          {
+            echo ""
+            echo "### Setelah menerapkan"
+            echo ""
+            echo "1. Daftar dengan email baru → cek email konfirmasi (dari alamat SMTP yang aktif)."
+            echo "2. Lupa kata sandi → cek email reset."
+            echo "3. Login OTP email → kode 6 digit harus terlihat di email."
+            echo ""
+            echo "Kalau salah satu tidak tiba, kembalikan template lewat Supabase → Authentication → Emails,"
+            echo "atau jalankan ulang workflow dengan template yang diperbaiki."
+          } >> "$GITHUB_STEP_SUMMARY"
