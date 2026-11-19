@@ -20,6 +20,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
 import { sendEmailSafe, emailConfigFor } from '../_shared/email.ts';
+import { renderEmail, dataTableBlock, buttonBlock } from '../_shared/emailLayout.ts';
 
 Deno.serve(async (req) => {
   // This function is cron-triggered (auth via x-cron-secret below), not
@@ -128,31 +129,22 @@ Deno.serve(async (req) => {
             ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] ?? c));
           const premiumFmt = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(order.total_premium ?? 0);
           const subject = `[Reminder ${reminderCount + 1}/3] Pengajuan Polis Menunggu Review: ${order.order_number}`;
-          const html = `<!DOCTYPE html><html><body style="font-family:-apple-system,sans-serif;background:#f4f4f5;padding:32px;">
-<table width="560" style="background:#fff;border-radius:16px;margin:0 auto;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
-<tr><td style="background:#7c3aed;padding:24px 32px;color:#fff;">
-  <span style="font-size:20px;font-weight:900;">Sure<span style="color:#c4b5fd;">Path</span></span>
-  <span style="display:block;font-size:10px;letter-spacing:3px;text-transform:uppercase;opacity:0.7;margin-top:2px;">Reminder ${reminderCount + 1} of 3</span>
-</td></tr>
-<tr><td style="padding:32px;">
-  <h1 style="font-size:22px;color:#0f172a;margin:0 0 16px;">Pengajuan polis menunggu review Anda</h1>
-  <p style="font-size:14px;color:#64748b;margin:0 0 24px;">Ini adalah reminder ${reminderStage}. Pengajuan berikut belum Anda tinjau:</p>
-  <table style="background:#f8fafc;border-radius:12px;width:100%;margin-bottom:24px;"><tr><td style="padding:20px;">
-    <p style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:2px;margin:0 0 4px;">No. Order</p>
-    <p style="font-size:14px;font-weight:800;color:#7c3aed;margin:0 0 12px;font-family:monospace;">${esc(order.order_number)}</p>
-    <p style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:2px;margin:0 0 4px;">Nasabah</p>
-    <p style="font-size:14px;font-weight:700;color:#0f172a;margin:0 0 12px;">${esc(order.client_name)}</p>
-    <p style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:2px;margin:0 0 4px;">Total Premi</p>
-    <p style="font-size:16px;font-weight:900;color:#7c3aed;margin:0;">${premiumFmt}</p>
-  </td></tr></table>
-  <a href="${esc(tk.review_url)}" style="display:block;background:#7c3aed;color:#fff;font-size:14px;font-weight:800;text-decoration:none;text-align:center;padding:16px;border-radius:12px;text-transform:uppercase;letter-spacing:1.5px;">Review Sekarang</a>
-  <p style="font-size:11px;color:#94a3b8;margin:20px 0 0;text-align:center;">Link berlaku sampai ${new Date(tk.expires_at).toLocaleDateString('id-ID')}</p>
-</td></tr>
-<tr><td style="background:#f8fafc;padding:16px 32px;text-align:center;">
-  <span style="font-size:10px;color:#94a3b8;">PT Ruang Proteksi Indonesia · myinsurepath.com</span>
-</td></tr>
-</table>
-</body></html>`;
+          const html = renderEmail({
+            title: `Reminder ${reminderCount + 1}/3 — ${order.order_number}`,
+            preheader: `${order.order_number} masih menunggu review Anda.`,
+            eyebrow: `Reminder ${reminderCount + 1} dari 3`,
+            heading: 'Pengajuan menunggu review',
+            intro: `Ini pengingat ${reminderStage}. Pengajuan berikut belum Anda tinjau.`,
+            blocks: [
+              dataTableBlock([
+                { label: 'No. order', value: esc(order.order_number) },
+                { label: 'Nasabah', value: esc(order.client_name) },
+                { label: 'Total premi', value: premiumFmt, emphasis: true },
+              ]),
+              buttonBlock(esc(tk.review_url), 'Review sekarang'),
+            ],
+            note: `Tautan berlaku sampai ${new Date(tk.expires_at).toLocaleDateString('id-ID')}.`,
+          });
           // audit 2026-11-19: satu jalur email (_shared/email.ts).
           void sendEmailSafe(emailConfigFor(RESEND_KEY), {
             to: email,

@@ -4,6 +4,7 @@
 import type { GatewayContext, ActionResult } from './types.ts';
 import { findClientIdByEmail } from './clientLink.ts';
 import { sendEmailSafe, emailConfigFor } from '../../_shared/email.ts';
+import { renderEmail, dataTableBlock, buttonBlock } from '../../_shared/emailLayout.ts';
 
 // json() helper — returns ActionResult (main index.ts converts to Response)
 const json = (body: unknown, status = 200): ActionResult => ({ status, body });
@@ -134,37 +135,23 @@ export async function handleOrdersAction(action: string, ctx: GatewayContext): P
             ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] ?? c));
           const premiumFmt = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(order.total_premium ?? 0);
           const subject = `Pengajuan Polis Baru: ${order.order_number} - ${order.client_name}`;
-          const html = `<!DOCTYPE html><html lang="id"><head><meta charset="UTF-8"/></head>
-<body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:32px 16px;"><tr><td align="center">
-<table width="560" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
-<tr><td style="background:#003B2F;padding:28px 32px;">
-  <span style="font-size:20px;font-weight:900;color:#fff;">Sure<span style="color:#00C16A;">Path</span></span>
-  <span style="display:block;font-size:10px;font-weight:700;color:rgba(255,255,255,0.7);letter-spacing:3px;text-transform:uppercase;margin-top:2px;">Insurer Review Request</span>
-</td></tr>
-<tr><td style="padding:32px;">
-  <p style="font-size:14px;color:#64748b;margin:0 0 8px;font-weight:600;letter-spacing:2px;text-transform:uppercase;">Kepada ${esc(ins?.pic_name || 'Tim ' + (ins?.name || 'Penanggung'))}</p>
-  <h1 style="font-size:24px;font-weight:900;color:#0f172a;margin:0 0 24px;letter-spacing:-1px;line-height:1.3;">Terdapat pengajuan polis<br/>baru yang perlu ditinjau</h1>
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;margin-bottom:28px;"><tr><td style="padding:20px 24px;">
-    <table width="100%" cellpadding="0" cellspacing="0">
-      <tr><td style="padding:6px 0;font-size:11px;font-weight:700;color:#94a3b8;letter-spacing:2px;text-transform:uppercase;">No. Order</td>
-          <td align="right" style="padding:6px 0;font-size:13px;font-weight:800;color:#00C16A;font-family:monospace;">${esc(order.order_number)}</td></tr>
-      <tr><td style="padding:6px 0;font-size:11px;font-weight:700;color:#94a3b8;letter-spacing:2px;text-transform:uppercase;">Nasabah</td>
-          <td align="right" style="padding:6px 0;font-size:13px;font-weight:700;color:#0f172a;">${esc(order.client_name)}</td></tr>
-      <tr><td style="padding:6px 0;font-size:11px;font-weight:700;color:#94a3b8;letter-spacing:2px;text-transform:uppercase;">Produk</td>
-          <td align="right" style="padding:6px 0;font-size:13px;font-weight:700;color:#0f172a;">${esc(order.product_name)}</td></tr>
-      <tr><td style="padding:6px 0;font-size:11px;font-weight:700;color:#94a3b8;letter-spacing:2px;text-transform:uppercase;border-top:1px solid #e2e8f0;">Total Premi</td>
-          <td align="right" style="padding:6px 0;font-size:16px;font-weight:900;color:#00C16A;border-top:1px solid #e2e8f0;">${premiumFmt}</td></tr>
-    </table>
-  </td></tr></table>
-  <a href="${reviewUrl}" style="display:block;background:#00C16A;color:#fff;font-size:14px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;text-decoration:none;padding:16px 24px;border-radius:12px;text-align:center;margin-bottom:16px;">Review Pengajuan Ini</a>
-  <p style="font-size:12px;color:#94a3b8;margin:0;line-height:1.6;">Link review berlaku 7 hari. Di link tersebut Anda dapat: menyetujui, meminta informasi tambahan, atau menolak pengajuan.</p>
-</td></tr>
-<tr><td style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:20px 32px;">
-  <span style="font-size:11px;color:#94a3b8;font-weight:600;">PT Ruang Proteksi Indonesia · myinsurepath.com</span>
-</td></tr>
-</table></td></tr></table>
-</body></html>`;
+          const html = renderEmail({
+            title: `Pengajuan polis baru ${order.order_number}`,
+            preheader: `${order.order_number} menunggu review.`,
+            eyebrow: 'Review pengajuan',
+            heading: 'Terdapat pengajuan polis baru',
+            intro: `Kepada ${esc(ins?.pic_name || 'Tim ' + (ins?.name || 'Penanggung'))}, berikut pengajuan yang perlu ditinjau.`,
+            blocks: [
+              dataTableBlock([
+                { label: 'No. order', value: esc(order.order_number) },
+                { label: 'Nasabah', value: esc(order.client_name) },
+                { label: 'Produk', value: esc(order.product_name) },
+                { label: 'Total premi', value: premiumFmt, emphasis: true },
+              ]),
+              buttonBlock(reviewUrl, 'Review pengajuan ini'),
+            ],
+            note: 'Tautan review berlaku 7 hari. Di sana Anda dapat menyetujui, meminta informasi tambahan, atau menolak pengajuan.',
+          });
           // audit 2026-11-19: satu jalur email (_shared/email.ts).
           // Tetap tanpa await seperti sebelumnya; kegagalan dicatat tanpa PII.
           void sendEmailSafe(emailConfigFor(RESEND_KEY), {

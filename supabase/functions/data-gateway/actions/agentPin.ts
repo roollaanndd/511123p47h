@@ -6,7 +6,8 @@
 // tabel sp_pin_resets (hash OTP, TTL 10 menit, 5 attempt) dan Resend.
 
 import type { GatewayContext, ActionResult } from './types.ts';
-import { sendEmailSafe, emailConfigFor } from '../../_shared/email.ts';
+import { sendEmailSafe, emailConfigFor, escapeHtml } from '../../_shared/email.ts';
+import { renderEmail, tokenBlock, paragraphBlock } from '../../_shared/emailLayout.ts';
 import {
   isValidPin, makePinRecord, newOtp, verifyPin, hashPin, newPinSalt,
 } from '../../_shared/pin.ts';
@@ -135,16 +136,18 @@ export async function handleAgentPinAction(
       }).select('id').single();
       if (insertError) return json({ error: insertError.message }, 400);
 
-      const html = [
-        '<div style="font-family:Arial,sans-serif;max-width:480px;margin:auto">',
-        '<h2 style="color:#064E3B">Reset PIN SurePath</h2>',
-        `<p>Halo ${String(caller.spUser?.name ?? 'Agen').slice(0, 80)},</p>`,
-        '<p>Gunakan kode ini untuk membuat PIN agen baru:</p>',
-        `<div style="font-size:32px;letter-spacing:8px;font-weight:700;padding:16px;background:#F3FAF6;border-radius:12px;text-align:center">${code}</div>`,
-        '<p>Kode berlaku 10 menit dan hanya bisa dipakai sekali. Jangan bagikan kode ini.</p>',
-        '<p>Jika kamu tidak meminta reset, abaikan email ini.</p>',
-        '</div>',
-      ].join('');
+      const html = renderEmail({
+        title: 'Reset PIN SurePath',
+        preheader: 'Kode reset PIN berlaku 10 menit.',
+        eyebrow: 'Keamanan akun',
+        heading: 'Kode reset PIN',
+        intro: `Halo ${escapeHtml(String(caller.spUser?.name ?? 'Agen').slice(0, 80))}, gunakan kode berikut untuk membuat PIN agen baru.`,
+        blocks: [
+          tokenBlock(code),
+          paragraphBlock('Kode berlaku 10 menit dan hanya bisa dipakai sekali.'),
+        ],
+        note: 'Kalau kamu tidak meminta reset, abaikan email ini — PIN lama tetap berlaku.',
+      });
       // audit 2026-11-19: satu jalur email (_shared/email.ts).
       // Idempotency-Key memakai id baris reset: retry tidak mengirim dua kode.
       const mail = await sendEmailSafe(emailConfigFor(RESEND_KEY), {

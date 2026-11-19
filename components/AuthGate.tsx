@@ -7,6 +7,7 @@ import {
 import { SurePathLogo } from './Navbar';
 import { Language, UserRole } from '../types';
 import { supabase, ensureProfile, fetchMyProfileForLogin } from '../services/supabaseService';
+import { callGateway } from '../services/db';
 import { signInWithGoogleIdToken } from '../services/googleAuth';
 import { isUntrustedEmail } from '../supabase/functions/_shared/trust';
 import AgentOnboarding from './agent/AgentOnboarding';
@@ -140,7 +141,14 @@ const AuthGate: React.FC<AuthGateProps> = ({
     try {
       const outcome = await buildUserObj(user);
 
-      if ('user' in outcome) { onAuthSuccess(outcome.user); return; }
+      if ('user' in outcome) {
+        // Email selamat datang: sekali per akun, diputuskan server
+        // (actions/welcome.ts memakai sp_activity_log). Sengaja tidak ditunggu —
+        // kegagalan email tidak boleh menahan atau menggagalkan login.
+        void callGateway('send_welcome_email').catch(() => {});
+        onAuthSuccess(outcome.user);
+        return;
+      }
 
       if ('needsRoleSelection' in outcome) {
         // Brand-new account with no role attached. Hand it to the parent's
