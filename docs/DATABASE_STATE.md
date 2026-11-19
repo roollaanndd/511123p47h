@@ -3,6 +3,20 @@
 > ⚠️ Dokumen ini mencatat fakta penting: **migrasi di repo TIDAK semuanya sudah diapply ke production**.
 > Snapshot per 7 Juli 2026 (v1.23.0), project Supabase `uyjgeteelnswphyzkjwi` ("Myinsurepath").
 
+## Direktori bengkel rekanan (v2.9.18) — **TIDAK ADA MIGRASI DB**
+
+- Fitur ini **tidak menambah tabel, kolom, fungsi, atau kebijakan RLS baru**.
+  Dataset 1.982 baris tinggal sebagai modul statis di
+  `supabase/functions/data-gateway/data/workshopPartners.ts` dan hanya dibaca
+  oleh aksi `list_workshop_partners`, yang digerbang allowlist peran di server.
+- Konsekuensi: tidak ada `sp_*` baru untuk dicantumkan di tabel RLS bawah, dan
+  tidak ada urutan apply/rollback migrasi. Satu-satunya langkah rilis yang
+  menyentuh runtime adalah **deploy ulang `data-gateway` setelah merge**, lalu
+  verifikasi status fungsi `ACTIVE`, versi fungsi, dan health check produksi.
+- Jangan menganggap direktori sudah hidup di produksi hanya karena CI hijau atau
+  bundle frontend sudah memuat menu — keduanya tidak membuktikan edge function
+  produksi menjalankan kode baru.
+
 ## Kelola pengguna B2B (v2.9.17, migrasi `20261119000000`, **SUDAH DITERAPKAN 19 Nov 2026**)
 
 - `20261119000000_b2b_user_management.sql` menambah `company_npwp`,

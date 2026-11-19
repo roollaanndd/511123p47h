@@ -38,6 +38,7 @@ const AnalyticsDashboard = lazy(() => import('./AnalyticsDashboard'));
 const AdminDashboard = lazy(() => import('./AdminDashboard'));
 const EndorsementsAdminView = lazy(() => import('./EndorsementsAdminView'));
 const B2BAdminView = lazy(() => import('./B2BAdminView'));
+const WorkshopDirectory = lazy(() => import('../shared/WorkshopDirectory'));
 const DocumentsAdminView = lazy(() => import('./DocumentsAdminView'));
 const TierPromoConfigAdmin = lazy(() => import('./TierPromoConfigAdmin'));
 import { scrollPortalToTop } from '../shared/scrollReset';
@@ -108,6 +109,7 @@ const TAB_SUBTITLE: Record<string, string> = {
   manual_credit: 'Catat komisi & koin untuk polis offline — butuh approval MASTER_ADMIN.',
   credit_approvals: 'Setujui atau tolak permintaan kredit manual (MASTER_ADMIN only).',
   b2b: 'Pengajuan dan penawaran korporasi.',
+  workshops: 'Direktori bengkel rekanan ZURICH, OONA, Intra Asia, dan MAG.',
   product_config: 'Konfigurasi produk, komisi, dan koin.',
   tier_promo: 'Pengaturan tier mitra dan kode promo.',
   insurers: 'Perusahaan asuransi rekanan.',
@@ -765,6 +767,7 @@ const AdminPortal = ({
       case 'endorsements':     return <EndorsementsAdminView />;
       case 'documents':        return <DocumentsAdminView />;
       case 'b2b':              return <B2BAdminView />;
+      case 'workshops':        return <WorkshopDirectory variant="admin" />;
       case 'product_config':   return <ProductConfigAdmin />;
       case 'tier_promo':       return <TierPromoConfigAdmin />;
       case 'website_editor':   return <WebsiteEditorAdmin />;

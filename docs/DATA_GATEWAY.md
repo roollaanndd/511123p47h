@@ -75,6 +75,28 @@ non-master menghapus MASTER_ADMIN; menghapus `sp_users` + akun auth),
 `admin_update_commission`, `admin_list_notifications`, `admin_mark_notification_read`,
 `admin_create_notification`, `admin_security_stats`, `admin_traffic_stats`.
 
+### Direktori bengkel rekanan (v2.9.18 — `actions/workshopPartners.ts`)
+
+| Action | Fungsi |
+|---|---|
+| `list_workshop_partners` | Baca 1.982 bengkel dari lima lampiran resmi (ZURICH 497, OONA 692, Intra Asia 108, MAG 685 — MAG Authorized 353 dan MAG Umum 332 tetap terpisah). Params: `insurer?`, `categoryGroup?`, `search?`, `sortBy?`, `sortDir?`, `limit?`, `offset?`. Respons: `rows`, `total`, `facets`, `categoryCounts`, `query`, `page`. |
+
+- Allowlist peran **eksplisit**: `MASTER_ADMIN`, `ADMIN`, `INSURANCE_ADMIN`,
+  `B2B_CLIENT`. `caller.isAdmin` sengaja tidak dipakai (karena `OPERATOR`/`FINANCE*`
+  juga bernilai isAdmin di dispatcher). Peran lain `403`; parameter di luar
+  allowlist `400`; kuota habis `429`. Tidak masuk `ACTION_MIN_TIER` karena ini
+  aksi baca, bukan transaksi.
+- Dataset adalah modul statis di `data-gateway/data/workshopPartners.ts`,
+  dibaca langsung oleh aksi ini. **Bukan** tabel PostgREST/RLS baru dan **bukan**
+  aset statis di bundle frontend — klien tidak bisa mengambil daftar kontak ini
+  tanpa melewati gerbang gateway. Regenerasi data wajib lewat
+  `generate_workshop_module.py` dari lampiran, bukan sunting baris per baris.
+- Sorting kategori memakai urutan `authorized` → `umum` → `other` (bukan
+  alfabet). `facets` global untuk tab asuransi; `categoryCounts` dihitung per
+  asuransi yang dipilih sebelum filter kategori diterapkan.
+- Setiap perubahan `supabase/functions/**` wajib di-deploy ulang dan diverifikasi
+  (`ACTIVE` + health check) setelah merge.
+
 ### Akun mitra (v2.7.7 — `actions/mitraAccounts.ts`)
 
 Otorisasi **per-kapabilitas**, sengaja BUKAN `caller.isAdmin`. `ADMIN_ROLES`

@@ -50,6 +50,7 @@ export const ADMIN_NAV: NavGroup[] = [
     sections: [
       { id: 'agents', label: 'Manajemen Mitra', childIds: ['agents', 'agent_agreements', 'tnc_admin'] },
       { id: 'b2b', label: 'B2B', childIds: ['b2b'] },
+      { id: 'workshops', label: 'Direktori Bengkel', childIds: ['workshops'] },
       { id: 'users', label: 'Pengguna & Akses', childIds: ['user_mgmt'] },
     ],
   },
@@ -98,7 +99,7 @@ export const LEGACY_LEAF_IDS = [
   'dashboard', 'ops_console', 'analytics', 'contact_leads',
   'user_mgmt', 'payments', 'withdrawals',
   'policy_orders', 'approvals', 'claims_admin', 'endorsements', 'documents',
-  'agents', 'agent_agreements', 'tnc_admin', 'commission_ledger', 'manual_credit', 'credit_approvals', 'b2b',
+  'agents', 'agent_agreements', 'tnc_admin', 'commission_ledger', 'manual_credit', 'credit_approvals', 'b2b', 'workshops',
   'product_config', 'tier_promo', 'insurers', 'ojk_rates', 'b2b_fleet_rates', 'b2b_plans', 'financial',
   'vehicle_pricelist', 'website_editor', 'portal_icons', 'ai_admin', 'ai_finance',
   'pathy_logs', 'pathy_ai', 'activity_log', 'security', 'settings',
@@ -192,6 +193,10 @@ export const ADMIN_MENU_ITEMS: AdminMenuItem[] = [
   { id: 'manual_credit',    label: 'Kredit Manual',    roles: [UserRole.MASTER_ADMIN, UserRole.FINANCE, UserRole.FINANCE_MANAGER, UserRole.FINANCE_DIRECTOR, UserRole.ADMIN] },
   { id: 'credit_approvals', label: 'Approval Kredit Manual', roles: [UserRole.MASTER_ADMIN] },
   { id: 'b2b',              label: 'B2B',       roles: [UserRole.MASTER_ADMIN, UserRole.ADMIN, UserRole.INSURANCE_ADMIN] },
+  // v2.9.18 — direktori bengkel rekanan. Peran harus sama persis dengan
+  // WORKSHOP_DIRECTORY_ROLES di data-gateway/actions/workshopPartners.ts
+  // (dikecuali B2B_CLIENT yang punya portal sendiri).
+  { id: 'workshops',        label: 'Direktori Bengkel', roles: [UserRole.MASTER_ADMIN, UserRole.ADMIN, UserRole.INSURANCE_ADMIN] },
   // PRODUK & ASURANSI
   { id: '_sep5', isSeparator: true, groupLabel: 'Produk & Asuransi',  roles: ALL_ROLES },
   { id: 'product_config',   label: 'Produk',         roles: [UserRole.MASTER_ADMIN] },

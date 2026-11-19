@@ -1,5 +1,27 @@
 # SurePath - Changelog
 
+## v2.9.18 - 2026-11-19
+
+### Direktori bengkel rekanan di CMS admin dan portal B2B
+
+- Menu "Direktori Bengkel" baru di CMS admin (grup Mitra) dan "Direktori
+  Bengkel" di sidebar portal B2B. Keduanya memakai satu komponen dan satu aksi
+  gateway yang sama.
+- Data 1.982 bengkel berasal dari lima lampiran resmi: ZURICH (497), OONA
+  (692), Intra Asia (108), MAG Authorized (353), MAG Umum (332). MAG Authorized
+  dan MAG Umum sengaja tetap dua kumpulan terpisah; ZURICH sheet AG/Truck
+  masuk kategori "Lainnya".
+- Tabel bisa difilter per asuransi dan kategori (Authorized/Umum/Lainnya),
+  dicari, serta diurutkan berdasarkan kota, provinsi, brand, kategori, nama,
+  dan asuransi. Jumlah pada chip kategori dihitung per asuransi yang dipilih.
+- Dataset hidup sebagai modul statis di `data-gateway/data/workshopPartners.ts`,
+  BUKAN aset bundle frontend dan BUKAN tabel/RLS baru. Akses hanya lewat aksi
+  `list_workshop_partners` dengan allowlist peran eksplisit
+  (MASTER_ADMIN/ADMIN/INSURANCE_ADMIN/B2B_CLIENT), validasi parameter, dan rate
+  limit. `caller.isAdmin` tidak dipakai sebagai gerbang.
+- Perubahan edge function: wajib deploy ulang `data-gateway` dan verifikasi
+  status `ACTIVE` + health check setelah merge.
+
 ## v2.9.17 - 2026-11-19
 
 ### Kelola pengguna korporat B2B dari dashboard admin

@@ -79,6 +79,21 @@ These actions use token-based auth (review token or insurer auth token) passed i
 Catatan: daftar `admin_list_b2b_users` sengaja tidak mengirim KTP/NPWP/alamat;
 field itu hanya tersedia lewat `admin_get_b2b_user` saat modal edit dibuka.
 
+### Workshop Partner Directory (v2.9.18)
+
+| Action | Params | Purpose |
+|---|---|---|
+| `list_workshop_partners` | `insurer?` (`ALL`/`ZURICH`/`OONA`/`INTRA_ASIA`/`MAG`), `categoryGroup?` (`all`/`authorized`/`umum`/`other`), `search?` (maks. 120 char), `sortBy?` (`name`/`city`/`province`/`brand`/`category`/`insurer`), `sortDir?` (`asc`/`desc`), `limit?` (1–2000, default 2000), `offset?` | Baca direktori 1.982 bengkel rekanan. Respons: `rows`, `total` (setelah filter), `facets` (jumlah global per asuransi/kategori), `categoryCounts` (jumlah kategori pada asuransi yang dipilih, sebelum filter kategori), `query`, `page`. |
+
+- Diizinkan hanya MASTER_ADMIN, ADMIN, INSURANCE_ADMIN, dan B2B_CLIENT.
+  `caller.isAdmin` sengaja tidak dipakai.
+- Dataset adalah modul statis di edge function, bukan tabel PostgREST dan bukan
+  aset di bundle frontend. Tidak ada migrasi DB untuk fitur ini.
+- Sorting kategori memakai urutan `authorized` → `umum` → `other`, bukan urutan
+  alfabet. `brandLabel` tetap menampilkan teks sumber; `brandKey` hanya kunci
+  sorting. Parameter di luar allowlist ditolak `400`, peran lain `403`, kuota
+  habis `429`.
+
 ### Order Management
 | Action | Params | Purpose |
 |---|---|---|

@@ -11,7 +11,7 @@
 
 import React, { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import {
-  LayoutDashboard, Plus, User, Sparkles, ShieldCheck, CalendarDays, History,
+  LayoutDashboard, Plus, User, Sparkles, ShieldCheck, CalendarDays, History, Wrench,
 } from 'lucide-react';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import { Language, UserRole } from '../../types';
@@ -40,6 +40,7 @@ const B2BSubmissions   = lazy(() => import('./B2BSubmissions'));
 const B2BBulkBatches   = lazy(() => import('./B2BBulkBatches'));
 const B2BQuotes        = lazy(() => import('./B2BQuotes'));
 const B2BProfile       = lazy(() => import('./B2BProfile'));
+const WorkshopDirectory = lazy(() => import('../shared/WorkshopDirectory'));
 
 interface Props {
   client: any;
@@ -56,6 +57,7 @@ type Section =
   | 'new-unit' | 'new-single' | 'new-bulk'
   | 'submissions' | 'batches'
   | 'quotes'
+  | 'workshops'
   | 'profile';
 
 const B2BPortal: React.FC<Props> = ({ client, onLogout, lang }) => {
@@ -157,6 +159,7 @@ const B2BPortal: React.FC<Props> = ({ client, onLogout, lang }) => {
       ],
     },
     { id: 'fleet', label: t('Fleet Calendar', 'Kalender Armada'), icon: CalendarDays, groupLabel: t('Monitor', 'Pantau') },
+    { id: 'workshops', label: t('Workshop directory', 'Direktori Bengkel'), icon: Wrench, groupLabel: t('Monitor', 'Pantau') },
     { id: 'profile', label: t('Profile', 'Profil'), icon: User, groupLabel: t('Account', 'Akun') },
   ], [pendingRequests, pendingQuotes, lang]);
 
@@ -167,6 +170,7 @@ const B2BPortal: React.FC<Props> = ({ client, onLogout, lang }) => {
     switch (activeId) {
       case 'dashboard':   return [root, t('Dashboard', 'Dashboard')];
       case 'fleet':       return [root, t('Fleet Calendar', 'Kalender Armada')];
+      case 'workshops':   return [root, crMonitor, t('Workshop directory', 'Direktori Bengkel')];
       case 'new-unit':    return [root, crCreate, t('Unit Order', 'Order Unit')];
       case 'new-single':  return [root, crCreate, t('Other Request', 'Pengajuan Lain')];
       case 'new-bulk':    return [root, crCreate, t('Bulk Import', 'Impor Massal')];
@@ -209,6 +213,13 @@ const B2BPortal: React.FC<Props> = ({ client, onLogout, lang }) => {
     switch (activeId) {
       case 'fleet':
         return <B2BFleetCalendar lang={lang} />;
+
+      case 'workshops':
+        return (
+          <Suspense fallback={<B2BPageSkeleton variant="list" />}>
+            <WorkshopDirectory variant="b2b" />
+          </Suspense>
+        );
 
       case 'dashboard':
         return (

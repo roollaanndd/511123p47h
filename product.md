@@ -307,8 +307,12 @@ A feature is done when **all** of these are verifiably true:
 
 1. **Never describe as shipped** anything not evidenced by code/tests:
    push notification, WhatsApp verification (Fonnte `parked`), billing
-   dashboards over real data, workshop directory (text-only in
-   `aiKnowledge`), "instant approval" for any product (v1.55 sweep).
+   dashboards over real data, "instant approval" for any product (v1.55
+   sweep). The workshop directory used to be text-only in `aiKnowledge`;
+   since v2.9.18 it is an interactive, gateway-backed menu in `/admin` and
+   `/b2bapps` (code + tests in repo), sourced from the five insurer attachments
+   and served by `list_workshop_partners`. Production availability still
+   requires the post-merge `data-gateway` deploy and verification.
 2. **Never fake controls or data**: no placeholder buttons, no mock wallets
    numbers in UI, no demo monetary values outside fixtures/tests.
 3. **Never invent insurers, products, prices, guaranties, phone numbers**

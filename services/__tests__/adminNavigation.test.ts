@@ -13,16 +13,16 @@ import {
 } from '../../components/admin/navigation';
 
 describe('navigasi Admin CMS', () => {
-  it('6 grup, 17 section — konsolidasi dari 29 item lama (+2 sejak v2.7.51: tnc_admin, b2b_fleet_rates; +2 sejak v2.7.58: manual_credit, credit_approvals)', () => {
+  it('6 grup, 18 section — konsolidasi dari 29 item lama (+2 sejak v2.7.51: tnc_admin, b2b_fleet_rates; +2 sejak v2.7.58: manual_credit, credit_approvals; +1 sejak v2.9.18: workshops)', () => {
     expect(ADMIN_NAV).toHaveLength(6);
-    expect(ADMIN_NAV.flatMap(g => g.sections)).toHaveLength(17);
+    expect(ADMIN_NAV.flatMap(g => g.sections)).toHaveLength(18);
   });
 
   it('tidak ada view lama yang hilang atau terdaftar dua kali', () => {
     expect(new Set(ALL_CHILD_IDS).size).toBe(ALL_CHILD_IDS.length);
     expect([...ALL_CHILD_IDS].sort()).toEqual([...LEGACY_LEAF_IDS].sort());
 
-    expect(ALL_CHILD_IDS).toHaveLength(36); // +b2b_plans (v2.9.1)
+    expect(ALL_CHILD_IDS).toHaveLength(37); // +b2b_plans (v2.9.1), +workshops (v2.9.18)
   });
 
   it('setiap section punya minimal satu view', () => {
@@ -37,6 +37,7 @@ describe('navigasi Admin CMS', () => {
     expect(sectionForLeaf('withdrawals')?.id).toBe('cash');
     expect(sectionForLeaf('tier_promo')?.id).toBe('products');
     expect(sectionForLeaf('ojk_rates')?.id).toBe('insurers');
+    expect(sectionForLeaf('workshops')?.id).toBe('workshops');
     expect(sectionForLeaf('settings')?.id).toBe('settings');
     expect(sectionForLeaf('tidak_ada')).toBeUndefined();
   });
