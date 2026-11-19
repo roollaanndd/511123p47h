@@ -3,6 +3,7 @@
 // Deploy-path diagnostic marker (v2.7.16 r6): runs after second secret update.
 import type { GatewayContext, ActionResult } from './types.ts';
 import { findClientIdByEmail } from './clientLink.ts';
+import { sendEmailSafe, emailConfigFor } from '../../_shared/email.ts';
 
 // json() helper — returns ActionResult (main index.ts converts to Response)
 const json = (body: unknown, status = 200): ActionResult => ({ status, body });
@@ -164,11 +165,15 @@ export async function handleOrdersAction(action: string, ctx: GatewayContext): P
 </td></tr>
 </table></td></tr></table>
 </body></html>`;
-          fetch('https://api.resend.com/emails', {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${RESEND_KEY}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ from: 'SurePath <noreply@myinsurepath.com>', to: [insurerEmail], subject, html }),
-          }).then(() => {}, () => {});
+          // audit 2026-11-19: satu jalur email (_shared/email.ts).
+          // Tetap tanpa await seperti sebelumnya; kegagalan dicatat tanpa PII.
+          void sendEmailSafe(emailConfigFor(RESEND_KEY), {
+            to: insurerEmail,
+            subject,
+            html,
+            idempotencyKey: `insurer-review:${order.order_number}`,
+            tags: [{ name: 'flow', value: 'insurer-review' }],
+          });
         }
 
         // Send Telegram alert
