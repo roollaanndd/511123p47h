@@ -42,6 +42,12 @@ export const B2B_ACTIVITY_ACTIONS = [
   'bulk_master_policy_issued',
   'bulk_insurer_uploaded_master_policy',
   'bulk_source_file_downloaded',
+  // v2.9.17 — kelola pengguna korporat oleh admin. `b2b_user_deleted`
+  // ditulis synchronous (bukan fire-and-forget) sebelum barisnya dihapus.
+  'b2b_user_profile_updated',
+  'b2b_user_deactivated',
+  'b2b_user_reactivated',
+  'b2b_user_deleted',
 ] as const;
 
 export type B2BActivityAction = (typeof B2B_ACTIVITY_ACTIONS)[number];

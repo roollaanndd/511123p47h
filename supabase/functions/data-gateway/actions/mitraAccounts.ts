@@ -20,6 +20,7 @@
 import type { GatewayContext, ActionResult } from './types.ts';
 import { isUntrustedEmail } from '../../_shared/trust.ts';
 import { sanitizeReferralCode, pickUplineMatch, generateUniqueUserCode } from '../../_shared/referral.ts';
+import { logB2BActivity } from '../../_shared/b2bActivityLog.ts';
 
 const json = (body: unknown, status = 200): ActionResult => ({ status, body });
 
@@ -29,6 +30,10 @@ const json = (body: unknown, status = 200): ActionResult => ({ status, body });
 // FINANCE_ROLES: begitu satu aksi digerbang `isAdmin`, gerbangnya hilang.
 const CAN_MANAGE_MITRA_ACCOUNT = ['MASTER_ADMIN', 'ADMIN'];
 const CAN_SET_MITRA_PASSWORD = ['MASTER_ADMIN'];
+// v2.9.17 — kelola pengguna B2B. Hard delete sengaja lebih sempit: menghapus
+// akun korporat bisa menghanguskan batch polis lewat FK ON DELETE CASCADE.
+const CAN_MANAGE_B2B_USER = ['MASTER_ADMIN', 'ADMIN'];
+const CAN_HARD_DELETE_B2B_USER = ['MASTER_ADMIN'];
 
 const APP_ORIGIN = 'https://myinsurepath.com';
 // AuthGate memakai `?reset=1` untuk tetap di formulir setel ulang alih-alih
@@ -58,11 +63,98 @@ function generateTempPassword(length = 14): string {
   return out.slice(0, 4) + '-' + out.slice(4, 9) + '-' + out.slice(9);
 }
 
+// ── v2.9.17 — kelola profil & status pengguna B2B ──────────────────────────
+//
+// Semua field yang boleh disentuh admin lewat panel korporat. Daftar ini
+// sengaja eksplisit: `role`, `verified`, `email`, `b2b_deactivated_*`, dan
+// `b2b_profile_version` TIDAK termasuk — mengubahnya dari payload adalah
+// privilege escalation / pengabaian audit.
+const B2B_EDITABLE_FIELDS = [
+  'name', 'phone', 'company_name', 'company_reg_no', 'company_industry',
+  'company_npwp', 'company_address', 'pic_ktp',
+] as const;
+type B2BEditableField = (typeof B2B_EDITABLE_FIELDS)[number];
+
+const B2B_PROFILE_SELECT = [
+  'id', 'email', 'name', 'phone', 'company_name', 'company_reg_no', 'company_industry',
+  'company_npwp', 'company_address', 'pic_ktp', 'verified', 'b2b_deactivated_at',
+  'b2b_deactivated_by', 'b2b_profile_version', 'created_at',
+].join(', ');
+
+// Versi ringan untuk daftar: KTP/NPWP/alamat tidak dikirim ke CMS sama sekali.
+function projectB2BProfile(u: Record<string, any>): Record<string, unknown> {
+  return {
+    id: u.id,
+    email: u.email,
+    name: u.name ?? null,
+    phone: u.phone ?? null,
+    company_name: u.company_name ?? null,
+    company_reg_no: u.company_reg_no ?? null,
+    company_industry: u.company_industry ?? null,
+    verified: u.verified ?? null,
+    b2b_deactivated_at: u.b2b_deactivated_at ?? null,
+    b2b_deactivated_by: u.b2b_deactivated_by ?? null,
+    b2b_profile_version: u.b2b_profile_version ?? 1,
+    created_at: u.created_at ?? null,
+  };
+}
+
+// Versi lengkap HANYA untuk admin_get_b2b_user / admin_update_b2b_user.
+function projectB2BProfileDetail(u: Record<string, any>): Record<string, unknown> {
+  return {
+    ...projectB2BProfile(u),
+    company_npwp: u.company_npwp ?? null,
+    company_address: u.company_address ?? null,
+    pic_ktp: u.pic_ktp ?? null,
+  };
+}
+
+function normalizeB2BEdit(field: B2BEditableField, raw: unknown): { value?: string; code?: string } {
+  const text = String(raw ?? '').trim();
+  switch (field) {
+    case 'name':
+      if (!text || text.length > 120) return { code: 'INVALID_NAME' };
+      return { value: text };
+    case 'company_name':
+      if (!text || text.length > 200) return { code: 'INVALID_COMPANY_NAME' };
+      return { value: text };
+    case 'phone':
+      if (text.length > 24 || (text && !/^[+()\d\s-]+$/.test(text))) return { code: 'INVALID_PHONE' };
+      return { value: text };
+    case 'company_reg_no':
+      if (text.length > 64) return { code: 'INVALID_COMPANY_REG_NO' };
+      return { value: text };
+    case 'company_industry':
+      if (text.length > 64) return { code: 'INVALID_COMPANY_INDUSTRY' };
+      return { value: text };
+    case 'company_address':
+      if (text.length > 500) return { code: 'INVALID_COMPANY_ADDRESS' };
+      return { value: text };
+    case 'company_npwp': {
+      // Terima format 00.000.000.000.000-0.000000 maupun digit mentah; simpan digitnya
+      // saja supaya pencarian dan validasi konsisten dengan wizard KYC.
+      const digits = text.replace(/[.\-\s]/g, '');
+      if (digits && !/^\d{15,16}$/.test(digits)) return { code: 'INVALID_COMPANY_NPWP' };
+      return { value: digits };
+    }
+    case 'pic_ktp': {
+      const digits = text.replace(/[\s-]/g, '');
+      if (digits && !/^\d{16}$/.test(digits)) return { code: 'INVALID_PIC_KTP' };
+      return { value: digits };
+    }
+  }
+}
+
+function parseB2BVersion(raw: unknown): number | null {
+  const version = Number(raw);
+  return Number.isInteger(version) && version >= 1 ? version : null;
+}
+
 export async function handleMitraAccountsAction(
   action: string,
   ctx: GatewayContext,
 ): Promise<ActionResult | null> {
-  const { db, params, caller, sendTelegram, checkRateLimit } = ctx;
+  const { db, params, caller, sendTelegram, checkRateLimit, reqIp, reqUserAgent } = ctx;
 
   switch (action) {
     // ── Tambah mitra manual ───────────────────────────────────────────────
@@ -254,6 +346,18 @@ export async function handleMitraAccountsAction(
       const companyName = String(params.company_name ?? '').trim();
       const companyRegNo = String(params.company_reg_no ?? '').trim();
       const companyIndustry = String(params.company_industry ?? '').trim();
+      // v2.9.17 — wizard sudah mengumpulkan NPWP/alamat/KTP PIC, tetapi field
+      // text itu dulu dibuang sebelum insert. Simpan (dinormalisasi) agar panel
+      // edit tidak diberi data kosong pada akun yang baru dibuat.
+      const kycFields: Record<string, string> = {};
+      for (const field of ['company_npwp', 'company_address', 'pic_ktp'] as const) {
+        if (params[field] === undefined || params[field] === null || String(params[field]).trim() === '') continue;
+        const normalized = normalizeB2BEdit(field, params[field]);
+        if (normalized.code) {
+          return json({ error: `Nilai ${field} tidak valid`, code: normalized.code }, 400);
+        }
+        kycFields[field] = normalized.value!;
+      }
       if (!name || !email || !phone || !companyName) {
         return json({ error: 'name, email, phone, company_name wajib diisi' }, 400);
       }
@@ -340,6 +444,7 @@ export async function handleMitraAccountsAction(
         company_name: companyName,
         ...(companyRegNo ? { company_reg_no: companyRegNo } : {}),
         ...(companyIndustry ? { company_industry: companyIndustry } : {}),
+        ...kycFields,
       }).select().single();
       let profile = withCompany.data;
       profileErr = withCompany.error;
@@ -390,19 +495,221 @@ export async function handleMitraAccountsAction(
         .order('created_at', { ascending: false })
         .limit(500);
       if (error) return json({ error: error.message }, 400);
-      // Proyeksi eksplisit — jangan bocorkan kolom sensitif ke CMS.
-      const users = (data ?? []).map((u: Record<string, any>) => ({
-        id: u.id,
-        email: u.email,
-        name: u.name ?? null,
-        phone: u.phone ?? null,
-        company_name: u.company_name ?? null,
-        company_reg_no: u.company_reg_no ?? null,
-        company_industry: u.company_industry ?? null,
-        verified: u.verified ?? null,
-        created_at: u.created_at ?? null,
-      }));
+      // Proyeksi eksplisit — KTP/NPWP tidak ikut ke daftar. Panel edit memanggil
+      // admin_get_b2b_user terpisah hanya saat admin membuka modal edit.
+      const users = (data ?? []).map((u: Record<string, any>) => projectB2BProfile(u));
       return json({ data: users });
+    }
+
+    // ── v2.9.17: detail profil B2B untuk modal edit ─────────────────────────
+    case 'admin_get_b2b_user': {
+      if (!CAN_MANAGE_B2B_USER.includes(caller.role ?? '')) {
+        return json({ error: 'Forbidden: hanya ADMIN atau MASTER_ADMIN' }, 403);
+      }
+      const userId = String(params.user_id ?? '').trim();
+      if (!userId) return json({ error: 'user_id wajib diisi' }, 400);
+
+      const { data: target, error: targetErr } = await db.from('sp_users')
+        .select(B2B_PROFILE_SELECT).eq('id', userId).maybeSingle();
+      if (targetErr) return json({ error: targetErr.message }, 400);
+      if (!target || target.role !== 'B2B_CLIENT') {
+        return json({ error: 'Pengguna B2B tidak ditemukan' }, 404);
+      }
+      return json({ data: projectB2BProfileDetail(target) });
+    }
+
+    // ── v2.9.17: edit profil/KYC B2B (whitelist + optimistic lock) ──────────
+    case 'admin_update_b2b_user': {
+      if (!CAN_MANAGE_B2B_USER.includes(caller.role ?? '')) {
+        return json({ error: 'Forbidden: hanya ADMIN atau MASTER_ADMIN' }, 403);
+      }
+      const userId = String(params.user_id ?? '').trim();
+      if (!userId) return json({ error: 'user_id wajib diisi' }, 400);
+
+      const expectedVersion = parseB2BVersion(params.expected_version);
+      if (!expectedVersion) {
+        return json({ error: 'expected_version tidak valid', code: 'INVALID_VERSION' }, 400);
+      }
+
+      const { data: target, error: targetErr } = await db.from('sp_users')
+        .select(B2B_PROFILE_SELECT).eq('id', userId).maybeSingle();
+      if (targetErr) return json({ error: targetErr.message }, 400);
+      if (!target || target.role !== 'B2B_CLIENT') {
+        return json({ error: 'Pengguna B2B tidak ditemukan' }, 404);
+      }
+
+      const patch: Record<string, string> = {};
+      const changedFields: string[] = [];
+      for (const field of B2B_EDITABLE_FIELDS) {
+        if (!(field in params)) continue;
+        const normalized = normalizeB2BEdit(field, params[field]);
+        if (normalized.code) {
+          return json({ error: `Nilai ${field} tidak valid`, code: normalized.code }, 400);
+        }
+        patch[field] = normalized.value!;
+        changedFields.push(field);
+      }
+      if (changedFields.length === 0) {
+        return json({ error: 'Tidak ada field yang boleh diedit', code: 'NO_EDITABLE_FIELDS' }, 400);
+      }
+
+      const nextVersion = expectedVersion + 1;
+      const { data: updated, error: updateErr } = await db.from('sp_users')
+        .update({ ...patch, b2b_profile_version: nextVersion })
+        .eq('id', userId)
+        .eq('role', 'B2B_CLIENT')
+        .eq('b2b_profile_version', expectedVersion)
+        .select(B2B_PROFILE_SELECT)
+        .maybeSingle();
+      if (updateErr) return json({ error: updateErr.message }, 400);
+      if (!updated) {
+        return json({
+          error: 'Data pengguna sudah berubah. Muat ulang lalu coba lagi.',
+          code: 'VERSION_CONFLICT',
+        }, 409);
+      }
+
+      // Audit menyimpan NAMA field saja. Nilai KTP/NPWP/alamat tidak pernah
+      // disalin ke log — lihat _shared/b2bActivityLog.ts.
+      logB2BActivity(db, {
+        clientId: target.id,
+        actorRole: caller.role ?? 'ADMIN',
+        actorEmail: caller.email,
+        action: 'b2b_user_profile_updated',
+        summary: `Admin memperbarui profil korporat ${target.company_name ?? target.email}.`,
+        detail: { changed_fields: changedFields, from_version: expectedVersion, to_version: nextVersion },
+        ip: reqIp,
+        userAgent: reqUserAgent,
+      });
+
+      return json({ data: projectB2BProfileDetail(updated) });
+    }
+
+    // ── v2.9.17: nonaktifkan / aktifkan akun B2B ────────────────────────────
+    case 'admin_set_b2b_user_active': {
+      if (!CAN_MANAGE_B2B_USER.includes(caller.role ?? '')) {
+        return json({ error: 'Forbidden: hanya ADMIN atau MASTER_ADMIN' }, 403);
+      }
+      const userId = String(params.user_id ?? '').trim();
+      if (!userId) return json({ error: 'user_id wajib diisi' }, 400);
+      const active = params.active === true;
+
+      const { data: target, error: targetErr } = await db.from('sp_users')
+        .select(B2B_PROFILE_SELECT).eq('id', userId).maybeSingle();
+      if (targetErr) return json({ error: targetErr.message }, 400);
+      if (!target || target.role !== 'B2B_CLIENT') {
+        return json({ error: 'Pengguna B2B tidak ditemukan' }, 404);
+      }
+      const isDeactivated = !!target.b2b_deactivated_at;
+      if (active && !isDeactivated) {
+        return json({ error: 'Akun sudah aktif', code: 'ALREADY_ACTIVE' }, 409);
+      }
+      if (!active && isDeactivated) {
+        return json({ error: 'Akun sudah dinonaktifkan', code: 'ALREADY_DEACTIVATED' }, 409);
+      }
+
+      const version = parseB2BVersion(target.b2b_profile_version ?? 1) ?? 1;
+      const nextVersion = version + 1;
+      const { data: updated, error: updateErr } = await db.from('sp_users')
+        .update(active
+          ? {
+              b2b_deactivated_at: null,
+              b2b_deactivated_by: null,
+              b2b_profile_version: nextVersion,
+            }
+          : {
+              b2b_deactivated_at: new Date().toISOString(),
+              b2b_deactivated_by: caller.spUser?.id ?? null,
+              b2b_profile_version: nextVersion,
+            })
+        .eq('id', userId)
+        .eq('role', 'B2B_CLIENT')
+        .eq('b2b_profile_version', version)
+        .select(B2B_PROFILE_SELECT)
+        .maybeSingle();
+      if (updateErr) return json({ error: updateErr.message }, 400);
+      if (!updated) {
+        return json({
+          error: 'Data pengguna sudah berubah. Muat ulang lalu coba lagi.',
+          code: 'VERSION_CONFLICT',
+        }, 409);
+      }
+
+      logB2BActivity(db, {
+        clientId: target.id,
+        actorRole: caller.role ?? 'ADMIN',
+        actorEmail: caller.email,
+        action: active ? 'b2b_user_reactivated' : 'b2b_user_deactivated',
+        summary: active
+          ? `Admin mengaktifkan kembali akun korporat ${target.company_name ?? target.email}.`
+          : `Admin menonaktifkan akun korporat ${target.company_name ?? target.email}.`,
+        detail: { active, from_version: version, to_version: nextVersion },
+        ip: reqIp,
+        userAgent: reqUserAgent,
+      });
+
+      return json({ data: projectB2BProfile(updated) });
+    }
+
+    // ── v2.9.17: hapus permanen (MASTER_ADMIN, bersyarat) ───────────────────
+    case 'admin_delete_b2b_user': {
+      if (!CAN_HARD_DELETE_B2B_USER.includes(caller.role ?? '')) {
+        return json({ error: 'Forbidden: hanya MASTER_ADMIN' }, 403);
+      }
+      const userId = String(params.user_id ?? '').trim();
+      const confirmEmail = String(params.confirm_email ?? '').trim().toLowerCase();
+      if (!userId || !confirmEmail) {
+        return json({ error: 'user_id dan confirm_email wajib diisi' }, 400);
+      }
+      if (userId === caller.authId || userId === caller.spUser?.id) {
+        return json({ error: 'Tidak bisa menghapus akun sendiri' }, 403);
+      }
+
+      const { data: target, error: targetErr } = await db.from('sp_users')
+        .select(B2B_PROFILE_SELECT).eq('id', userId).maybeSingle();
+      if (targetErr) return json({ error: targetErr.message }, 400);
+      if (!target || target.role !== 'B2B_CLIENT') {
+        return json({ error: 'Pengguna B2B tidak ditemukan' }, 404);
+      }
+      if (confirmEmail !== String(target.email ?? '').toLowerCase()) {
+        return json({ error: 'Email konfirmasi tidak cocok', code: 'CONFIRMATION_MISMATCH' }, 400);
+      }
+
+      // FK sp_b2b_batches.client_id → sp_users ON DELETE CASCADE. Satu batch
+      // saja berarti menghapus seluruh item polis + pembayaran terkait.
+      const { data: batches, error: batchErr } = await db.from('sp_b2b_batches')
+        .select('id, status').eq('client_id', userId);
+      if (batchErr) return json({ error: batchErr.message }, 400);
+      if ((batches ?? []).length > 0) {
+        return json({
+          error: `Pengguna masih memiliki ${(batches ?? []).length} batch polis. Selesaikan atau batalkan batch terlebih dahulu.`,
+          code: 'ACTIVE_BATCHES',
+          batch_count: (batches ?? []).length,
+        }, 409);
+      }
+
+      // Audit DITULIS DAHULU: fire-and-forget helper tidak cukup untuk aksi
+      // penghapusan. client_id pada tabel log bersifat ON DELETE SET NULL,
+      // jadi identitas klien disimpan redup di summary (bukan relapse FK).
+      const { error: auditErr } = await db.from('sp_b2b_activity_log').insert({
+        client_id: target.id,
+        actor_role: caller.role ?? 'MASTER_ADMIN',
+        actor_email: caller.email,
+        batch_id: null,
+        batch_number: null,
+        action: 'b2b_user_deleted',
+        summary: `MASTER_ADMIN menghapus akun korporat ${target.company_name ?? '(tanpa nama)'} (${target.email}).`,
+        detail: { user_id: target.id, company_name: target.company_name ?? null },
+        ip: reqIp,
+        user_agent: reqUserAgent,
+      });
+      if (auditErr) return json({ error: 'Gagal menulis audit penghapusan', code: 'AUDIT_WRITE_FAILED' }, 500);
+
+      const { error: delErr } = await db.from('sp_users').delete().eq('id', userId);
+      if (delErr) return json({ error: delErr.message }, 400);
+      await db.auth.admin.deleteUser(String(target.id)).catch(() => {});
+
+      return json({ data: { id: target.id, email: target.email } });
     }
 
     // ── Buat pengguna internal (ADMIN/FINANCE/OPERATOR/INSURANCE_ADMIN) ────

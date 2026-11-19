@@ -67,6 +67,18 @@ These actions use token-based auth (review token or insurer auth token) passed i
 | `admin_register_agent` | `name, email, phone` | Create new agent |
 | `admin_invite_user` | `email, name, role` | Invite user (MASTER_ADMIN only) |
 
+### B2B Corporate User Management (v2.9.17)
+
+| Action | Params | Purpose |
+|---|---|---|
+| `admin_get_b2b_user` | `user_id` | Detail profil + KYC (hanya ADMIN/MASTER_ADMIN) |
+| `admin_update_b2b_user` | `user_id, expected_version, name?, phone?, company_name?, company_reg_no?, company_industry?, company_npwp?, company_address?, pic_ktp?` | Edit whitelist field. `role`, `verified`, `email`, dan status TIDAK bisa dikirim. Optimistic lock → `409 VERSION_CONFLICT` |
+| `admin_set_b2b_user_active` | `user_id, active` | Nonaktifkan/aktifkan (ADMIN/MASTER_ADMIN). Akun nonaktif ditolak di dispatcher dengan `403 B2B_ACCOUNT_DEACTIVATED` |
+| `admin_delete_b2b_user` | `user_id, confirm_email` | Hard delete, MASTER_ADMIN saja. Ditolak bila masih ada `sp_b2b_batches` (`409 ACTIVE_BATCHES`) atau email konfirmasi beda (`400 CONFIRMATION_MISMATCH`) |
+
+Catatan: daftar `admin_list_b2b_users` sengaja tidak mengirim KTP/NPWP/alamat;
+field itu hanya tersedia lewat `admin_get_b2b_user` saat modal edit dibuka.
+
 ### Order Management
 | Action | Params | Purpose |
 |---|---|---|

@@ -213,6 +213,21 @@ Deno.serve(async (req) => {
       caller = { authId, email, spUser: spUser ?? null, role: spUser?.role ?? null, isAdmin: ADMIN_ROLES.includes(spUser?.role ?? ''), isFinanceAdmin: FINANCE_ROLES.includes(spUser?.role ?? ''), userMetadata, ownerId, ownerIds, emailConfirmedAt };
     }
 
+    // ── v2.9.17: akun B2B yang dinonaktifkan admin ─────────────────────────
+    // Satu gerbang di dispatcher, bukan puluhan penjaga per action. Cap waktu
+    // `b2b_deactivated_at` ditulis admin_set_b2b_user_active; akun tetap ada
+    // (batch/polis tidak hilang) hanya saja tidak bisa memanggil gateway.
+    // Percobaan akses tetap tercatat lewat caller yang sudah terverifikasi.
+    if (!PUBLIC_ACTIONS.has(action)
+        && caller.spUser?.role === 'B2B_CLIENT'
+        && caller.spUser?.b2b_deactivated_at) {
+      recordActivity(caller, 'DENIED', 403);
+      return json({
+        error: 'Akun korporat ini dinonaktifkan. Hubungi administrator Anda.',
+        code: 'B2B_ACCOUNT_DEACTIVATED',
+      }, 403);
+    }
+
     // ── Gerbang kepercayaan akun (v2.5.6) ─────────────────────────────────
     //
     // SATU tempat, bukan puluhan penjaga tersebar di 103 action. Hanya enam

@@ -1,5 +1,28 @@
 # SurePath - Changelog
 
+## v2.9.17 - 2026-11-19 (belum dirilis)
+
+### Kelola pengguna korporat B2B dari dashboard admin
+
+- Tab "Pengguna Korporat" kini punya Edit, Nonaktifkan/Aktifkan, dan Hapus
+  permanen. Edit mencakup nama PIC, telepon, nama perusahaan, NIB/no. registrasi,
+  industri, NPWP, alamat perusahaan, dan NIK KTP PIC.
+- Email login, role, dan `verified` sengaja tetap terkunci. Keduanya bukan field
+  profil: mengubahnya lewat panel ini membuka jalur privilege escalation.
+- Role check eksplisit di gateway: ADMIN/MASTER_ADMIN untuk edit & status;
+  MASTER_ADMIN saja untuk hard delete. `caller.isAdmin` tidak dipakai.
+- Field KYC baru (`company_npwp`, `company_address`, `pic_ktp`) disimpan juga
+  saat create lewat wizard. Detail KYC hanya dikirim lewat `admin_get_b2b_user`,
+  tidak ikut daftar. Audit menyimpan nama field saja, bukan nilai KTP/NPWP.
+- `b2b_deactivated_at` menggantikan `is_suspended` yang tidak ada di produksi.
+  Dispatcher gateway memblokir semua aksi akun B2B yang dinonaktifkan.
+- `b2b_profile_version` dipakai optimistic lock untuk edit/status. Hard delete
+  wajib ketik email dan ditolak bila masih ada batch (FK `ON DELETE CASCADE`
+  bisa menghanguskan seluruh item polis + pembayaran).
+- Migrasi `20261119000000_b2b_user_management.sql` **wajib diapply** sebelum
+  deploy `data-gateway` (kolom baru + perluasan guard self-update). Deploy
+  ulang `data-gateway` wajib karena ada perubahan di `actions/` dan `_shared/`.
+
 ## v2.9.16 - 2026-11-19
 
 ### PIN agen 6 digit + kunci otomatis setelah idle 30 menit

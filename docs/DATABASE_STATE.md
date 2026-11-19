@@ -3,6 +3,18 @@
 > ⚠️ Dokumen ini mencatat fakta penting: **migrasi di repo TIDAK semuanya sudah diapply ke production**.
 > Snapshot per 7 Juli 2026 (v1.23.0), project Supabase `uyjgeteelnswphyzkjwi` ("Myinsurepath").
 
+## Kelola pengguna B2B (v2.9.17, migrasi `20261119000000`, **MENUNGGU APPLY**)
+
+- `20261119000000_b2b_user_management.sql` menambah `company_npwp`,
+  `company_address`, `pic_ktp`, `b2b_deactivated_at`, `b2b_deactivated_by`, dan
+  `b2b_profile_version` (default 1) ke `sp_users`. Semua kolom idempotent dan
+  nullable kecuali `b2b_profile_version`.
+- Guard `guard_sp_users_sensitive_self_updates()` diperluas ke field KYC/status
+  baru. Tanpa migrasi ini, gateway akan mengirim kolom yang belum ada dan
+  seluruh aksi edit B2B gagal.
+- Urutan rilis: apply migrasi → deploy ulang `data-gateway` → verifikasi
+  produksi. Rollback DDL ada di header file migrasi (menghapus data KYC).
+
 ## Order Unit B2B multi-tahun (v2.8.23, migrasi `20261112120000` + `20261112121000`, **SUDAH DITERAPKAN 12 Nov 2026**)
 
 - `20261112120000_b2b_unit_order_multiyear.sql` menambah lima kolom ke
