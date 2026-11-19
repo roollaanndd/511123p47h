@@ -70,6 +70,14 @@ Jangan "merapikan" id ini — `sp_clients`, `sp_commissions`, dll mereferensikan
 3. `App.tsx` / `AuthGate` resolves the Supabase session → finds the `sp_users` profile. Tidak ada profil dan tidak ada role di
    metadata → `RoleSelectionScreen` → user pilih Nasabah / Mitra / Klien Korporat →
    `ensure_profile({ role, phone, name })` (B2B lewat `createB2BClientProfile`).
+4. **Header wajib GIS.** CSP harus mengizinkan `https://accounts.google.com` pada
+   `script-src`, `connect-src`, `frame-src`, dan `https://accounts.google.com/gsi/style`
+   pada `style-src`. Tanpa `style-src`, stylesheet Google diblokir sehingga One Tap /
+   tombol Google tidak tampil. COOP harus `same-origin-allow-popups`: tombol fallback
+   memakai popup non-FedCM, dan `same-origin` memutus `window.opener` sehingga popup
+   gagal berkomunikasi. Ketiga sumber konfigurasi (`vercel.json`, `public/_headers`,
+   `server.ts`) harus konsisten; dijaga oleh
+   `services/__tests__/googleAuthHeaders.test.ts`.
 3. **Dua jalur, satu layar.** Pada web, `?code=` di URL membuat `App.tsx` menahan render
    (`oauthLoading`) sampai profil selesai dicek. Pada APK native (deep link) tidak ada
    `?code=`, jadi `AuthGate` yang sedang tampil ikut menangkap event `SIGNED_IN` — karena
