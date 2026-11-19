@@ -1426,8 +1426,17 @@ export const AgentManagementView = () => {
 
   const handleVerify = async (agentId: string, verified: boolean) => {
     setSaving(agentId);
-    await updateAgentVerification(agentId, verified);
-    setAgents(prev => prev.map(a => a.id === agentId ? { ...a, verified } : a));
+    const ok = await updateAgentVerification(agentId, verified);
+    if (ok) {
+      toast.success(verified ? 'Mitra disetujui.' : 'Persetujuan mitra dicabut.');
+    } else {
+      // Jangan pernah mengubah UI lebih dulu: approve yang gagal dibaca admin
+      // sebagai berhasil sampai daftar dimuat ulang (v2.9.20).
+      toast.error(`Gagal ${verified ? 'menyetujui' : 'mencabut persetujuan'} mitra. Status tidak berubah — coba lagi.`);
+    }
+    // Sumber kebenaran tetap gateway — turut menyegarkan trust_score/allowed_apps
+    // yang ikut ditulis admin_verify_agent, bukan hanya field `verified`.
+    await reloadAgents();
     setSaving(null);
   };
 

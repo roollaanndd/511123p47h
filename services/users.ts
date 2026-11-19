@@ -137,7 +137,14 @@ export async function getAdminUser(userId: string): Promise<SpUser | null> {
 }
 
 export async function updateAgentVerification(agentId: string, verified: boolean): Promise<boolean> {
-  const { error } = await callGateway('admin_update_user', { user_id: agentId, verified });
+  // v2.9.20 — aksi ini dulu mengirim `verified` lewat admin_update_user.
+  // Gateway sengaja membuang field itu sejak v1.44.0 (pentest M2) supaya
+  // verifikasi hanya lewat jalur diaudit; akibatnya Approve di Manajemen Mitra
+  // selalu ditolak dengan "No valid fields to update" dan agen kembali ke
+  // Pending Approval setelah daftar dimuat ulang. admin_verify_agent adalah
+  // jalur resmi: menulis verified + trust_score + allowed_apps dan mencatat
+  // notifikasi ke admin maupun agen.
+  const { error } = await callGateway('admin_verify_agent', { agent_id: agentId, approve: verified });
   if (error) { console.error('updateAgentVerification:', error); return false; }
   return true;
 }

@@ -1,5 +1,20 @@
 # SurePath - Changelog
 
+## v2.9.20 - 2026-11-19
+
+### Perbaikan approval mitra tidak tersimpan
+
+- Tombol Approve/Revoke di **Manajemen Mitra** memanggil `admin_verify_agent`
+  (jalur diaudit), bukan lagi `admin_update_user` dengan field `verified`.
+  Gateway sengaja membuang `verified` dari `admin_update_user` sejak v1.44.0,
+  sehingga setiap persetujuan ditolak senyap dan mitra kembali ke
+  "Pending Approval" setelah daftar dimuat ulang.
+- UI tidak lagi mengubah status secara optimistis saat aksi gagal: muncul
+  notifikasi error lalu daftar dimuat ulang dari gateway. Saat berhasil, daftar
+  juga dimuat ulang agar `trust_score` dan `allowed_apps` ikut segar.
+- Tidak ada perubahan edge function, migrasi, RLS, atau kontrak API publik.
+  Perbaikan ini hanya menyentuh pemanggil gateway di frontend.
+
 ## v2.9.19 - 2026-11-19
 
 ### Direktori bengkel rekanan di CMS admin dan portal B2B
