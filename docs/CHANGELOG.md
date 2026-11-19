@@ -63,6 +63,16 @@
   menuntut `dry_run=false` **dan** `confirm_production=APPLY`. SMTP dan Site URL
   tidak disentuh.
 - Pratinjau keenam template: `surepath-proposals/email-preview.html`.
+- Semua email transaksional kini memakai satu tata letak
+  (`supabase/functions/_shared/emailLayout.ts`): kartu putih 560 px, hijau
+  `#059669`, tanpa gradient/gambar/script. Empat gaya lama (header hijau tua,
+  ungu, tanpa header, tanpa kartu) hilang; review insurer, reminder, digest
+  admin, dan reset PIN ikut memakainya.
+- **Welcome email** baru: aksi `send_welcome_email`, dipanggil sekali setelah
+  login berhasil untuk `CUSTOMER`/`AGENT`. Idempoten lewat
+  `sp_activity_log` (baris `OK` memblokir kiriman berikutnya) plus
+  `Idempotency-Key` Resend; kegagalan tercatat `ERROR` sehingga dicoba lagi di
+  login berikutnya. Tanpa migrasi baru.
 
 - Workflow baru **Setup Resend domain + mailer** (dispatch-only): membuat domain
   di Resend, menulis DKIM/SPF ke Cloudflare bila token punya izin DNS,

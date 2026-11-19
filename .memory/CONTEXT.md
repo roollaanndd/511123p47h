@@ -33,6 +33,13 @@
   Warna #059669, tanpa gradient/gambar/script. Validator
   `scripts/check-email-templates.mjs` ikut `npm run lint`; field API
   (`mailer_templates_*`, `mailer_subjects_*`) didefinisikan di sana.
+- Semua email transaksional memakai `_shared/emailLayout.ts` (`renderEmail`,
+  `buttonBlock`, `tokenBlock`, `dataTableBlock`, `calloutBlock`). Jangan menulis
+  `<!DOCTYPE html>` baru di modul email — tes `emailDesign.test.ts` menolak.
+- Welcome email: `actions/welcome.ts` → aksi `send_welcome_email`, dipicu
+  `AuthGate.resolveAndLogin` (fire-and-forget). Idempoten lewat
+  `sp_activity_log` (`actor_id`+action+status OK) + Resend Idempotency-Key;
+  hanya CUSTOMER/AGENT; 503 bila email belum dikonfigurasi (agar dicoba lagi).
 - `.github/workflows/apply-email-templates.yml` (dispatch-only, default
   `dry_run=true`, wajib `confirm_production=APPLY`) menerapkan template satu per
   satu. Tidak menyentuh SMTP/Site URL.

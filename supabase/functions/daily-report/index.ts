@@ -1,6 +1,7 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { sendEmail, emailConfigFor } from '../_shared/email.ts';
+import { renderEmail, dataTableBlock, buttonBlock } from '../_shared/emailLayout.ts';
 
 // Admin daily digest — new users, orders, claims, payments for the day.
 // Delivered via Telegram AND email (Resend), so admins get it even if only one
@@ -123,25 +124,28 @@ Deno.serve(async (req) => {
     const uniqueRecipients = [...new Set(recipients)];
     const mailCfg = emailConfigFor(RESEND_KEY);
     if (mailCfg && uniqueRecipients.length > 0) {
-      const html = `<div style="font-family:-apple-system,Segoe UI,sans-serif;max-width:520px;margin:0 auto;color:#0f172a">
-        <h2 style="color:#059669;margin:0 0 4px">📊 Laporan Harian SurePath</h2>
-        <p style="color:#64748b;margin:0 0 16px;font-size:13px">${dateStr} · ${timeStr} WIB</p>
-        <table style="width:100%;border-collapse:collapse;font-size:14px">
-          <tr><td style="padding:6px 0;color:#64748b">GWP Terbayar</td><td align="right"><b>${fmtIDR(gwpToday)}</b></td></tr>
-          <tr><td style="padding:6px 0;color:#64748b">Pembayaran sukses</td><td align="right"><b>${payments.length}</b></td></tr>
-          <tr><td style="padding:6px 0;color:#64748b">Order masuk</td><td align="right"><b>${ordersSubmitted}</b></td></tr>
-          <tr><td style="padding:6px 0;color:#64748b">Polis terbit</td><td align="right"><b>${ordersIssued}</b></td></tr>
-          <tr><td colspan="2" style="border-top:1px solid #e2e8f0;padding-top:8px"></td></tr>
-          <tr><td style="padding:6px 0;color:#64748b">🏢 Agen baru</td><td align="right"><b>${newAgents.length}</b></td></tr>
-          <tr><td style="padding:6px 0;color:#64748b">👤 Nasabah baru</td><td align="right"><b>${newCustomers.length}</b></td></tr>
-          <tr><td style="padding:6px 0;color:#64748b">🏭 Klien korporat</td><td align="right"><b>${newB2B.length}</b></td></tr>
-          <tr><td style="padding:6px 0;color:#64748b">📈 Klaim hari ini</td><td align="right"><b>${claimsToday.length}</b></td></tr>
-          <tr><td colspan="2" style="border-top:1px solid #e2e8f0;padding-top:8px"></td></tr>
-          <tr><td style="padding:6px 0;color:#64748b">Agen aktif (total)</td><td align="right"><b>${totalAgents.toLocaleString('id-ID')}</b></td></tr>
-          <tr><td style="padding:6px 0;color:#64748b">Total nasabah</td><td align="right"><b>${totalCustomers.toLocaleString('id-ID')}</b></td></tr>
-        </table>
-        <p style="margin-top:20px"><a href="https://myinsurepath.com/admin" style="background:#059669;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:600">Buka Dashboard →</a></p>
-      </div>`;
+      const html = renderEmail({
+        title: `Laporan harian SurePath — ${dateStr}`,
+        preheader: `${dateStr} ${timeStr} WIB · ${payments.length} pembayaran, ${ordersSubmitted} order masuk.`,
+        eyebrow: 'Ringkasan harian',
+        heading: 'Laporan harian SurePath',
+        intro: `${dateStr} · ${timeStr} WIB`,
+        blocks: [
+          dataTableBlock([
+            { label: 'GWP terbayar', value: fmtIDR(gwpToday), emphasis: true },
+            { label: 'Pembayaran sukses', value: String(payments.length) },
+            { label: 'Order masuk', value: String(ordersSubmitted) },
+            { label: 'Polis terbit', value: String(ordersIssued) },
+            { label: 'Agen baru', value: String(newAgents.length) },
+            { label: 'Nasabah baru', value: String(newCustomers.length) },
+            { label: 'Klien korporat', value: String(newB2B.length) },
+            { label: 'Klaim hari ini', value: String(claimsToday.length) },
+            { label: 'Agen aktif (total)', value: totalAgents.toLocaleString('id-ID') },
+            { label: 'Total nasabah', value: totalCustomers.toLocaleString('id-ID') },
+          ]),
+          buttonBlock('https://myinsurepath.com/admin', 'Buka dashboard'),
+        ],
+      });
       try {
         const mail = await sendEmail(mailCfg, {
           to: uniqueRecipients,
