@@ -14,7 +14,7 @@
 // Penjaga ini berjalan di akhir `npm run build`, jadi build GAGAL sebelum
 // sesuatu yang tidak semestinya sempat ter-deploy.
 
-import { readdirSync, statSync, existsSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
 const DIST = 'dist';
@@ -57,6 +57,46 @@ for (const f of berkas) {
       break;
     }
   }
+}
+
+// ─── Pemindai isi (v2.9.17) ──────────────────────────────────────────────────
+// Nama berkas yang bersih tidak berarti isinya bersih. Tiga kelas kebocoran
+// yang pernah / bisa terjadi tanpa suara:
+//   1. service-role key atau secret server ikut ter-inline ke bundel,
+//   2. kredensial pihak ketiga (Xendit, Telegram, cron) terbawa,
+//   3. komentar sumber panjang yang membawa nama tabel / alur internal.
+// Semua ini hanya bisa dicek dengan membaca isi berkas.
+const POLA_ISI = [
+  { pola: /SUPABASE_SERVICE_ROLE_KEY|service_role\s*[:=]\s*['"]ey[A-Za-z0-9]/, alasan: 'service-role key / nama env server di bundel klien' },
+  { pola: /XENDIT_SECRET_KEY|xnd_(development|production)_[A-Za-z0-9]/, alasan: 'kredensial Xendit' },
+  { pola: /CRON_SECRET/, alasan: 'secret cron server' },
+  { pola: /-----BEGIN (RSA |EC )?PRIVATE KEY-----/, alasan: 'private key' },
+  { pola: /bot[0-9]{8,10}:[A-Za-z0-9_-]{30,}/, alasan: 'token bot Telegram' },
+];
+
+const BERKAS_TEKS = /\.(js|mjs|cjs|css|html|json|webmanifest|txt)$/i;
+const temuanIsi = [];
+
+for (const f of berkas) {
+  if (!BERKAS_TEKS.test(f)) continue;
+  let isi;
+  try {
+    isi = readFileSync(join(DIST, f), 'utf8');
+  } catch {
+    continue;
+  }
+  for (const { pola, alasan } of POLA_ISI) {
+    if (pola.test(isi)) temuanIsi.push({ f, alasan });
+  }
+}
+
+if (temuanIsi.length > 0) {
+  console.error('\n✗ BUILD DIHENTIKAN — isi bundel membocorkan kredensial:\n');
+  for (const t of temuanIsi) {
+    console.error(`  ${t.f}`);
+    console.error(`      → ${t.alasan}\n`);
+  }
+  process.exit(1);
 }
 
 if (temuan.length > 0) {

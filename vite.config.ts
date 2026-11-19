@@ -81,6 +81,11 @@ export default defineConfig(() => {
         })
       ],
       build: {
+        // FIX v2.9.17 (audit 2026-11-19, kode-eksposur): sourcemap dimatikan
+        // EKSPLISIT. Default Vite memang false, tapi default bisa berubah dan
+        // satu flag `--sourcemap` di CI sudah cukup untuk menerbitkan kode
+        // sumber asli ke internet. `scripts/check-dist-clean.mjs` menjaga hasilnya.
+        sourcemap: false,
         // FIX v1.53.0: strip console.log/debug/info in production so 331
         // debug statements don't ship (they can leak PII, tokens, or noise
         // that helps attackers). console.error/warn kept for Sentry.
@@ -89,7 +94,14 @@ export default defineConfig(() => {
           compress: {
             drop_console: ['log', 'debug', 'info'] as (keyof Console)[],
             drop_debugger: true,
+            // Dua lintasan memangkas sisa kode setelah lintasan pertama.
+            passes: 2,
           },
+          // Mangle nama tingkat atas: nama fungsi/konstanta deskriptif
+          // (mis. `creditAgentWallet`) tidak lagi menjadi peta gratis bagi
+          // pembaca bundel. Ini bukan pengamanan — hanya menaikkan biaya
+          // membaca. Logika yang benar-benar sensitif tetap di edge function.
+          mangle: { toplevel: true, safari10: true },
         },
         rollupOptions: {
           // APP_SEPARATION_PLAN Fase 2: role entries alongside the universal
