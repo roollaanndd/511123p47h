@@ -78,11 +78,20 @@ Jangan "merapikan" id ini — `sp_clients`, `sp_commissions`, dll mereferensikan
    gagal berkomunikasi. Ketiga sumber konfigurasi (`vercel.json`, `public/_headers`,
    `server.ts`) harus konsisten; dijaga oleh
    `services/__tests__/googleAuthHeaders.test.ts`.
-3. **Dua jalur, satu layar.** Pada web, `?code=` di URL membuat `App.tsx` menahan render
+5. **Dua jalur, satu layar.** Pada web, `?code=` di URL membuat `App.tsx` menahan render
    (`oauthLoading`) sampai profil selesai dicek. Pada APK native (deep link) tidak ada
    `?code=`, jadi `AuthGate` yang sedang tampil ikut menangkap event `SIGNED_IN` — karena
    itu `AuthGate` juga harus bisa memunculkan pemilih role, lewat prop
    `onNeedsRoleSelection`. Tanpa itu, pengguna Android selalu berakhir sebagai nasabah.
+6. **Client ID harus cocok dengan Supabase.** Nilai `VITE_GOOGLE_CLIENT_ID` yang dipakai
+   GIS di browser harus tercantum di Supabase Dashboard → Authentication → Providers →
+   Google → *Client IDs*. Beberapa client ID boleh ditulis comma-separated dengan web
+   client di depan. Jika tidak, Supabase menerima token Google tetapi menolak audience
+   dengan `Unacceptable audience in id_token: [...]` meskipun provider Google sudah
+   aktif. Perbaikan bisa lewat Management API `PATCH /v1/projects/{ref}/config/auth`
+   dengan `external_google_client_id` berisi daftar tersebut. Jangan simpan PAT Supabase
+   atau Google client secret di repo; setelah konfigurasi berubah, coba login dari tab
+   baru.
 
 ### 5. OTP Email / Magic Link & Reset Password
 - Ditangani di `AuthGate.tsx`: `signInWithOtp` (shouldCreateUser=false), `verifyOtp`,
