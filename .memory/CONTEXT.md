@@ -28,6 +28,14 @@
   `configure_auth_smtp=true` mengarahkan SMTP Supabase Auth ke
   `smtp.resend.com:465` — default false karena salah kredensial memblokir email
   login pengguna baru.
+- Template email Auth Supabase ada di `supabase/templates/email/*.html`
+  (confirmation, recovery, magic-link, email-change, invite, reauthentication).
+  Warna #059669, tanpa gradient/gambar/script. Validator
+  `scripts/check-email-templates.mjs` ikut `npm run lint`; field API
+  (`mailer_templates_*`, `mailer_subjects_*`) didefinisikan di sana.
+- `.github/workflows/apply-email-templates.yml` (dispatch-only, default
+  `dry_run=true`, wajib `confirm_production=APPLY`) menerapkan template satu per
+  satu. Tidak menyentuh SMTP/Site URL.
 - **Belum diverifikasi 19 Nov:** domain `myinsurepath.com` belum punya record
   Resend (`resend._domainkey` NXDOMAIN, `send.` tidak ada). MX domain menunjuk
   `mail.myinsurepath.com`, SPF root hanya `_spf.mx.cloudflare.net`.
