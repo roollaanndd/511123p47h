@@ -1,6 +1,6 @@
 # SurePath - Changelog
 
-## v2.9.17 - 2026-11-19 (belum dirilis)
+## v2.9.17 - 2026-11-19
 
 ### Kelola pengguna korporat B2B dari dashboard admin
 
@@ -19,9 +19,10 @@
 - `b2b_profile_version` dipakai optimistic lock untuk edit/status. Hard delete
   wajib ketik email dan ditolak bila masih ada batch (FK `ON DELETE CASCADE`
   bisa menghanguskan seluruh item polis + pembayaran).
-- Migrasi `20261119000000_b2b_user_management.sql` **wajib diapply** sebelum
-  deploy `data-gateway` (kolom baru + perluasan guard self-update). Deploy
-  ulang `data-gateway` wajib karena ada perubahan di `actions/` dan `_shared/`.
+- Migrasi `20261119000000_b2b_user_management.sql` **sudah diapply ke produksi
+  19 Nov 2026** (6 kolom + perluasan guard self-update). `data-gateway`
+  dideploy ulang dan terverifikasi aktif (versi fungsi 45) setelah merge
+  PR #405 / commit `7681e719`.
 
 ## v2.9.16 - 2026-11-19
 
