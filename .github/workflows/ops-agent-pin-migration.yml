@@ -1,0 +1,92 @@
+name: One-shot - apply agent PIN idle migration
+
+# Workflow operasional sementara: menjalankan migrasi v2.9.16 lewat Supabase
+# Management API memakai repo secret. Tidak mencetak nilai secret. File ini
+# akan dihapus setelah migrasi terverifikasi.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Apply migration and verify
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+        run: |
+          set -euo pipefail
+          TOK="${SUPABASE_ACCESS_TOKEN//[[:space:]]/}"
+          REF="${PROJECT_REF//[[:space:]]/}"
+          API="https://api.supabase.com/v1/projects/${REF}/database/query"
+
+          post_sql() {
+            local file="$1" out="$2" code
+            code=$(curl -sS -o "$out" -w '%{http_code}' -X POST "$API" \
+              -H "Authorization: Bearer ${TOK}" -H 'Content-Type: application/json' \
+              -d "$(jq -Rs '{query: .}' < "$file")")
+            echo "$code"
+          }
+
+          MIG="supabase/migrations/20261119130000_agent_pin_idle.sql"
+          code=$(post_sql "$MIG" /tmp/mig.json)
+          echo "::notice::migration_http=${code}"
+          if [ "$code" != "200" ] && [ "$code" != "201" ]; then
+            echo "::error::Migration failed HTTP ${code}: $(head -c 800 /tmp/mig.json)"
+            exit 1
+          fi
+
+          cat > /tmp/verify.sql <<'SQL'
+          select table_name, column_name, data_type
+          from information_schema.columns
+          where table_schema = 'public'
+            and ((table_name = 'sp_users' and column_name in
+                  ('pin_hash', 'pin_salt', 'pin_set_at', 'pin_failed_attempts',
+                   'pin_locked_until', 'app_downloaded_at'))
+                 or table_name = 'sp_pin_resets')
+          order by table_name, column_name;
+          SQL
+          code=$(post_sql /tmp/verify.sql /tmp/verify.json)
+          echo "::notice::verify_column_http=${code}"
+          echo "::notice::verify_columns=$(jq -c . /tmp/verify.json | head -c 3000)"
+
+          cat > /tmp/constraint.sql <<'SQL'
+          select conname, pg_get_constraintdef(oid) as def
+          from pg_constraint
+          where conname like 'sp_users_pin_%check' or conname like 'sp_pin_resets_%check'
+          order by conname;
+          SQL
+          code=$(post_sql /tmp/constraint.sql /tmp/constraint.json)
+          echo "::notice::verify_constraint_http=${code}"
+          echo "::notice::verify_constraints=$(jq -c . /tmp/constraint.json | head -c 2000)"
+
+          cat > /tmp/rlspolicy.sql <<'SQL'
+          select c.relname as table_name, c.relrowsecurity as rls_enabled,
+                 p.polname as policy_name, p.polcmd as command
+          from pg_class c
+          left join pg_policy p on p.polrelid = c.oid
+          where c.oid = 'public.sp_pin_resets'::regclass
+          order by p.polname;
+          SQL
+          code=$(post_sql /tmp/rlspolicy.sql /tmp/rlspolicy.json)
+          echo "::notice::verify_rls_http=${code}"
+          echo "::notice::verify_rls=$(jq -c . /tmp/rlspolicy.json | head -c 1200)"
+
+          cat > /tmp/guard.sql <<'SQL'
+          select t.tgname as trigger_name,
+                 p.proname as function_name,
+                 pg_get_functiondef(p.oid) like '%pin_hash%' as guards_pin_hash,
+                 pg_get_functiondef(p.oid) like '%app_downloaded_at%' as guards_app_downloaded
+          from pg_trigger t
+          join pg_proc p on p.oid = t.tgfoid
+          where t.tgrelid = 'public.sp_users'::regclass
+            and t.tgname = 'trg_guard_sp_users_sensitive_self_updates';
+          SQL
+          code=$(post_sql /tmp/guard.sql /tmp/guard.json)
+          echo "::notice::verify_guard_http=${code}"
+          echo "::notice::verify_guard=$(jq -c . /tmp/guard.json | head -c 1200)"

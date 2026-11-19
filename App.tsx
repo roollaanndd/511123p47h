@@ -4,10 +4,17 @@ import { Language, UserRole } from './types';
 import { db, seedDatabase } from './db';
 import { supabase, getAgentByEmail, getUserTcStatus, recordTcAcceptance, recordUserHeartbeat, recordPageView, getActiveOjkRateSet, getActiveB2BFleetRateConfig, fetchMyProfileForLogin, ensureProfile } from './services/supabaseService';
 import { applyOjkRateSet } from './services/ojkRates';
+import {
+  cachedPinConfigured, clearAgentPinSession, getAgentPinStatus, isAgentPinIdle,
+  isAgentPinUnlocked, markAgentPinLocked, markAgentPinUnlocked, recordAgentActivity,
+  reportAppDownloadedOnce,
+} from './services/agentPin';
 import { setActiveBulkRateConfig } from './services/b2bFleetRating';
 import { initVehicleOverrides } from './services/vehicleOverrides';
+import { isStandalone } from './services/pwaInstall';
 import { trackPageView } from './services/analytics';
 import TermsModal from './components/TermsModal';
+import AgentPinGate from './components/agent/AgentPinGate';
 import { inject as injectVercelAnalytics } from '@vercel/analytics';
 import RoleSelectionScreen from './components/RoleSelectionScreen';
 import { useDarkMode } from './components/shared/theme';
@@ -152,6 +159,13 @@ const App = ({ initialRoute }: AppProps = {}) => {
   const [pendingRoleUser, setPendingRoleUser] = useState<{ id: string; name: string; email: string; intendedRole?: 'CUSTOMER' | 'AGENT' } | null>(null);
   const [showTc, setShowTc] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
+  // v2.9.16 — kunci PIN agen. `pinChecking` mencegah portal sempat terlihat
+  // sebelum status PIN dari gateway selesai dimuat.
+  const [pinGate, setPinGate] = useState<{ mode: 'setup' | 'unlock'; userId: string } | null>(null);
+  const [pinChecking, setPinChecking] = useState(false);
+  const agentUserId = currentUser?.role === UserRole.AGENT
+    ? String(currentUser.id ?? currentUser.supabaseId ?? '')
+    : '';
 
   // Prefer the CMS-managed OJK rate set over the compiled-in defaults, if one
   // is active — falls back silently to services/ojkRates.ts's built-in values.
@@ -225,6 +239,13 @@ const App = ({ initialRoute }: AppProps = {}) => {
     if (user.role === UserRole.AGENT && !user.supabaseId) {
       const spUser = await getAgentByEmail(user.email).catch(() => null);
       if (spUser) enrichedUser = { ...user, supabaseId: spUser.id, agent_code: spUser.agent_code };
+    }
+    // Login email/password sudah membuktikan identitas. Tandai kunci PIN
+    // terbuka untuk sesi baru; status PIN tetap dicek ulang dari gateway.
+    // Kalau PIN belum dibuat, efek pengecek tetap memunculkan layar setup.
+    if (enrichedUser.role === UserRole.AGENT) {
+      const freshAgentId = String(enrichedUser.id ?? enrichedUser.supabaseId ?? '');
+      if (freshAgentId) markAgentPinUnlocked(freshAgentId);
     }
     setEntryUser({ name: enrichedUser.name?.split(' ')[0] || 'Pengguna' });
 
@@ -512,22 +533,93 @@ const App = ({ initialRoute }: AppProps = {}) => {
     };
   }, [currentUser?.id, currentUser?.role]);
 
+  // ── v2.9.16 — PIN agen + kunci idle 30 menit ─────────────────────────────
+  //
+  // Status PIN selalu dimuat ulang dari gateway: localStorage hanya menyimpan
+  // kapan terakhir aktif dan apakah layar sedang terkunci. Fail-closed — kalau
+  // gateway gagal, agen tetap melihat gate, bukan masuk ke portal.
+  useEffect(() => {
+    if (!agentUserId) { setPinChecking(false); setPinGate(null); return; }
+    let cancelled = false;
+    setPinChecking(true);
+    getAgentPinStatus(agentUserId)
+      .then(status => {
+        if (cancelled) return;
+        if (!status.configured) setPinGate({ mode: 'setup', userId: agentUserId });
+        else if (!isAgentPinUnlocked(agentUserId)) setPinGate({ mode: 'unlock', userId: agentUserId });
+        else setPinGate(null);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        const mode = cachedPinConfigured(agentUserId) === false ? 'setup' : 'unlock';
+        setPinGate({ mode, userId: agentUserId });
+      })
+      .finally(() => { if (!cancelled) setPinChecking(false); });
+    return () => { cancelled = true; };
+  }, [agentUserId]);
+
+  // Aktivitas apa pun memperbarui cap waktu. Kalau jeda sudah ≥30 menit,
+  // kunci LEBIH DULU sebelum mencatat aktivitas, supaya event pertama setelah
+  // kembali (focus/klik) tidak menghapus penanda idle.
+  useEffect(() => {
+    if (!agentUserId) return;
+    const lockIfIdle = () => {
+      if (!isAgentPinIdle(agentUserId)) return false;
+      markAgentPinLocked(agentUserId);
+      setPinGate(prev => prev ?? {
+        mode: cachedPinConfigured(agentUserId) === false ? 'setup' : 'unlock',
+        userId: agentUserId,
+      });
+      return true;
+    };
+    const onActivity = () => {
+      if (lockIfIdle()) return;
+      recordAgentActivity(agentUserId);
+    };
+    const events: (keyof WindowEventMap)[] = ['pointerdown', 'keydown', 'scroll', 'focus'];
+    events.forEach(name => window.addEventListener(name, onActivity, { passive: true }));
+    document.addEventListener('visibilitychange', onActivity);
+    const timer = window.setInterval(onActivity, 30 * 1000);
+    return () => {
+      events.forEach(name => window.removeEventListener(name, onActivity));
+      document.removeEventListener('visibilitychange', onActivity);
+      window.clearInterval(timer);
+    };
+  }, [agentUserId]);
+
+  // Penanda "aplikasi sudah diunduh" hanya dikirim sekali per akun, dan hanya
+  // saat benar-benar berjalan sebagai PWA/native standalone — `appMode` tidak
+  // dipakai di sini karena ia juga bernilai true setelah login biasa.
+  useEffect(() => {
+    if (!agentUserId) return;
+    const report = () => {
+      if (!isStandalone()) return;
+      void reportAppDownloadedOnce(agentUserId).catch(() => {});
+    };
+    report();
+    window.addEventListener('appinstalled', report);
+    return () => window.removeEventListener('appinstalled', report);
+  }, [agentUserId]);
+
   useEffect(() => {
     if (currentPath) { recordPageView(currentPath).catch(() => {}); }
   }, [currentPath]);
 
   const handleLogout = useCallback(async () => {
     if (heartbeatRef.current) { clearInterval(heartbeatRef.current); heartbeatRef.current = null; }
+    if (agentUserId) clearAgentPinSession(agentUserId);
+    setPinGate(null);
     await supabase.auth.signOut().catch(() => {});
     setCurrentUser(null);
     localStorage.removeItem(SESSION_KEY);
     sessionStorage.removeItem(SESSION_KEY);
     setAppMode(false);
     navigate('/');
-  }, [navigate]);
+  }, [navigate, agentUserId]);
 
   if (!isLoaded) return <SplashScreen onFinish={() => { sessionStorage.setItem('sp_splash_done_v2', '1'); setIsLoaded(true); }} lang={lang} setLang={handleSetLang} darkMode={darkMode} />;
   if (oauthLoading && !currentUser) return <PortalLoader />;
+  if (pinChecking && agentUserId) return <PortalLoader />;
   if (pendingRoleUser) return (
     <RoleSelectionScreen
       authUser={pendingRoleUser}
@@ -548,6 +640,22 @@ const App = ({ initialRoute }: AppProps = {}) => {
           return ref;
         }}
         onDone={() => setShowTc(false)}
+      />
+    );
+  }
+
+  if (pinGate && agentUserId) {
+    return (
+      <AgentPinGate
+        mode={pinGate.mode}
+        userId={pinGate.userId}
+        email={currentUser.email}
+        name={currentUser.name}
+        onUnlocked={() => {
+          markAgentPinUnlocked(pinGate.userId);
+          setPinGate(null);
+        }}
+        onLogout={() => { void handleLogout(); }}
       />
     );
   }

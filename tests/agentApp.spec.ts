@@ -86,7 +86,15 @@ const order = (i: number, status: string) => ({
 
 /** Jawaban per action, dibentuk mengikuti data-gateway di repo. */
 const RESPONSES: Record<string, unknown> = {
-  get_my_profile: { ...AGENT, allowed_apps: null },
+  // v2.9.16: pin_configured ikut dikembalikan get_my_profile. Tanpa ini,
+  // gate PIN mengira agen belum punya PIN dan menutupi seluruh portal —
+  // persis kegagalan yang muncul saat CI pertama kali menjalankan uji ini.
+  get_my_profile: { ...AGENT, allowed_apps: null, pin_configured: true },
+  set_pin: { pin_configured: true },
+  verify_pin: { verified: true, pin_configured: true },
+  request_pin_reset: { sent: true, email: AGENT.email, expires_at: new Date(Date.now() + 600_000).toISOString() },
+  reset_pin: { pin_configured: true, verified: true },
+  mark_app_downloaded: { app_downloaded_at: new Date().toISOString() },
   // Gerbang perjanjian kemitraan fail-closed: tanpa rekaman ini AgentPortal
   // menahan seluruh aplikasi di layar "Perjanjian Kemitraan".
   get_my_agreement: { id: 'agr-1', agent_id: AGENT.id, doc_version: 'V2.0-2026', accepted_at: iso(30) },
@@ -173,6 +181,10 @@ async function installMocks(page: Page) {
       // kliknya kehabisan waktu — persis kegagalan yang muncul saat uji ini
       // pertama dijalankan. Carousel-nya diuji sendiri di bawah.
       localStorage.setItem('SP_ONBOARDED_AGENT', '1');
+      // v2.9.16: agen uji sudah punya PIN dan sesinya masih terbuka. Tanpa
+      // dua kunci ini, gate PIN menutupi portal sebelum tab apa pun bisa diuji.
+      localStorage.setItem('sp_pin_unlocked:e2e-agent-0001', '1');
+      localStorage.setItem('sp_pin_last_activity:e2e-agent-0001', String(Date.now()));
       // supabase-js v2 menyimpan sesi di `sb-<ref>-auth-token`, dan <ref>
       // diambil dari VITE_SUPABASE_URL — yang BERBEDA antar lingkungan:
       //   lokal (.env.development) -> your-dev-project-id
@@ -355,6 +367,55 @@ test.describe('Apps Mitra — UI/UX', () => {
     await expect(page.getByRole('button', { name: /Buka kamera/i })).toBeVisible();
 
     await testInfo.attach('pathy-kutipan-3-ketukan.png', { body: await page.screenshot(), contentType: 'image/png' });
+  });
+
+  test('mitra tanpa PIN wajib membuat PIN 6 digit dulu', async ({ page }, testInfo) => {
+    await installMocks(page);
+    // Agen baru: gateway bilang pin_configured = false.
+    await page.route('**/functions/v1/**', async route => {
+      let action = '';
+      try { action = JSON.parse(route.request().postData() ?? '{}').action ?? ''; } catch { /* abai */ }
+      called.add(action);
+      // Hanya get_my_profile yang dibeda-beda; action lain tetap pakai jawaban
+      // standar (khususnya get_my_agreement, kalau tidak gerbang S&K muncul
+      // dan menutupi portal setelah PIN tersimpan).
+      const data = action === 'get_my_profile'
+        ? { ...AGENT, allowed_apps: null, pin_configured: false }
+        : RESPONSES[action] ?? null;
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data }) });
+    });
+
+    await page.goto('/agapps', { waitUntil: 'domcontentloaded' });
+    await expect(page.getByText('Buat PIN Agen')).toBeVisible({ timeout: 25_000 });
+    const fields = page.locator('input[type="password"]');
+    await expect(fields).toHaveCount(2);
+    await fields.nth(0).fill('123456');
+    await fields.nth(1).fill('123456');
+    await testInfo.attach('pin-setup.png', { body: await page.screenshot(), contentType: 'image/png' });
+
+    await page.getByRole('button', { name: 'Simpan PIN' }).click();
+    await expect(page.getByText('Beranda', { exact: true })).toBeVisible({ timeout: 25_000 });
+    expect(called.has('set_pin'), 'set_pin harus dipanggil saat PIN dibuat').toBe(true);
+  });
+
+  test('idle 30 menit mengunci portal, PIN membuka lagi', async ({ page }, testInfo) => {
+    await installMocks(page);
+    await page.goto('/agapps', { waitUntil: 'domcontentloaded' });
+    await expect(page.getByText('Beranda', { exact: true })).toBeVisible({ timeout: 25_000 });
+
+    // Cap waktu disetel 31 menit lalu satu event "bangun" — urutan yang sama
+    // seperti agen meninggalkan perangkat lalu kembali.
+    await page.evaluate(() => {
+      localStorage.setItem('sp_pin_last_activity:e2e-agent-0001', String(Date.now() - 31 * 60 * 1000));
+      window.dispatchEvent(new Event('focus'));
+    });
+    await expect(page.getByText('Masukkan PIN')).toBeVisible({ timeout: 10_000 });
+    await testInfo.attach('pin-idle-lock.png', { body: await page.screenshot(), contentType: 'image/png' });
+
+    await page.locator('input[type="password"]').first().fill('654321');
+    await page.getByRole('button', { name: 'Buka Portal' }).click();
+    await expect(page.getByText('Beranda', { exact: true })).toBeVisible({ timeout: 25_000 });
+    expect(called.has('verify_pin'), 'verify_pin harus dipanggil saat membuka kunci').toBe(true);
   });
 
   test.afterAll(() => {

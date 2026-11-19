@@ -51,6 +51,23 @@ describe('buildActivityDetail — whitelist kunci aman', () => {
     expect(detail).not.toContain('123456');
   });
 
+  it('PIN tidak pernah masuk detail — kunci pin/agent_pin/pin_hash ditolak', () => {
+    // v2.9.16: pola deny punya batas kata, jadi `shipping` tidak ikut kena.
+    const detail = buildActivityDetail({
+      email: 'agen@contoh.com',
+      pin: '123456',
+      agent_pin: '654321',
+      pin_hash: 'rahasia-hash',
+      status: 'OK',
+    });
+    expect(detail).toContain('email=agen@contoh.com');
+    expect(detail).toContain('status=OK');
+    expect(detail).not.toContain('123456');
+    expect(detail).not.toContain('654321');
+    expect(detail).not.toContain('rahasia-hash');
+    expect(detail).not.toMatch(/pin=/i);
+  });
+
   it('kunci yang tidak ada di whitelist tidak ikut, apa pun isinya', () => {
     const detail = buildActivityDetail({ catatan_panjang: 'budi tinggal di jalan itu', order_id: 'o1' });
     expect(detail).toContain('order_id=o1');

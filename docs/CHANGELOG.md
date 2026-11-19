@@ -1,5 +1,29 @@
 # SurePath - Changelog
 
+## v2.9.16 - 2026-11-19
+
+### PIN agen 6 digit + kunci otomatis setelah idle 30 menit
+
+- Portal agen kini memakai PIN 6 digit. Agen yang belum punya PIN wajib
+  membuatnya sekali saat membuka portal; setelah itu PIN diminta lagi setiap
+  kali sesi idle 30 menit, termasuk saat aplikasi ditutup/di-refresh dalam
+  keadaan idle.
+- Cap waktu aktivitas dan status kunci disimpan per akun di localStorage.
+  Keduanya hanya pengalaman pengguna — keputusan keamanan tetap di server.
+- PIN di-hash di `data-gateway` memakai PBKDF2-HMAC-SHA256 210.000 iterasi,
+  salt acak 16 byte (sama seperti kata sandi). Klien mengirim PIN mentah
+  hanya ke gateway; hash/salt tidak pernah dikembalikan oleh `get_my_profile`
+  dan tidak bisa diubah lewat PostgREST.
+- Lima PIN salah mengunci verifikasi 15 menit. Rate limit memakai tabel
+  `sp_rate_limits` (DB-backed), dan jejak aktivitas hanya mencatat nama aksi
+  serta status — tanpa PIN, kode OTP, atau hash.
+- Lupa PIN: kode reset 6 digit dikirim ke email akun via Resend, berlaku
+  10 menit, maksimal 5 percobaan, sekali pakai. Kode juga disimpan sebagai hash.
+- Aksi tersedia lewat gateway: `set_pin`, `verify_pin`, `request_pin_reset`,
+  `reset_pin`, dan `mark_app_downloaded` (penanda PWA terpasang, sekali/akun).
+- RLS deny-all dan service-role gateway dipertahankan. Migrasi
+  `20261119130000_agent_pin_idle.sql`; deploy ulang `data-gateway` wajib.
+
 ## v2.9.15 - 2026-11-19
 
 ### B2B: picker insurer & kartu paket claymorphism, dikustomisasi admin
