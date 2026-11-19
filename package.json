@@ -7,7 +7,7 @@
     "dev": "tsx server.ts",
     "seo:sitemap": "tsx scripts/generate-sitemap.mjs",
     "seo:prerender": "tsx scripts/prerender.mjs",
-    "build": "npm run seo:sitemap && vite build && npm run seo:prerender && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=build-server/server.cjs",
+    "build": "npm run seo:sitemap && vite build && npm run seo:prerender && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=build-server/server.cjs && npm run check:dist",
     "start": "node build-server/server.cjs",
     "preview": "vite preview",
     "lint": "node scripts/check-edge-functions.mjs && tsc --noEmit && eslint . && vitest run",
