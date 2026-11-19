@@ -1,6 +1,6 @@
 # SurePath — Alur Autentikasi & Registrasi
 
-> Terakhir diperbarui: 7 September 2026 (v1.57.0 — tipe akun wajib dipilih, tidak pernah diasumsikan).
+> Terakhir diperbarui: 20 November 2026 (v2.9.21 — tombol Google resmi sejak awal, `/login` jadi satu form).
 
 ## Identitas: dua lapisan
 
@@ -64,18 +64,15 @@ Jangan "merapikan" id ini — `sp_clients`, `sp_commissions`, dll mereferensikan
    - **gagal sementara** (5xx/jaringan) → tampilkan error, **jangan** login dengan role
      tebakan. Role yang salah menulis baris yang salah dan tidak memperbaiki diri sendiri.
 
-### 4. Google Identity Services
-1. The browser loads Google Identity Services and obtains a Google ID token directly from Google.
-2. `supabase.auth.signInWithIdToken({ provider: 'google', token, nonce })` verifies the token and creates or resumes the Supabase Auth user/session.
+### 4. Google Identity Services (renderButton-first, v2.9.21)
+1. `services/googleAuth.ts` memuat GIS lalu memanggil **`renderButton` langsung ke slot di kartu login** melalui `components/shared/GoogleSignInButton.tsx`. Tidak ada `prompt()` One Tap dan tidak ada overlay fallback — cooldown FedCM yang dulu membuat klik kedua "mati" tidak lagi dilibatkan, dan pengguna tidak disuruh menutup dialog tambahan.
+2. Callback GIS menerima ID token. `supabase.auth.signInWithIdToken({ provider: 'google', token, nonce })` memverifikasinya. `nonce` mentah dikirim ke Supabase harus merupakan preimage dari SHA-256 `nonce` yang diberikan ke `accounts.id.initialize`; kontrak ini diuji di `services/__tests__/googleAuth.test.ts`. Jangan pernah menukar keduanya atau menghapus nonce.
 3. `App.tsx` / `AuthGate` resolves the Supabase session → finds the `sp_users` profile. Tidak ada profil dan tidak ada role di
    metadata → `RoleSelectionScreen` → user pilih Nasabah / Mitra / Klien Korporat →
-   `ensure_profile({ role, phone, name })` (B2B lewat `createB2BClientProfile`).
+   `ensure_profile({ role, phone, name })` (B2B lewat `createB2BClientProfile`). Pilihan ini dibuat **sekali** saat profil terbentuk; login berikutnya memakai role tersimpan sebagai routing, bukan otoritas.
 4. **Header wajib GIS.** CSP harus mengizinkan `https://accounts.google.com` pada
    `script-src`, `connect-src`, `frame-src`, dan `https://accounts.google.com/gsi/style`
-   pada `style-src`. Tanpa `style-src`, stylesheet Google diblokir sehingga One Tap /
-   tombol Google tidak tampil. COOP harus `same-origin-allow-popups`: tombol fallback
-   memakai popup non-FedCM, dan `same-origin` memutus `window.opener` sehingga popup
-   gagal berkomunikasi. Ketiga sumber konfigurasi (`vercel.json`, `public/_headers`,
+   pada `style-src`. Tanpa `style-src`, stylesheet Google diblokir sehingga tombol Google tidak tampil. COOP harus `same-origin-allow-popups` karena alur akun Google memakai popup; `same-origin` memutus `window.opener` sehingga popup gagal berkomunikasi. Ketiga sumber konfigurasi (`vercel.json`, `public/_headers`,
    `server.ts`) harus konsisten; dijaga oleh
    `services/__tests__/googleAuthHeaders.test.ts`.
 5. **Dua jalur, satu layar.** Pada web, `?code=` di URL membuat `App.tsx` menahan render
@@ -98,8 +95,21 @@ Jangan "merapikan" id ini — `sp_clients`, `sp_commissions`, dll mereferensikan
   `resetPasswordForEmail` + mode `RESET_PASSWORD` via event `PASSWORD_RECOVERY`.
 
 ### 6. Login Admin (`components/admin/AdminLogin.tsx`)
-- Supabase Auth dulu, fallback legacy IndexedDB (`db.users`) untuk akun lama.
-- Validasi role harus salah satu ADMIN_ROLES.
+- Email/password atau tombol Google resmi. Keduanya menghasilkan sesi Supabase yang sama.
+- Google **hanya membuktikan identitas**. Akses diberikan hanya jika `get_my_profile`
+  (via gateway, dengan access token sesi) mengembalikan profil `sp_users` yang sudah ada
+  dengan `ADMIN_ROLES` atau `allowed_apps` memuat `ADMIN`. Jika tidak, sesi di-signOut.
+  Tidak ada auto-provision profil dari Google.
+- Operator (`components/operator/OperatorLogin.tsx`) tetap email/password dan memeriksa
+  `role === OPERATOR` atau `allowed_apps` memuat `OPERATOR`. Insurer
+  (`components/insurer/InsurerLogin.tsx`) tetap token undangan 7 hari. Keduanya sengaja
+  tidak memakai Google agar otorisasi internal dan alur token tetap eksplisit.
+
+### 7. Login B2B (`components/b2b/B2BLogin.tsx`)
+- Email/password atau tombol Google resmi. Google tidak boleh membuat profil korporat.
+- Setelah sesi ada, `fetchMyProfileForLogin` harus mengembalikan profil dengan role
+  `B2B_CLIENT` atau `MASTER_ADMIN`; selain itu sesi di-signOut dan pengguna diberi pesan
+  untuk memakai portal sesuai perannya.
 
 ## Riwayat bug yang sudah diperbaiki (PR #3, 10 Juni 2026)
 

@@ -1,18 +1,15 @@
-// Contract tests for the Google sign-in fallback (v2.9.11).
+// Contract tests for the renderButton-first Google sign-in (v2.9.21).
 //
-// Owner report: the One Tap popup closes fine, but clicking "Masuk dengan
-// Google" again shows nothing. GIS enforces a browser-side prompt cooldown
-// after a dismissal (skipped moment), so the second prompt() is silently
-// skipped — the old code then blamed "popup blocked", which was both wrong
-// and unfixable for the user. The fix: on any skip/not-displayed reason
-// (except a fresh user_cancel), render Google's OFFICIAL button in an overlay
-// — renderButton clicks are user-initiated and never cooldown-blocked.
-// These tests pin that contract so the two login entry points
-// (AuthGate + AdminLogin) can't silently regress.
+// The old flow called GIS One Tap `prompt()` first and only rendered the
+// official button inside an overlay after the prompt was skipped. That made
+// the second click look dead (browser/FedCM cooldown) and added an extra modal.
+// The new flow renders Google's official button in place, from the first paint.
+// No prompt(), no overlay, no cooldown — and the raw nonce ↔ SHA-256 pairing
+// verified by Supabase stays exactly the same. These tests pin that contract.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { webcrypto } from 'node:crypto';
-import { googleAuthErrorMessage, signInWithGoogleIdToken } from '../googleAuth';
+import { googleAuthErrorMessage, mountGoogleButton } from '../googleAuth';
 
 const signInWithIdTokenMock = vi.hoisted(() => vi.fn());
 
@@ -22,50 +19,37 @@ vi.mock('../db', () => ({
 
 const CLIENT_ID = 'test-client-id.apps.googleusercontent.com';
 
-interface FakeNotification {
-  skippedReason?: string;
-  notDisplayedReason?: string;
-  dismissedReason?: string;
-}
-
-/** Mirrors the real GIS prompt notification (new getters + legacy booleans). */
-const fakeNotification = ({
-  skippedReason,
-  notDisplayedReason,
-  dismissedReason,
-}: FakeNotification) => ({
-  isNotDisplayed: () => Boolean(notDisplayedReason),
-  isSkippedMoment: () => Boolean(skippedReason),
-  getNotDisplayedReason: () => notDisplayedReason ?? '',
-  getSkippedReason: () => skippedReason ?? '',
-  getDismissedReason: () => dismissedReason ?? '',
-});
-
-type PromptCallback = (notification: ReturnType<typeof fakeNotification>) => void;
+type CredentialCallback = (response: { credential: string }) => void;
 type InitializeOptions = {
   client_id: string;
   nonce: string;
-  callback: (response: { credential: string }) => void;
+  callback: CredentialCallback;
+  use_fedcm_for_prompt?: boolean;
 };
 
-function installFakeGoogle(behavior: { onPrompt?: (cb: PromptCallback) => void } = {}) {
+function installFakeGoogle({ withRenderButton = true }: { withRenderButton?: boolean } = {}) {
   const initialize = vi.fn();
-  const prompt = vi.fn((cb?: PromptCallback) => {
-    behavior.onPrompt?.(cb!);
-  });
+  const prompt = vi.fn();
   const renderButton = vi.fn();
-  (window as unknown as { google: unknown }).google = {
-    accounts: { id: { initialize, prompt, renderButton } },
-  };
+  const id: Record<string, unknown> = { initialize, prompt };
+  if (withRenderButton) id.renderButton = renderButton;
+  (window as unknown as { google: unknown }).google = { accounts: { id } };
   return { initialize, prompt, renderButton };
 }
 
-const overlay = () => document.getElementById('sp-gsi-fallback');
-const overlayButtonSlot = () => document.querySelector<HTMLDivElement>('#sp-gsi-fallback [data-gsi-fallback-button]');
+function mountButton(options: { text?: 'continue_with' | 'signin_with' } = {}) {
+  const slot = document.createElement('div');
+  document.body.appendChild(slot);
+  const onSuccess = vi.fn();
+  const onError = vi.fn();
+  const onStart = vi.fn();
+  const pending = mountGoogleButton(slot, { onSuccess, onError, onStart }, options);
+  return { slot, onSuccess, onError, onStart, pending };
+}
 
 beforeEach(() => {
-  // Pin crypto to Node's webcrypto: jsdom's polyfill in vitest.setup.ts lacks
-  // subtle.digest, which createNonce() needs.
+  // jsdom's crypto polyfill in vitest.setup.ts has no subtle.digest, which
+  // createNonce() needs — pin the real WebCrypto implementation instead.
   Object.defineProperty(globalThis, 'crypto', {
     configurable: true,
     writable: true,
@@ -80,7 +64,7 @@ beforeEach(() => {
 
 afterEach(() => {
   delete (window as unknown as { google?: unknown }).google;
-  overlay()?.remove();
+  document.body.innerHTML = '';
 });
 
 const captureRejection = async (promise: Promise<unknown>): Promise<Error> => {
@@ -92,58 +76,55 @@ const captureRejection = async (promise: Promise<unknown>): Promise<Error> => {
   }
 };
 
-describe('signInWithGoogleIdToken', () => {
+describe('mountGoogleButton', () => {
   it('rejects with a configuration message when VITE_GOOGLE_CLIENT_ID is missing', async () => {
     (import.meta.env as Record<string, string | undefined>).VITE_GOOGLE_CLIENT_ID = '';
     installFakeGoogle();
 
-    const error = await captureRejection(signInWithGoogleIdToken());
+    const error = await captureRejection(mountButton().pending);
     expect(error.message).toMatch(/VITE_GOOGLE_CLIENT_ID/);
   });
 
-  it('shows the official Google button in an overlay when the prompt is skipped (cooldown)', async () => {
-    // "auto_cancel" is what GIS reports after the browser enforces its
-    // post-dismissal cooldown — exactly the owner's second-click scenario.
-    const { initialize, prompt, renderButton } = installFakeGoogle({
-      onPrompt: (cb) => cb(fakeNotification({ skippedReason: 'auto_cancel' })),
-    });
+  it('renders the official Google button in place on the first mount — never One Tap', async () => {
+    const g = installFakeGoogle();
 
-    const pending = signInWithGoogleIdToken();
-    await vi.waitFor(() => expect(overlay()).toBeTruthy());
-    expect(prompt).toHaveBeenCalled();
+    const { slot, pending } = mountButton();
+    await expect(pending).resolves.toBeTypeOf('function');
 
-    // The overlay is a real dialog containing the official button slot...
-    expect(overlay()!.getAttribute('role')).toBe('dialog');
-    expect(overlayButtonSlot()).toBeTruthy();
-    // ...rendered through renderButton with the official button options.
-    expect(renderButton).toHaveBeenCalledTimes(1);
-    const [slot, options] = renderButton.mock.calls[0];
-    expect(slot).toBe(overlayButtonSlot());
+    expect(g.renderButton).toHaveBeenCalledTimes(1);
+    expect(g.prompt).not.toHaveBeenCalled();
+
+    const [parent, options] = g.renderButton.mock.calls[0];
+    expect(parent).toBe(slot);
     expect(options).toMatchObject({
       type: 'standard',
       theme: 'outline',
+      size: 'large',
       shape: 'pill',
       text: 'continue_with',
       logo_alignment: 'left',
       locale: 'id',
     });
+    expect(options.width).toBeGreaterThanOrEqual(200);
+  });
 
-    // The initialize callback must carry the SHA-256 of the nonce that later
-    // goes to Supabase (Supabase verifies exactly that pairing).
-    const initOptions = initialize.mock.calls[0][0] as InitializeOptions;
-    expect(initOptions.client_id).toBe(CLIENT_ID);
-    expect(initOptions.nonce).toMatch(/^[0-9a-f]{64}$/);
-    expect(initOptions.callback).toBeTypeOf('function');
+  it('exchanges the credential with the raw nonce that matches the hashed init nonce', async () => {
+    const g = installFakeGoogle();
+    const { onSuccess, onError, onStart, pending } = mountButton();
+    await pending;
 
-    // Clicking the official button delivers a credential through the SAME
-    // initialize callback → signInWithIdToken with the raw nonce.
-    signInWithIdTokenMock.mockResolvedValue({
-      data: { user: { id: 'user-1' }, session: { access_token: 'at' } },
-      error: null,
-    });
-    initOptions.callback({ credential: 'test-credential' });
+    const init = g.initialize.mock.calls[0][0] as InitializeOptions;
+    expect(init.client_id).toBe(CLIENT_ID);
+    expect(init.nonce).toMatch(/^[0-9a-f]{64}$/);
+    expect(init.callback).toBeTypeOf('function');
 
-    await expect(pending).resolves.toEqual({ user: { id: 'user-1' }, session: { access_token: 'at' } });
+    const session = { user: { id: 'user-1' }, session: { access_token: 'at' } };
+    signInWithIdTokenMock.mockResolvedValue({ data: session, error: null });
+    init.callback({ credential: 'test-credential' });
+
+    await vi.waitFor(() => expect(onSuccess).toHaveBeenCalledWith(session));
+    expect(onStart).toHaveBeenCalledTimes(1);
+    expect(onError).not.toHaveBeenCalled();
 
     const call = signInWithIdTokenMock.mock.calls[0][0];
     expect(call).toMatchObject({ provider: 'google', token: 'test-credential' });
@@ -151,76 +132,53 @@ describe('signInWithGoogleIdToken', () => {
     const hex = Array.from(new Uint8Array(digest))
       .map((b) => b.toString(16).padStart(2, '0'))
       .join('');
-    expect(hex).toBe(initOptions.nonce);
-
-    // Success closes the overlay.
-    expect(overlay()).toBeNull();
+    expect(hex).toBe(init.nonce);
   });
 
-  it('closes the fallback overlay and rejects honestly when the user presses Escape', async () => {
-    installFakeGoogle({
-      onPrompt: (cb) => cb(fakeNotification({ skippedReason: 'auto_cancel' })),
-    });
+  it('reports a Supabase failure through onError and never calls onSuccess', async () => {
+    const g = installFakeGoogle();
+    const { onSuccess, onError, pending } = mountButton();
+    await pending;
 
-    const pending = signInWithGoogleIdToken();
-    await vi.waitFor(() => expect(overlay()).toBeTruthy());
+    signInWithIdTokenMock.mockResolvedValue({ data: null, error: new Error('Token ditolak') });
+    (g.initialize.mock.calls[0][0] as InitializeOptions).callback({ credential: 'bad' });
 
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
-
-    const error = await captureRejection(pending);
-    expect(error.message).toMatch(/dibatalkan/i);
-    expect(overlay()).toBeNull();
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledTimes(1));
+    expect((onError.mock.calls[0][0] as Error).message).toBe('Token ditolak');
+    expect(onSuccess).not.toHaveBeenCalled();
   });
 
-  it('rejects after a real user_cancel without showing any overlay', async () => {
-    // The popup WAS displayed and the user closed it — showing another modal
-    // immediately would be obnoxious. Honest message, no overlay.
-    const { renderButton } = installFakeGoogle({
-      onPrompt: (cb) => cb(fakeNotification({ dismissedReason: 'user_cancel' })),
-    });
+  it('cleans up the slot and ignores a credential delivered after unmount', async () => {
+    const g = installFakeGoogle();
+    const { slot, onSuccess, onError, pending } = mountButton();
+    const dispose = await pending;
+    slot.innerHTML = '<span>button</span>';
 
-    const error = await captureRejection(signInWithGoogleIdToken());
-    expect(error.message).toMatch(/dibatalkan/i);
-    expect(overlay()).toBeNull();
-    expect(renderButton).not.toHaveBeenCalled();
-  });
-
-  it('waits for the credential when the prompt is displayed normally (no overlay)', async () => {
-    const { initialize, prompt, renderButton } = installFakeGoogle({
-      onPrompt: (cb) => cb(fakeNotification({})),
-    });
+    dispose();
+    expect(slot.innerHTML).toBe('');
 
     signInWithIdTokenMock.mockResolvedValue({
-      data: { user: { id: 'user-2' }, session: null },
-      error: null,
+      data: { user: { id: 'late' }, session: null }, error: null,
     });
+    (g.initialize.mock.calls[0][0] as InitializeOptions).callback({ credential: 'late' });
+    await Promise.resolve();
 
-    const pending = signInWithGoogleIdToken();
-    await vi.waitFor(() => expect(prompt).toHaveBeenCalled());
-    expect(overlay()).toBeNull();
-    expect(renderButton).not.toHaveBeenCalled();
-
-    const initOptions = initialize.mock.calls[0][0] as InitializeOptions;
-    initOptions.callback({ credential: 'normal-credential' });
-
-    await expect(pending).resolves.toEqual({ user: { id: 'user-2' }, session: null });
-    expect(signInWithIdTokenMock).toHaveBeenCalledWith(
-      expect.objectContaining({ provider: 'google', token: 'normal-credential' }),
-    );
+    expect(onSuccess).not.toHaveBeenCalled();
+    expect(onError).not.toHaveBeenCalled();
   });
 
-  it('rejects with an honest message when the prompt is skipped and renderButton is unavailable', async () => {
-    const g = installFakeGoogle({
-      onPrompt: (cb) => cb(fakeNotification({ skippedReason: 'unknown_reason' })),
-    });
-    // Simulate an older GIS client without renderButton (mutate the object
-    // actually stored on window, not the returned mock aggregate).
-    (window as unknown as { google: { accounts: { id: Record<string, unknown> } } }).google.accounts.id =
-      { initialize: g.initialize, prompt: g.prompt };
+  it('rejects with an honest browser message when renderButton is unavailable', async () => {
+    installFakeGoogle({ withRenderButton: false });
 
-    const error = await captureRejection(signInWithGoogleIdToken());
+    const error = await captureRejection(mountButton().pending);
     expect(error.message).toMatch(/peramban ini/i);
-    expect(overlay()).toBeNull();
+  });
+
+  it('honours a custom button text for registration surfaces', async () => {
+    const g = installFakeGoogle();
+
+    await mountButton({ text: 'signin_with' }).pending;
+    expect(g.renderButton.mock.calls[0][1]).toMatchObject({ text: 'signin_with' });
   });
 });
 

@@ -155,10 +155,18 @@ test.describe('UI smoke tests', () => {
     await expect(page).toHaveTitle(/SurePath/i);
   });
 
-  // FIX v2.9.11: `/login` kini app chooser ("Pilih aplikasi untuk masuk") —
-  // form login per-role pindah ke /custapp, /agapps, /operatorapp, /admin.
-  test('login entry shows the app chooser', async ({ page }) => {
+  // v2.9.21: `/login` kembali jadi pintu masuk utama — satu form dengan
+  // tombol Google resmi di atas, email sebagai fallback, dan link portal
+  // sebagai navigasi sekunder. Chooser pindah ke /choose-app.
+  test('login entry shows the sign-in form with Google first', async ({ page }) => {
     await page.goto(`${BASE_URL}/login`);
+    await expect(page.getByRole('heading', { name: /selamat datang kembali/i })).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('.sp-google-slot')).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Nasabah' })).toBeVisible();
+  });
+
+  test('app chooser remains available at /choose-app', async ({ page }) => {
+    await page.goto(`${BASE_URL}/choose-app`);
     await expect(page.getByRole('heading', { name: /pilih aplikasi/i })).toBeVisible({ timeout: 10_000 });
     await expect(page.getByRole('link', { name: /^Nasabah/ })).toBeVisible();
   });

@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { Lock, Mail, ArrowRight, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import { Lock, Mail, ArrowRight, AlertCircle, Eye, EyeOff, Shield } from 'lucide-react';
 import { supabase } from '../../services/supabaseService';
 import { checkRateLimit, recordFailedAttempt, clearRateLimit } from '../../services/authService';
 import { UserRole } from '../../types';
 import ModuleIcon from '../shared/ModuleIcon';
+import { OjkBadge, EncryptionBadge } from '../ui';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 
@@ -136,7 +137,7 @@ const OperatorLogin: React.FC<OperatorLoginProps> = ({ onLoginSuccess, onBack })
       {onBack && (
         <button
           onClick={onBack}
-          className="absolute top-6 left-6 flex items-center gap-1.5 transition-colors duration-200"
+          className="absolute top-6 left-6 -ml-3 -my-3.5 flex min-h-[44px] min-w-[44px] items-center gap-1.5 px-3 transition-colors duration-200"
           style={{ fontSize: '0.6875rem', fontWeight: 600, letterSpacing: '0.16em', textTransform: 'uppercase', color: '#94a3b8' }}
           onMouseEnter={e => (e.currentTarget.style.color = '#059669')}
           onMouseLeave={e => (e.currentTarget.style.color = '#94a3b8')}
@@ -199,10 +200,7 @@ const OperatorLogin: React.FC<OperatorLoginProps> = ({ onLoginSuccess, onBack })
                     id="operator-login-email" type="email" required autoComplete="username"
                     value={email} onChange={e => setEmail(e.target.value)}
                     placeholder="operator@surepath.id"
-                    className="block w-full pl-10 pr-4 py-3 rounded-full text-slate-900 placeholder-slate-400 outline-none transition-all duration-200"
-                    style={{ background: 'rgba(255,255,255,0.85)', border: '1px solid rgba(6,78,59,0.12)', fontFamily: 'monospace', fontSize: '0.78rem' }}
-                    onFocus={e => { e.target.style.borderColor = 'rgba(22,163,74,0.50)'; e.target.style.background = 'rgba(255,255,255,0.95)'; e.target.style.boxShadow = '0 0 0 3px rgba(22,163,74,0.07), inset 0 0 0 1px rgba(22,163,74,0.10)'; }}
-                    onBlur={e  => { e.target.style.borderColor = 'rgba(6,78,59,0.12)'; e.target.style.background = 'rgba(255,255,255,0.85)'; e.target.style.boxShadow = 'none'; }}
+                    className="block w-full h-12 pl-11 pr-4 rounded-full border border-white bg-white text-slate-900 text-sm placeholder:text-slate-400 shadow-[0_8px_24px_-16px_rgba(15,23,42,0.35)] outline-none focus:ring-2 focus:ring-emerald-600/25 focus:border-emerald-600 transition-all duration-150"
                   />
                 </div>
               </div>
@@ -218,16 +216,13 @@ const OperatorLogin: React.FC<OperatorLoginProps> = ({ onLoginSuccess, onBack })
                     value={password} onChange={e => setPassword(e.target.value)}
                     aria-label="Operator password"
                     placeholder="••••••••••••"
-                    className="block w-full pl-10 pr-11 py-3 rounded-full text-slate-900 placeholder-slate-400 outline-none transition-all duration-200"
-                    style={{ background: 'rgba(255,255,255,0.85)', border: '1px solid rgba(6,78,59,0.12)', fontFamily: 'monospace', fontSize: '0.78rem' }}
-                    onFocus={e => { e.target.style.borderColor = 'rgba(22,163,74,0.50)'; e.target.style.background = 'rgba(255,255,255,0.95)'; e.target.style.boxShadow = '0 0 0 3px rgba(22,163,74,0.07), inset 0 0 0 1px rgba(22,163,74,0.10)'; }}
-                    onBlur={e  => { e.target.style.borderColor = 'rgba(6,78,59,0.12)'; e.target.style.background = 'rgba(255,255,255,0.85)'; e.target.style.boxShadow = 'none'; }}
+                    className="block w-full h-12 pl-11 pr-14 rounded-full border border-white bg-white text-slate-900 text-sm placeholder:text-slate-400 shadow-[0_8px_24px_-16px_rgba(15,23,42,0.35)] outline-none focus:ring-2 focus:ring-emerald-600/25 focus:border-emerald-600 transition-all duration-150"
                   />
                   <button
                     type="button" onClick={() => setShowPass(!showPass)}
                     aria-label={showPass ? 'Hide password' : 'Show password'}
                     aria-pressed={showPass}
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 transition-colors duration-200"
+                    className="absolute right-1 top-1/2 flex min-h-[44px] min-w-[44px] -translate-y-1/2 items-center justify-center transition-colors duration-200"
                     style={{ color: '#94a3b8' }}
                     onMouseEnter={e => (e.currentTarget.style.color = '#059669')}
                     onMouseLeave={e => (e.currentTarget.style.color = '#94a3b8')}
@@ -255,13 +250,16 @@ const OperatorLogin: React.FC<OperatorLoginProps> = ({ onLoginSuccess, onBack })
           </div>
         </div>
 
-        <p className="text-center mt-7 flex items-center justify-center gap-2"
-          style={{ fontSize: '0.6875rem', fontWeight: 700, color: '#94a3b8', letterSpacing: '0.12em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
-          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="rgba(22,163,74,0.35)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-          </svg>
-          PT Ruang Proteksi Indonesia · {new Date().getFullYear()}
-        </p>
+        <div className="mt-7 text-center">
+          <p style={{ fontSize: '0.6875rem', fontWeight: 600, color: 'rgba(15,23,42,0.50)', letterSpacing: '0.3em', textTransform: 'uppercase', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+            <Shield size={10} style={{ color: 'rgba(5,150,105,0.55)' }} />
+            SurePath · Koneksi aman
+          </p>
+          <div className="mt-3 flex flex-wrap justify-center gap-1.5">
+            <OjkBadge />
+            <EncryptionBadge />
+          </div>
+        </div>
       </div>
     </div>
   );

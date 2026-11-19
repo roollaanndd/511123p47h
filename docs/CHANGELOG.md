@@ -1,5 +1,32 @@
 # SurePath - Changelog
 
+## v2.9.21 - 2026-11-20
+
+### Login Google jadi satu klik, tanpa popup One Tap
+
+- `services/googleAuth.ts` sekarang **renderButton-first**: tombol Google resmi dipasang
+  langsung di kartu login (`components/shared/GoogleSignInButton.tsx`). Alur lama
+  memanggil `prompt()` One Tap lalu memunculkan overlay tombol saat popup di-skip —
+  klik kedua sering terasa mati karena cooldown perambang/FedCM dan pengguna harus
+  menutup dialog tambahan. Keduanya dihapus.
+- Pasangan nonce raw ↔ SHA-256 dan `supabase.auth.signInWithIdToken` tetap dipertahankan;
+  test kontrak ditulis ulang (9 test) untuk memastikan tombol dirender sejak awal,
+  `prompt()` tidak dipanggil, cleanup aman saat unmount, dan error Supabase jujur.
+- `/login` kembali jadi **satu form login**: Google sebagai aksi utama, lalu separator,
+  email/password, OTP, dan tautan portal sebagai navigasi sekunder. Chooser lama tetap
+  tersedia di `/choose-app`.
+- Google kini tersedia juga di portal **B2B**. Admin dan B2B tetap memverifikasi profil
+  lewat gateway setelah sesi Google; akun tanpa profil/role berhak ditolak dan di-signOut.
+  Tidak ada auto-provision. Operator dan Insurer sengaja tetap password/token.
+- UI login **Operator** dan **Insurer** diselaraskan dengan bahasa visual agent apps:
+  kartu `sp-glass`/border emerald, input pill dengan focus ring emerald, CTA gradient
+  SurePath, dan jejak kepercayaan "SurePath · Koneksi aman" + badge OJK/enkripsi.
+  Target sentuh tombol tab, toggle password, tautan portal, dan tombol kembali juga
+  disamakan ke minimal 44px tanpa menggeser posisi visualnya. Logika autentikasi
+  tidak diubah.
+- Tidak ada perubahan edge function, migrasi, RLS, atau kontrak API. Tidak perlu deploy
+  ulang `data-gateway` untuk rilis ini.
+
 ## v2.9.20 - 2026-11-19
 
 ### Perbaikan approval mitra tidak tersimpan

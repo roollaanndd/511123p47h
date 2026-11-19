@@ -17,6 +17,7 @@ import React, { useState } from 'react';
 import { ArrowRight, AlertCircle, Mail, Lock, CheckCircle2, Building2, Files, FileCheck, Activity, Sparkle } from 'lucide-react';
 import { supabase } from '../../services/db';
 import { fetchMyProfileForLogin } from '../../services/users';
+import GoogleSignInButton, { googleAuthErrorMessage } from '../shared/GoogleSignInButton';
 import { UserRole } from '../../types';
 
 interface B2BLoginProps {
@@ -49,6 +50,35 @@ const B2BLogin: React.FC<B2BLoginProps> = ({ onLoginSuccess, onBack }) => {
     return `Gagal masuk: ${msg}`;
   };
 
+  // Shared authorization for password and Google sessions. Google proves the
+  // identity; only an existing B2B profile can grant portal access. No profile
+  // is ever provisioned here.
+  const authorizeB2BSession = async (): Promise<boolean> => {
+    const res = await fetchMyProfileForLogin();
+    if (!res.profile) {
+      await supabase.auth.signOut();
+      setError(res.noProfile
+        ? 'Akun ini belum terdaftar sebagai klien B2B. Hubungi admin SurePath untuk aktivasi.'
+        : 'Tidak bisa memuat profil. Periksa koneksi lalu coba lagi.');
+      return false;
+    }
+    // v2.8.1 — MASTER_ADMIN juga diterima di sini: ia boleh masuk SEMUA app
+    // (hasAppAccess superuser), termasuk portal B2B dalam mode pantau.
+    // Role lain tetap ditolak dan di-signOut seperti sebelumnya.
+    if (res.profile.role !== UserRole.B2B_CLIENT && res.profile.role !== UserRole.MASTER_ADMIN) {
+      await supabase.auth.signOut();
+      setError('Akun ini bukan akun korporat B2B. Masuk lewat portal yang sesuai dengan peran Anda.');
+      return false;
+    }
+
+    setSuccess(true);
+    // The wipe panel takes ~500ms to cover the screen; the remaining beat
+    // lets the "Berhasil masuk" state register before the portal mounts
+    // underneath the (fully opaque) panel.
+    setTimeout(() => onLoginSuccess(shapeUser(res.profile)), 700);
+    return true;
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim() || !password) { setError('Email dan kata sandi wajib diisi.'); return; }
@@ -78,34 +108,26 @@ const B2BLogin: React.FC<B2BLoginProps> = ({ onLoginSuccess, onBack }) => {
         return;
       }
 
-      const res = await fetchMyProfileForLogin();
-      if (!res.profile) {
-        await supabase.auth.signOut();
-        setError(res.noProfile
-          ? 'Akun ini belum terdaftar sebagai klien B2B. Hubungi admin SurePath untuk aktivasi.'
-          : 'Tidak bisa memuat profil. Periksa koneksi lalu coba lagi.');
-        setLoading(false);
-        return;
-      }
-      // v2.8.1 — MASTER_ADMIN juga diterima di sini: ia boleh masuk SEMUA app
-      // (hasAppAccess superuser), termasuk portal B2B dalam mode pantau.
-      // Role lain tetap ditolak dan di-signOut seperti sebelumnya.
-      if (res.profile.role !== UserRole.B2B_CLIENT && res.profile.role !== UserRole.MASTER_ADMIN) {
-        await supabase.auth.signOut();
-        setError('Akun ini bukan akun korporat B2B. Masuk lewat portal yang sesuai dengan peran Anda.');
-        setLoading(false);
-        return;
-      }
-
-      setSuccess(true);
-      // The wipe panel takes ~500ms to cover the screen; the remaining beat
-      // lets the "Berhasil masuk" state register before the portal mounts
-      // underneath the (fully opaque) panel.
-      setTimeout(() => onLoginSuccess(shapeUser(res.profile)), 700);
+      if (!await authorizeB2BSession()) setLoading(false);
     } catch (e: any) {
       setError(`Gagal masuk: ${e?.message ?? 'kesalahan tidak diketahui'}`);
       setLoading(false);
     }
+  };
+
+  const onGoogleStart = () => { setLoading(true); setError(null); };
+  const onGoogleSuccess = async (data: { user?: any }) => {
+    if (!data.user) {
+      setError('Login Google tidak menghasilkan sesi yang valid. Silakan coba lagi.');
+      setLoading(false);
+      return;
+    }
+    if (!await authorizeB2BSession()) setLoading(false);
+  };
+  const onGoogleError = (error: unknown) => {
+    console.error('Google B2B sign-in failed', error);
+    setError(googleAuthErrorMessage(error));
+    setLoading(false);
   };
 
   const handleForgotPassword = async (e: React.FormEvent) => {
@@ -393,6 +415,7 @@ const B2BLogin: React.FC<B2BLoginProps> = ({ onLoginSuccess, onBack }) => {
                     </button>
                   </form>
                 ) : (
+                  <>
                   <form onSubmit={handleLogin} className="space-y-4">
                     <div>
                       <label style={{ display: 'block', fontSize: '0.6875rem', fontWeight: 700, color: '#64748b', letterSpacing: '0.14em', textTransform: 'uppercase', marginBottom: '0.5rem' }}>
@@ -459,6 +482,27 @@ const B2BLogin: React.FC<B2BLoginProps> = ({ onLoginSuccess, onBack }) => {
                       }
                     </button>
                   </form>
+
+                  {mode === 'LOGIN' && (
+                    <div className="space-y-3 pt-1">
+                      <div className="flex items-center gap-3">
+                        <div className="h-px flex-1" style={{ background: 'rgba(67,56,202,0.14)' }} />
+                        <span style={{ fontSize: '0.65rem', color: '#94a3b8', letterSpacing: '0.18em', fontWeight: 700 }}>ATAU</span>
+                        <div className="h-px flex-1" style={{ background: 'rgba(67,56,202,0.14)' }} />
+                      </div>
+                      <GoogleSignInButton
+                        onStart={onGoogleStart}
+                        onSuccess={onGoogleSuccess}
+                        onError={onGoogleError}
+                      />
+                      {loading && (
+                        <p className="text-center text-[0.7rem] font-semibold text-indigo-600" role="status">
+                          Memverifikasi akun Google…
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  </>
                 )}
               </div>
             </div>

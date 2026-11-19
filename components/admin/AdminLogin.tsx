@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Lock, Mail, ArrowRight, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { supabase } from '../../services/supabaseService';
-import { googleAuthErrorMessage, signInWithGoogleIdToken } from '../../services/googleAuth';
+import GoogleSignInButton, { googleAuthErrorMessage } from '../shared/GoogleSignInButton';
 import { checkRateLimit, recordFailedAttempt, clearRateLimit } from '../../services/authService';
 import { UserRole } from '../../types';
 
@@ -85,18 +85,17 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess, onBack }) => {
     }
   };
 
-  const handleGoogleLogin = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const { user, session } = await signInWithGoogleIdToken();
-      await authorizeAdminSession(user, session, user.email);
-    } catch (error) {
-      console.error('Google admin sign-in failed', error);
-      setError(googleAuthErrorMessage(error));
-    } finally {
-      setLoading(false);
-    }
+  // The official Google button mounts in place. Nothing happens until Google
+  // returns a credential, so there is no popup cooldown and no extra dialog.
+  const onGoogleStart = () => { setLoading(true); setError(null); };
+  const onGoogleSuccess = async (data: { user?: any; session?: any }) => {
+    await authorizeAdminSession(data.user, data.session, data.user?.email);
+    setLoading(false);
+  };
+  const onGoogleError = (error: unknown) => {
+    console.error('Google admin sign-in failed', error);
+    setError(googleAuthErrorMessage(error));
+    setLoading(false);
   };
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -295,16 +294,11 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess, onBack }) => {
               <div className="h-px flex-1" style={{ background: 'rgba(6,78,59,0.12)' }} />
             </div>
 
-            <button
-              type="button"
-              onClick={handleGoogleLogin}
-              disabled={loading}
-              className="w-full flex justify-center items-center gap-3 py-3 rounded-xl font-semibold text-sm transition-all duration-200 disabled:opacity-40"
-              style={{ background: 'var(--ds-card2, #ffffff)', color: 'var(--ds-ink2, #334155)', border: '1px solid var(--ds-border, rgba(6,78,59,0.16))', boxShadow: '0 2px 8px rgba(15,23,42,0.04)' }}
-            >
-              <span aria-hidden="true" className="flex items-center justify-center w-5 h-5 rounded-full font-bold" style={{ fontSize: '0.95rem', color: '#4285F4', fontFamily: 'Arial, sans-serif' }}>G</span>
-              Lanjutkan dengan Google
-            </button>
+            <GoogleSignInButton
+              onStart={onGoogleStart}
+              onSuccess={onGoogleSuccess}
+              onError={onGoogleError}
+            />
           </div>
         </div>
 

@@ -575,6 +575,17 @@ body {
   border-color: rgba(52,211,153,0.28);
 }
 
+/* Google Identity Services button slot (renderButton-first, v2.9.21).
+   Keeps the card height stable while the GIS script loads and prevents the
+   official button's iframe from overflowing narrow login cards. */
+.sp-google-slot {
+  min-height: 44px;
+}
+.sp-google-slot > div,
+.sp-google-slot iframe {
+  max-width: 100%;
+}
+
 /* Stronger blur for fixed chrome: headers + bottom navs */
 .sp-glass-strong {
   background: linear-gradient(160deg, rgba(255,255,255,0.88), rgba(236,253,245,0.72));

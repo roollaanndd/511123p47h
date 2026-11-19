@@ -8,7 +8,8 @@ import { SurePathLogo } from './Navbar';
 import { Language, UserRole } from '../types';
 import { supabase, ensureProfile, fetchMyProfileForLogin } from '../services/supabaseService';
 import { callGateway } from '../services/db';
-import { signInWithGoogleIdToken } from '../services/googleAuth';
+import type { GoogleSessionData } from '../services/googleAuth';
+import GoogleSignInButton, { googleAuthErrorMessage } from './shared/GoogleSignInButton';
 import { isUntrustedEmail } from '../supabase/functions/_shared/trust';
 import AgentOnboarding from './agent/AgentOnboarding';
 import { OjkBadge, EncryptionBadge } from './ui';
@@ -31,6 +32,10 @@ interface AuthGateProps {
   onNeedsRoleSelection?: (user: { id: string; name: string; email: string }) => void;
   /** Role selected by the public app entry point; it is a UX default, never an authorization decision. */
   intendedRole?: UserRole.CUSTOMER | UserRole.AGENT;
+  /** `/login` is the front door: Google leads, email/password is the fallback. */
+  googleFirst?: boolean;
+  /** `/login` also links to the role-specific portals as secondary navigation. */
+  showAppLinks?: boolean;
 }
 
 const AuthGate: React.FC<AuthGateProps> = ({
@@ -41,6 +46,8 @@ const AuthGate: React.FC<AuthGateProps> = ({
   onDismissExternalError,
   onNeedsRoleSelection,
   intendedRole,
+  googleFirst = false,
+  showAppLinks = false,
 }) => {
   type AuthMode = 'LOGIN' | 'REGISTER' | 'CHECK_EMAIL' | 'FORGOT_PASSWORD' | 'FORGOT_SENT' | 'EMAIL_OTP_VERIFY' | 'RESET_PASSWORD';
   const [mode, setMode] = useState<AuthMode>(initialMode as AuthMode);
@@ -350,18 +357,39 @@ const AuthGate: React.FC<AuthGateProps> = ({
     setTimeout(() => setResending(false), 5000);
   };
 
-  // ── Google Identity Services ─────────────────────────────────────────────
-  const handleGoogleSignIn = async () => {
-    setLoading(true); setError(null);
+  // ── Google Identity Services (official button, mounted in place) ────────
+  // No prompt()/overlay: the button is visible from the first paint, so a
+  // second click always opens the account chooser instead of hitting a
+  // browser cooldown. `onStart` fires only once Google returns a credential.
+  const onGoogleStart = () => {
     resolvedRef.current = false;
-    try {
-      const { user } = await signInWithGoogleIdToken();
-      await resolveAndLogin(user);
-    } catch (e: any) {
-      setError(e?.message || t('Google login failed. Please try again.', 'Login Google gagal. Coba lagi.'));
-      setLoading(false);
-    }
+    setLoading(true);
+    setError(null);
   };
+  const onGoogleSuccess = async (data: GoogleSessionData) => {
+    if (!data.user) {
+      setError(t('Google login did not return a valid session. Please try again.', 'Login Google tidak menghasilkan sesi yang valid. Silakan coba lagi.'));
+      setLoading(false);
+      return;
+    }
+    await resolveAndLogin(data.user);
+  };
+  const onGoogleError = (e: unknown) => {
+    console.error('Google sign-in failed', e);
+    setError(googleAuthErrorMessage(e));
+    setLoading(false);
+  };
+
+  const googleButton = (
+    <GoogleSignInButton
+      onStart={onGoogleStart}
+      onSuccess={onGoogleSuccess}
+      onError={onGoogleError}
+      text={mode === 'REGISTER' ? 'signup' : 'continue_with'}
+    />
+  );
+  const showGoogleOnTop = googleFirst && mode === 'LOGIN';
+  const showGoogleBelow = !showGoogleOnTop && (mode === 'LOGIN' || mode === 'REGISTER');
 
   // ── Forgot password ───────────────────────────────────────────────────────
   const handleForgotPassword = async (e: React.FormEvent) => {
@@ -437,6 +465,10 @@ const AuthGate: React.FC<AuthGateProps> = ({
   // ── Design tokens (emerald brand) ──────────────────────────────────────
   const GRAD = 'linear-gradient(135deg, #15803d 0%, #059669 58%, #f59e0b 140%)';
   const inputCls = 'w-full h-12 pl-11 pr-4 rounded-full border border-white bg-white text-slate-900 text-sm placeholder:text-slate-400 shadow-[0_8px_24px_-16px_rgba(15,23,42,0.35)] focus:outline-none focus:ring-2 focus:ring-emerald-600/25 focus:border-emerald-600 transition-all duration-150';
+  // Password fields reserve room for the 44px eye toggle; the toggle itself
+  // stays visually identical but has a thumb-friendly hit area on mobile.
+  const passwordInputCls = inputCls.replace(' pr-4 ', ' pr-14 ');
+  const iconToggleCls = 'absolute right-1 top-1/2 flex min-h-[44px] min-w-[44px] -translate-y-1/2 items-center justify-center text-slate-400 transition-colors hover:text-emerald-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500';
 
   return (
     <div className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden px-4 py-10 sm:py-12" style={{ fontFamily: "'Sora', sans-serif", background: 'linear-gradient(160deg, #fbfdf9 0%, #f3fbf6 48%, #fef9f0 100%)', paddingTop: 'max(2.5rem, env(safe-area-inset-top))', paddingBottom: 'max(2.5rem, env(safe-area-inset-bottom))' }}>
@@ -578,8 +610,8 @@ const AuthGate: React.FC<AuthGateProps> = ({
                 <KeyRound size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-700/50" />
                 <input required type={showNewPass ? 'text' : 'password'} placeholder={t('New password (min 6 chars)', 'Password baru (min 6 karakter)')} aria-label={t('New password', 'Password baru')} autoComplete="new-password" minLength={6} value={newPassword}
                   onChange={e => setNewPass(e.target.value)}
-                  className={inputCls} />
-                <button type="button" onClick={() => setShowNewPass(!showNewPass)} aria-label={showNewPass ? t('Hide password', 'Sembunyikan kata sandi') : t('Show password', 'Tampilkan kata sandi')} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-emerald-600 transition-colors">
+                  className={passwordInputCls} />
+                <button type="button" onClick={() => setShowNewPass(!showNewPass)} aria-label={showNewPass ? t('Hide password', 'Sembunyikan kata sandi') : t('Show password', 'Tampilkan kata sandi')} className={iconToggleCls}>
                   {showNewPass ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
@@ -611,18 +643,29 @@ const AuthGate: React.FC<AuthGateProps> = ({
               <button
                 type="button" role="tab" aria-selected={mode === 'LOGIN'}
                 onClick={() => { setMode('LOGIN'); setError(null); }}
-                className={`relative flex-1 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors duration-200 ${mode === 'LOGIN' ? 'text-white' : 'text-slate-500 hover:text-slate-700'}`}
+                className={`relative flex-1 h-11 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors duration-200 ${mode === 'LOGIN' ? 'text-white' : 'text-slate-500 hover:text-slate-700'}`}
               >
                 {t('Sign In', 'Masuk')}
               </button>
               <button
                 type="button" role="tab" aria-selected={mode === 'REGISTER'}
                 onClick={() => { setMode('REGISTER'); setRegRole(null); setError(null); }}
-                className={`relative flex-1 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors duration-200 ${mode === 'REGISTER' ? 'text-white' : 'text-slate-500 hover:text-slate-700'}`}
+                className={`relative flex-1 h-11 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors duration-200 ${mode === 'REGISTER' ? 'text-white' : 'text-slate-500 hover:text-slate-700'}`}
               >
                 {t('Register', 'Daftar')}
               </button>
             </div>
+
+            {showGoogleOnTop && (
+              <div className="space-y-2">
+                {googleButton}
+                {loading && (
+                  <p className="text-center text-[0.7rem] font-semibold text-emerald-700" role="status">
+                    Memverifikasi akun Google…
+                  </p>
+                )}
+              </div>
+            )}
 
             <form onSubmit={mode === 'LOGIN' ? handleLogin : handleRegister} className="space-y-3">
 
@@ -690,7 +733,7 @@ const AuthGate: React.FC<AuthGateProps> = ({
                   autoComplete={mode === 'LOGIN' ? 'current-password' : 'new-password'}
                   placeholder="Password"
                   minLength={mode === 'REGISTER' ? 6 : 1}
-                  className={inputCls}
+                  className={passwordInputCls}
                   value={formData.password}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                 />
@@ -699,7 +742,7 @@ const AuthGate: React.FC<AuthGateProps> = ({
                   onClick={() => setShowPass(!showPass)}
                   aria-label={showPass ? t('Hide password', 'Sembunyikan kata sandi') : t('Show password', 'Tampilkan kata sandi')}
                   aria-pressed={showPass}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-emerald-600 transition-colors"
+                  className={iconToggleCls}
                 >
                   {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
@@ -718,7 +761,7 @@ const AuthGate: React.FC<AuthGateProps> = ({
               {mode === 'LOGIN' && (
                 <div className="flex justify-end">
                   <button type="button" onClick={() => { setMode('FORGOT_PASSWORD'); setError(null); }}
-                    className="py-1 text-[0.7rem] font-bold text-slate-500 hover:text-emerald-600 transition-colors uppercase tracking-wider">
+                    className="inline-flex min-h-[44px] items-center text-[0.7rem] font-bold text-slate-500 transition-colors hover:text-emerald-600 uppercase tracking-wider">
                     {t('Forgot password?', 'Lupa password?')}
                   </button>
                 </div>
@@ -757,19 +800,16 @@ const AuthGate: React.FC<AuthGateProps> = ({
               <div className="space-y-3 mt-4">
                 <div className="flex items-center gap-3">
                   <div className="flex-1 h-px bg-emerald-900/10" />
-                  <span className="text-2xs font-bold text-slate-500 uppercase tracking-widest">{mode === 'REGISTER' ? t('Or register with', 'Atau daftar dengan') : t('Or continue with', 'Atau lanjutkan dengan')}</span>
+                  <span className="text-2xs font-bold text-slate-500 uppercase tracking-widest">
+                    {mode === 'REGISTER'
+                      ? t('Or register with', 'Atau daftar dengan')
+                      : showGoogleOnTop
+                        ? t('Or continue with email', 'Atau lanjutkan dengan email')
+                        : t('Or continue with', 'Atau lanjutkan dengan')}
+                  </span>
                   <div className="flex-1 h-px bg-emerald-900/10" />
                 </div>
-                <button onClick={handleGoogleSignIn} disabled={loading}
-                  className="w-full h-12 rounded-2xl bg-white border border-emerald-900/10 text-slate-700 font-medium text-sm flex items-center justify-center gap-3 shadow-sm hover:border-emerald-500/30 active:scale-[0.98] transition-all duration-150 disabled:opacity-40">
-                  <svg viewBox="0 0 24 24" width="16" height="16" xmlns="http://www.w3.org/2000/svg">
-                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-                  </svg>
-                  <span className="text-2xs font-bold uppercase tracking-widest">{mode === 'REGISTER' ? t('Sign up with Google', 'Daftar dengan Google') : t('Continue with Google', 'Lanjut dengan Google')}</span>
-                </button>
+                {showGoogleBelow && googleButton}
                 {mode === 'LOGIN' && (
                   <button onClick={handleSendEmailOtp} disabled={loading}
                     className="w-full py-3.5 rounded-2xl flex items-center justify-center gap-2.5 text-emerald-700 transition-all active:scale-[0.98] disabled:opacity-50"
@@ -784,12 +824,36 @@ const AuthGate: React.FC<AuthGateProps> = ({
                     pengguna B2B oleh admin). */}
                 {mode === 'LOGIN' && (
                   <a href="/b2bapps"
-                    className="w-full py-3 rounded-2xl flex items-center justify-center gap-2 text-slate-500 transition-all active:scale-[0.98] hover:text-emerald-700"
+                    className="flex h-11 w-full items-center justify-center gap-2 rounded-2xl text-slate-500 transition-all active:scale-[0.98] hover:text-emerald-700"
                     style={{ border: '1px dashed rgba(15,23,42,0.15)' }}>
                     <Building2 size={14} />
                     <span className="text-2xs font-bold uppercase tracking-widest">{t('Corporate / B2B Portal', 'Portal Korporat (B2B)')}</span>
                   </a>
                 )}
+              </div>
+            )}
+
+            {showAppLinks && (
+              <div className="border-t border-emerald-900/10 pt-4">
+                <p className="text-center text-2xs font-bold uppercase tracking-[0.18em] text-slate-500 mb-3">
+                  Atau buka aplikasi tertentu
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { href: '/custapp', label: 'Nasabah' },
+                    { href: '/agapps', label: 'Mitra' },
+                    { href: '/operatorapp', label: 'Operator' },
+                    { href: '/admin', label: 'Admin' },
+                  ].map(({ href, label }) => (
+                    <a
+                      key={href}
+                      href={href}
+                      className="flex min-h-[44px] items-center justify-center rounded-xl border border-emerald-900/10 bg-white px-3 py-2.5 text-center text-[0.7rem] font-bold text-slate-600 transition hover:border-emerald-500/40 hover:text-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                    >
+                      {label}
+                    </a>
+                  ))}
+                </div>
               </div>
             )}
           </div>

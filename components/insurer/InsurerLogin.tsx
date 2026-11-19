@@ -8,7 +8,7 @@
 // Login screen adalah "first impression" — jadi kita beri branded gradient
 // panel kiri (desktop) + card login clean di kanan. Di mobile tumpuk vertikal.
 import React, { useState, useEffect } from 'react';
-import { ArrowRight, AlertCircle, KeyRound, ShieldCheck, Clock, Mail } from 'lucide-react';
+import { ArrowRight, AlertCircle, KeyRound, ShieldCheck, Clock, Mail, Shield } from 'lucide-react';
 import { getInsurerDashboard } from '../../services/insurerService';
 
 interface InsurerLoginProps {
@@ -124,7 +124,7 @@ const InsurerLogin: React.FC<InsurerLoginProps> = ({ initialToken, onLoginSucces
           {onBack ? (
             <button
               onClick={onBack}
-              className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400 hover:text-slate-700 transition-colors"
+              className="inline-flex min-h-[44px] min-w-[44px] items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400 transition-colors hover:text-slate-700"
             >
               <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M8 2L4 6L8 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
               Kembali
@@ -149,7 +149,7 @@ const InsurerLogin: React.FC<InsurerLoginProps> = ({ initialToken, onLoginSucces
         </div>
 
         {/* Form card */}
-        <div className="w-full max-w-md bg-white rounded-3xl border border-slate-200 p-7 sm:p-8" style={{ boxShadow: '0 20px 48px -24px rgba(15,23,42,0.18)' }}>
+        <div className="w-full max-w-md rounded-[1.75rem] border border-emerald-100 bg-white p-7 sm:p-8 shadow-[0_18px_50px_-32px_rgba(6,95,70,0.24)]">
           <div className="hidden lg:block mb-6">
             <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-500">Masuk</p>
             <h2 className="mt-1.5 text-2xl font-extrabold tracking-tight text-slate-900">Token akses</h2>
@@ -159,9 +159,9 @@ const InsurerLogin: React.FC<InsurerLoginProps> = ({ initialToken, onLoginSucces
           </div>
 
           {error && (
-            <div className="mb-5 p-3 rounded-xl flex items-start gap-2.5 bg-rose-50 border border-rose-100">
-              <AlertCircle className="shrink-0 mt-0.5" size={14} style={{ color: '#dc2626' }} />
-              <p className="text-[12px] font-semibold text-rose-700 leading-snug">{error}</p>
+            <div className="mb-5 p-3 rounded-xl flex items-start gap-2.5 bg-red-500/10 border border-red-500/20">
+              <AlertCircle className="shrink-0 mt-0.5 text-red-700" size={14} />
+              <p className="text-[12px] font-semibold text-red-700 leading-snug">{error}</p>
             </div>
           )}
 
@@ -176,8 +176,7 @@ const InsurerLogin: React.FC<InsurerLoginProps> = ({ initialToken, onLoginSucces
               onChange={e => setToken(e.target.value)}
               placeholder="Paste token dari email…"
               onKeyDown={e => { if (e.key === 'Enter' && !loading && token.trim()) handleLogin(); }}
-              className="block w-full pl-10 pr-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 placeholder-slate-400 outline-none focus:border-emerald-500 focus:bg-white transition-all text-[13px]"
-              style={{ fontFamily: 'ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace' }}
+              className="block w-full h-12 pl-11 pr-4 rounded-full border border-white bg-white text-slate-900 text-sm placeholder:text-slate-400 shadow-[0_8px_24px_-16px_rgba(15,23,42,0.35)] outline-none focus:ring-2 focus:ring-emerald-600/25 focus:border-emerald-600 transition-all duration-150"
             />
           </div>
 
@@ -187,8 +186,8 @@ const InsurerLogin: React.FC<InsurerLoginProps> = ({ initialToken, onLoginSucces
             disabled={loading || !token.trim()}
             className="w-full flex justify-center items-center gap-2.5 py-3.5 rounded-xl font-bold text-[12px] uppercase tracking-[0.14em] text-white transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed hover:brightness-110"
             style={{
-              background: 'linear-gradient(135deg, #065F46 0%, #047857 55%, #059669 100%)',
-              boxShadow: loading ? 'none' : '0 10px 28px -10px rgba(6,95,70,0.55)',
+              background: 'linear-gradient(135deg, #15803d 0%, #059669 58%, #f59e0b 140%)',
+              boxShadow: loading ? 'none' : '0 12px 26px -10px rgba(5,150,105,0.55)',
             }}
           >
             {loading ? (
@@ -201,12 +200,18 @@ const InsurerLogin: React.FC<InsurerLoginProps> = ({ initialToken, onLoginSucces
             )}
           </button>
 
-          <div className="pt-5 mt-5 border-t border-slate-100 flex items-start gap-2 text-[11px] text-slate-500 leading-relaxed">
+          <div className="pt-5 mt-5 border-t border-emerald-900/10 flex items-start gap-2 text-[11px] text-slate-500 leading-relaxed">
             <Mail size={12} className="shrink-0 mt-0.5 text-emerald-600" />
             <span>
               Belum terima token? Hubungi tim SurePath untuk minta link akses baru. Token berlaku 7 hari dan diperpanjang otomatis setiap login.
             </span>
           </div>
+
+          <p className="mt-5 flex items-center justify-center gap-2"
+            style={{ fontSize: '0.6875rem', fontWeight: 600, color: 'rgba(15,23,42,0.50)', letterSpacing: '0.2em', textTransform: 'uppercase' }}>
+            <Shield size={10} style={{ color: 'rgba(5,150,105,0.55)' }} />
+            SurePath · Koneksi aman
+          </p>
         </div>
 
         <p className="lg:hidden text-center text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400 mt-6">

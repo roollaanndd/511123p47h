@@ -39,7 +39,7 @@ export const AuthEntryRoutes: React.FC<AppRouteProps> = ({
   pathname, lang, currentUser, onAuthSuccess, loginError, onDismissLoginError, onNeedsRoleSelection,
 }) => {
   if (currentUser) return null;
-  if (pathname === '/choose-app' || pathname === '/login') {
+  if (pathname === '/choose-app') {
     return (
       <Suspense fallback={<PortalLoader lang={lang} />}>
         <PublicAppChooser />
@@ -59,6 +59,8 @@ export const AuthEntryRoutes: React.FC<AppRouteProps> = ({
           onDismissExternalError={onDismissLoginError}
           onNeedsRoleSelection={onNeedsRoleSelection}
           intendedRole={intendedRole}
+          googleFirst={pathname === '/login'}
+          showAppLinks={pathname === '/login'}
         />
       </Suspense>
     </>
