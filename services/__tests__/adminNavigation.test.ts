@@ -13,7 +13,7 @@ import {
 } from '../../components/admin/navigation';
 
 describe('navigasi Admin CMS', () => {
-  it('6 grup, 18 section — konsolidasi dari 29 item lama (+2 sejak v2.7.51: tnc_admin, b2b_fleet_rates; +2 sejak v2.7.58: manual_credit, credit_approvals; +1 sejak v2.9.18: workshops)', () => {
+  it('6 grup, 18 section — konsolidasi dari 29 item lama (+2 sejak v2.7.51: tnc_admin, b2b_fleet_rates; +2 sejak v2.7.58: manual_credit, credit_approvals; +1 sejak v2.9.19: workshops)', () => {
     expect(ADMIN_NAV).toHaveLength(6);
     expect(ADMIN_NAV.flatMap(g => g.sections)).toHaveLength(18);
   });
@@ -22,7 +22,7 @@ describe('navigasi Admin CMS', () => {
     expect(new Set(ALL_CHILD_IDS).size).toBe(ALL_CHILD_IDS.length);
     expect([...ALL_CHILD_IDS].sort()).toEqual([...LEGACY_LEAF_IDS].sort());
 
-    expect(ALL_CHILD_IDS).toHaveLength(37); // +b2b_plans (v2.9.1), +workshops (v2.9.18)
+    expect(ALL_CHILD_IDS).toHaveLength(37); // +b2b_plans (v2.9.1), +workshops (v2.9.19)
   });
 
   it('setiap section punya minimal satu view', () => {

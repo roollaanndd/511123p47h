@@ -75,7 +75,7 @@ non-master menghapus MASTER_ADMIN; menghapus `sp_users` + akun auth),
 `admin_update_commission`, `admin_list_notifications`, `admin_mark_notification_read`,
 `admin_create_notification`, `admin_security_stats`, `admin_traffic_stats`.
 
-### Direktori bengkel rekanan (v2.9.18 — `actions/workshopPartners.ts`)
+### Direktori bengkel rekanan (v2.9.19 — `actions/workshopPartners.ts`)
 
 | Action | Fungsi |
 |---|---|

@@ -1,5 +1,39 @@
 # SurePath Session Context
-**Updated:** 2026-11-15 (v2.9.8 — Pathy white glassmorphism, watermark logo, AI assistant positioning)
+**Updated:** 2026-11-19 (v2.9.18 — audit keamanan, RBAC inti, email satu pintu, jalur R2)
+
+## Terakhir dikerjakan (19 Nov 2026) — v2.9.18
+
+**Audit + hardening keamanan** (merge ke `main` = `e825051`, data-gateway ACTIVE v43, health 1.31.0)
+- `CORE_ADMIN_ROLES`/`isCoreAdmin` mencabut OPERATOR dari 13 aksi kredensial mitra;
+  `isRateAdmin` untuk rate OJK, `isFinanceAdmin` untuk koin/komisi.
+- Token review tidak lagi ditulis ke metadata notifikasi; verifikasi agen wajib `role === 'AGENT'`.
+- Build: `sourcemap: false`, `mangle.toplevel`, `check-dist-clean` memindai isi bundel dan
+  dipanggil dari `npm run build`.
+- Sisa terbuka: repo GitHub masih publik; 133 tempat masih mengembalikan `error.message` mentah (400).
+
+**Email Resend — satu pintu**
+- Modul `supabase/functions/_shared/email.ts`: `sendEmail`, `sendEmailSafe`,
+  `emailConfigFor`, `emailConfigFromEnv`, `escapeHtml`. Timeout default 10 detik,
+  `Idempotency-Key`, log tanpa penerima/subjek/isi.
+- 5 pemanggil dipindah: `send-insurer-email`, `daily-report`, `insurer-reminder-cron`,
+  `actions/agentPin.ts`, `actions/orders.ts`. Tidak ada lagi `api.resend.com` di fungsi.
+- Env: `RESEND_API_KEY` (wajib), `RESEND_FROM`, `RESEND_BASE_URL`, `RESEND_TIMEOUT_MS`.
+- Sisa: jalur `pg_net` di migrasi `20260908` sengaja tidak diubah (sudah ter-deploy).
+
+**Berkas Cloudflare R2 (kode siap, UI belum memakai)**
+- `_shared/r2.ts`: presign SigV4 (host-signed, clamp 7 hari, `response-content-disposition`
+  ikut ditandatangani). Tanda tangan diverifikasi silang dengan botocore 1.44.6.
+- `actions/r2.ts`: `r2_upload_url` → PUT langsung → `r2_confirm_upload` → `r2_download_url`.
+  Kunci dibuat server: `<policy_order|claim|agent>/<id>/<DOCTYPE>/<uuid>.<ext>`.
+- Env: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`,
+  `R2_ENDPOINT` (opsional). Bila kosong → 503, bukan 500.
+- Registry memakai `sp_documents` dengan `bucket = 'r2'`. Unduhan memaksa `attachment`
+  dan mencatat `document.download`.
+- **UI belum memakai R2**: semua unggahan di `src/` masih Supabase Storage.
+- Tes: `services/__tests__/emailR2Integration.test.ts` (24 tes, known-answer botocore).
+
+**Dokumen** di `surepath-proposals/`: 05 aturan keamanan, 06 login/sesi, 07 data,
+08 threat map, 09 checklist peluncuran, 10 integrasi Resend+R2.
 
 ## Terakhir dikerjakan (15 Nov 2026) — v2.9.8
 

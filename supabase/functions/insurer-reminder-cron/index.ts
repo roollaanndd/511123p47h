@@ -19,6 +19,7 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
+import { sendEmailSafe, emailConfigFor } from '../_shared/email.ts';
 
 Deno.serve(async (req) => {
   // This function is cron-triggered (auth via x-cron-secret below), not
@@ -152,11 +153,14 @@ Deno.serve(async (req) => {
 </td></tr>
 </table>
 </body></html>`;
-          fetch('https://api.resend.com/emails', {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${RESEND_KEY}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ from: 'SurePath <noreply@myinsurepath.com>', to: [email], subject, html }),
-          }).then(() => {}, () => {});
+          // audit 2026-11-19: satu jalur email (_shared/email.ts).
+          void sendEmailSafe(emailConfigFor(RESEND_KEY), {
+            to: email,
+            subject,
+            html,
+            idempotencyKey: `reminder:${tk.id}:${reminderCount + 1}`,
+            tags: [{ name: 'flow', value: 'insurer-reminder' }],
+          });
         }
 
         // Update token: increment reminder_count + set last_reminded_at

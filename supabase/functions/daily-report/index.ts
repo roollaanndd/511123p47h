@@ -1,5 +1,6 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { sendEmail, emailConfigFor } from '../_shared/email.ts';
 
 // Admin daily digest — new users, orders, claims, payments for the day.
 // Delivered via Telegram AND email (Resend), so admins get it even if only one
@@ -120,7 +121,8 @@ Deno.serve(async (req) => {
       ...((adminEmailsRes.data ?? []).map((r: { email: string }) => r.email).filter(Boolean)),
     ];
     const uniqueRecipients = [...new Set(recipients)];
-    if (RESEND_KEY && uniqueRecipients.length > 0) {
+    const mailCfg = emailConfigFor(RESEND_KEY);
+    if (mailCfg && uniqueRecipients.length > 0) {
       const html = `<div style="font-family:-apple-system,Segoe UI,sans-serif;max-width:520px;margin:0 auto;color:#0f172a">
         <h2 style="color:#059669;margin:0 0 4px">📊 Laporan Harian SurePath</h2>
         <p style="color:#64748b;margin:0 0 16px;font-size:13px">${dateStr} · ${timeStr} WIB</p>
@@ -141,17 +143,14 @@ Deno.serve(async (req) => {
         <p style="margin-top:20px"><a href="https://myinsurepath.com/admin" style="background:#059669;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:600">Buka Dashboard →</a></p>
       </div>`;
       try {
-        const mailRes = await fetch('https://api.resend.com/emails', {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${RESEND_KEY}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            from: 'SurePath <noreply@myinsurepath.com>',
-            to: uniqueRecipients,
-            subject: `📊 Laporan Harian SurePath — ${dateStr}`,
-            html,
-          }),
+        const mail = await sendEmail(mailCfg, {
+          to: uniqueRecipients,
+          subject: `📊 Laporan Harian SurePath — ${dateStr}`,
+          html,
+          idempotencyKey: `daily-report:${dateStr}`,
+          tags: [{ name: 'flow', value: 'daily-report' }],
         });
-        channels.email = { ok: mailRes.ok, status: mailRes.status, recipients: uniqueRecipients.length };
+        channels.email = { ok: true, status: mail.status, recipients: uniqueRecipients.length };
       } catch (e) {
         channels.email = { ok: false, error: String(e) };
       }

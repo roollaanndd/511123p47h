@@ -79,7 +79,7 @@ These actions use token-based auth (review token or insurer auth token) passed i
 Catatan: daftar `admin_list_b2b_users` sengaja tidak mengirim KTP/NPWP/alamat;
 field itu hanya tersedia lewat `admin_get_b2b_user` saat modal edit dibuka.
 
-### Workshop Partner Directory (v2.9.18)
+### Workshop Partner Directory (v2.9.19)
 
 | Action | Params | Purpose |
 |---|---|---|

@@ -45,6 +45,7 @@ import { handleB2BSettingsAction } from './actions/b2bSettings.ts';
 import { handleManualCommissionAction } from './actions/manualCommission.ts';
 import { handleAgentPinAction } from './actions/agentPin.ts';
 import { handleWorkshopPartnersAction } from './actions/workshopPartners.ts';
+import { handleR2Action } from './actions/r2.ts';
 
 // CORS allowlist
 const ALLOWED_ORIGINS = ['https://myinsurepath.com', 'https://www.myinsurepath.com'];
@@ -83,7 +84,7 @@ Deno.serve(async (req) => {
 
   // Health check
   if (req.method === 'GET') {
-    return new Response(JSON.stringify({ status: 'ok', service: 'data-gateway', version: '1.31.0', timestamp: new Date().toISOString() }), { headers: { ...CORS, 'Content-Type': 'application/json', 'X-Request-ID': crypto.randomUUID() } });
+    return new Response(JSON.stringify({ status: 'ok', service: 'data-gateway', version: '1.32.0', timestamp: new Date().toISOString() }), { headers: { ...CORS, 'Content-Type': 'application/json', 'X-Request-ID': crypto.randomUUID() } });
   }
 
   const requestId = crypto.randomUUID();
@@ -288,6 +289,7 @@ Deno.serve(async (req) => {
       await handleMarketingAction(action, ctx) ??
       await handleMitraAccountsAction(action, ctx) ??
       await handleDocumentsAction(action, ctx) ??
+      await handleR2Action(action, ctx) ??
       await handleB2BBulkAction(action, ctx) ??
       await handleB2BSettingsAction(action, ctx) ??
       await handleManualCommissionAction(action, ctx) ??

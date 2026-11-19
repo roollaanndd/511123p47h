@@ -193,7 +193,7 @@ export const ADMIN_MENU_ITEMS: AdminMenuItem[] = [
   { id: 'manual_credit',    label: 'Kredit Manual',    roles: [UserRole.MASTER_ADMIN, UserRole.FINANCE, UserRole.FINANCE_MANAGER, UserRole.FINANCE_DIRECTOR, UserRole.ADMIN] },
   { id: 'credit_approvals', label: 'Approval Kredit Manual', roles: [UserRole.MASTER_ADMIN] },
   { id: 'b2b',              label: 'B2B',       roles: [UserRole.MASTER_ADMIN, UserRole.ADMIN, UserRole.INSURANCE_ADMIN] },
-  // v2.9.18 — direktori bengkel rekanan. Peran harus sama persis dengan
+  // v2.9.19 — direktori bengkel rekanan. Peran harus sama persis dengan
   // WORKSHOP_DIRECTORY_ROLES di data-gateway/actions/workshopPartners.ts
   // (dikecuali B2B_CLIENT yang punya portal sendiri).
   { id: 'workshops',        label: 'Direktori Bengkel', roles: [UserRole.MASTER_ADMIN, UserRole.ADMIN, UserRole.INSURANCE_ADMIN] },

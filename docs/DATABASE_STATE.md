@@ -3,7 +3,7 @@
 > ⚠️ Dokumen ini mencatat fakta penting: **migrasi di repo TIDAK semuanya sudah diapply ke production**.
 > Snapshot per 7 Juli 2026 (v1.23.0), project Supabase `uyjgeteelnswphyzkjwi` ("Myinsurepath").
 
-## Direktori bengkel rekanan (v2.9.18) — **TIDAK ADA MIGRASI DB**
+## Direktori bengkel rekanan (v2.9.19) — **TIDAK ADA MIGRASI DB**
 
 - Fitur ini **tidak menambah tabel, kolom, fungsi, atau kebijakan RLS baru**.
   Dataset 1.982 baris tinggal sebagai modul statis di

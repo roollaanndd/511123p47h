@@ -309,7 +309,7 @@ A feature is done when **all** of these are verifiably true:
    push notification, WhatsApp verification (Fonnte `parked`), billing
    dashboards over real data, "instant approval" for any product (v1.55
    sweep). The workshop directory used to be text-only in `aiKnowledge`;
-   since v2.9.18 it is an interactive, gateway-backed menu in `/admin` and
+   since v2.9.19 it is an interactive, gateway-backed menu in `/admin` and
    `/b2bapps` (code + tests in repo), sourced from the five insurer attachments
    and served by `list_workshop_partners`. Production availability still
    requires the post-merge `data-gateway` deploy and verification.
