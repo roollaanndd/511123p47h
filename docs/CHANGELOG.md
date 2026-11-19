@@ -1,5 +1,37 @@
 # SurePath - Changelog
 
+## v2.9.18 - 2026-11-19
+
+### Satu pintu email (Resend) + jalur berkas Cloudflare R2
+
+- Lima pemanggil `api.resend.com` yang tersebar (`send-insurer-email`,
+  `daily-report`, `insurer-reminder-cron`, `agent_pin` reset, link review
+  insurer) kini memakai `supabase/functions/_shared/email.ts`. Kontraknya:
+  timeout 10 detik, `Idempotency-Key`, `escapeHtml`, `EmailError` dengan status
+  asli, dan log yang tidak pernah memuat penerima/subjek/isi. Detail body
+  Resend juga tidak lagi dicatat karena pada error validasi ia bisa memuat
+  alamat penerima.
+- `send-insurer-email` tidak lagi mengembalikan teks error penyedia ke klien
+  (502 generik). Pengirim bisa diatur lewat `RESEND_FROM` tanpa ubah kode.
+- Berkas dan gambar bisa disimpan ke Cloudflare R2 lewat tiga aksi gateway:
+  `r2_upload_url` (izin PUT 15 menit), `r2_confirm_upload` (registrasi ke
+  `sp_documents` dengan `bucket = 'r2'`), dan `r2_download_url` (izin GET 5
+  menit). Byte tidak melewati edge function.
+- Kunci objek dibuat server (`policy_order|claim|agent/<id>/<DOC>/<uuid>.<ext>`),
+  sehingga tidak ada traversal dan tidak ada penimpaan. Otorisasi per entitas,
+  allowlist MIME, batas 10 MB, dan rate limit per pengguna.
+- Unduhan dipaksa `response-content-disposition: attachment` yang ikut
+  ditandatangani, jadi berkas HTML/SVG yang diselundupkan tidak pernah dirender
+  inline di domain penyimpanan. Setiap unduhan dicatat ke
+  `sp_insurer_activity_log.details` beserta `key` objek.
+- Tanda tangan SigV4 diverifikasi silang dengan botocore 1.44.6 dan dikunci
+  sebagai known-answer test (`services/__tests__/emailR2Integration.test.ts`).
+- **Yang belum aktif:** UI masih memakai Supabase Storage; R2 baru hidup setelah
+  `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`
+  dipasang dan bucket privat + CORS disiapkan. Tanpa itu ketiga aksi menjawab
+  503. `data-gateway` perlu dideploy ulang (health naik ke `1.32.0`) agar
+  perubahan `agentPin`/`orders` dan aksi R2 berlaku.
+
 ## v2.9.17 - 2026-11-19
 
 ### Kelola pengguna korporat B2B dari dashboard admin
