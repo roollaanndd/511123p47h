@@ -179,6 +179,18 @@ function buildFallbackOverlay(
 /** Batas waktu pengaman: klik login tidak boleh memantul tanpa jawaban. */
 const PROMPT_WATCHDOG_MS = 5 * 60 * 1000;
 
+const GENERIC_START_ERROR = 'Tidak dapat memulai login Google. Silakan coba lagi.';
+
+/**
+ * AdminLogin sebelumnya membuang `error` dan selalu menampilkan pesan generik,
+ * jadi kegagalan Supabase / GIS tidak pernah terlihat. Simpan pesan spesifik
+ * saat ada, dengan fallback yang aman untuk throw value bukan Error.
+ */
+export function googleAuthErrorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message.trim() : '';
+  return message || GENERIC_START_ERROR;
+}
+
 export async function signInWithGoogleIdToken(): Promise<NonNullable<Awaited<ReturnType<typeof supabase.auth.signInWithIdToken>>['data']>> {
   const clientId = String(import.meta.env.VITE_GOOGLE_CLIENT_ID ?? '').trim();
   if (!clientId) throw new Error('Google login belum dikonfigurasi. Tambahkan VITE_GOOGLE_CLIENT_ID.');

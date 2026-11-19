@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Lock, Mail, ArrowRight, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { supabase } from '../../services/supabaseService';
-import { signInWithGoogleIdToken } from '../../services/googleAuth';
+import { googleAuthErrorMessage, signInWithGoogleIdToken } from '../../services/googleAuth';
 import { checkRateLimit, recordFailedAttempt, clearRateLimit } from '../../services/authService';
 import { UserRole } from '../../types';
 
@@ -91,8 +91,9 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess, onBack }) => {
     try {
       const { user, session } = await signInWithGoogleIdToken();
       await authorizeAdminSession(user, session, user.email);
-    } catch {
-      setError('Tidak dapat memulai login Google. Silakan coba lagi.');
+    } catch (error) {
+      console.error('Google admin sign-in failed', error);
+      setError(googleAuthErrorMessage(error));
     } finally {
       setLoading(false);
     }

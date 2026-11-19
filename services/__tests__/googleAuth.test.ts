@@ -12,7 +12,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { webcrypto } from 'node:crypto';
-import { signInWithGoogleIdToken } from '../googleAuth';
+import { googleAuthErrorMessage, signInWithGoogleIdToken } from '../googleAuth';
 
 const signInWithIdTokenMock = vi.hoisted(() => vi.fn());
 
@@ -221,5 +221,17 @@ describe('signInWithGoogleIdToken', () => {
     const error = await captureRejection(signInWithGoogleIdToken());
     expect(error.message).toMatch(/peramban ini/i);
     expect(overlay()).toBeNull();
+  });
+});
+
+describe('googleAuthErrorMessage', () => {
+  it('preserves the specific failure reported by Google/Supabase', () => {
+    expect(googleAuthErrorMessage(new Error('Login Google dibatalkan. Klik tombol Google untuk mencoba lagi.')))
+      .toBe('Login Google dibatalkan. Klik tombol Google untuk mencoba lagi.');
+  });
+
+  it('falls back to the generic message for non-Error throw values', () => {
+    expect(googleAuthErrorMessage(undefined))
+      .toBe('Tidak dapat memulai login Google. Silakan coba lagi.');
   });
 });
