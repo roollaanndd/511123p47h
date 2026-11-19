@@ -146,7 +146,7 @@ export async function handleAdminAction(action: string, ctx: GatewayContext): Pr
       }
 
     case 'admin_update_user': {
-        if (!caller.isAdmin) return json({ error: 'Forbidden: admin only' }, 403);
+        if (!caller.isCoreAdmin) return json({ error: 'Forbidden: core admin only' }, 403);
         if (!params.user_id) return json({ error: 'Missing user_id' }, 400);
 
         // ── Role escalation matrix ───────────────────────────────────────
@@ -278,7 +278,7 @@ export async function handleAdminAction(action: string, ctx: GatewayContext): Pr
       }
 
     case 'admin_financial_reports': {
-        if (!caller.isAdmin) return json({ error: 'Forbidden: admin only' }, 403);
+        if (!caller.isFinanceAdmin) return json({ error: 'Forbidden: finance only' }, 403);
         const year = Number(params.year ?? new Date().getFullYear());
         const fromDate = new Date(year, 0, 1).toISOString();
         const toDate = new Date(year + 1, 0, 1).toISOString();
@@ -297,7 +297,7 @@ export async function handleAdminAction(action: string, ctx: GatewayContext): Pr
       }
 
     case 'admin_list_commissions': {
-        if (!caller.isAdmin) return json({ error: 'Forbidden: admin only' }, 403);
+        if (!caller.isFinanceAdmin) return json({ error: 'Forbidden: finance only' }, 403);
         const { data, error } = await db.from('sp_commissions')
           .select('*, sp_users!agent_id(name)')
           .order('created_at', { ascending: false })
@@ -405,7 +405,7 @@ export async function handleAdminAction(action: string, ctx: GatewayContext): Pr
       }
 
     case 'admin_financial_detail': {
-        if (!caller.isAdmin) return json({ error: 'Forbidden: admin only' }, 403);
+        if (!caller.isFinanceAdmin) return json({ error: 'Forbidden: finance only' }, 403);
         const from = params.from ? String(params.from) : null;
         const to = params.to ? String(params.to) : null;
         let ordQ = db.from('sp_policy_orders').select('id, order_number, client_name, product_name, total_premium, discount_amount, net_premium, commission_amount, coin_reward, created_at, status').eq('status', 'ISSUED').order('created_at', { ascending: false });

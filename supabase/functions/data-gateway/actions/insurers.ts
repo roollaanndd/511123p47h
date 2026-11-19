@@ -53,7 +53,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
       }
 
     case 'admin_list_insurer_tokens': {
-        if (!caller.isAdmin) return json({ error: 'Forbidden: admin only' }, 403);
+        if (!caller.isCoreAdmin) return json({ error: 'Forbidden: core admin only' }, 403);
         const { data, error } = await db.from('sp_insurer_auth_tokens')
           .select('id, insurer_id, token, email, expires_at, used_at, created_at')
           .order('created_at', { ascending: false })
@@ -71,7 +71,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
       }
 
     case 'admin_revoke_insurer_token': {
-        if (!caller.isAdmin) return json({ error: 'Forbidden: admin only' }, 403);
+        if (!caller.isCoreAdmin) return json({ error: 'Forbidden: core admin only' }, 403);
         const tokenId = String(params.token_id ?? '');
         if (!tokenId) return json({ error: 'token_id required' }, 400);
         const { error } = await db.from('sp_insurer_auth_tokens').delete().eq('id', tokenId);
@@ -88,7 +88,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
       }
 
     case 'admin_generate_insurer_token': {
-        if (!caller.isAdmin) return json({ error: 'Forbidden: admin only' }, 403);
+        if (!caller.isCoreAdmin) return json({ error: 'Forbidden: core admin only' }, 403);
         const insurerId = String(params.insurer_id ?? '');
         if (!insurerId) return json({ error: 'insurer_id required' }, 400);
         // Fetch insurer
@@ -193,7 +193,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
       }
 
     case 'admin_get_insurer_api_config': {
-        if (!caller.isAdmin) return json({ error: 'Forbidden: admin only' }, 403);
+        if (!caller.isCoreAdmin) return json({ error: 'Forbidden: core admin only' }, 403);
         const insurerId = String(params.insurer_id ?? '');
         if (!insurerId) return json({ error: 'insurer_id required' }, 400);
         const { data, error } = await db.from('sp_insurer_api_configs')
@@ -205,7 +205,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
       }
 
     case 'admin_create_insurer': {
-        if (!caller.isAdmin) return json({ error: 'Forbidden: admin only' }, 403);
+        if (!caller.isCoreAdmin) return json({ error: 'Forbidden: core admin only' }, 403);
         const clay = clayPatch(params, { icon: 'building' });
         const bullets = parseHighlightBullets(params.highlight_bullets);
         const sortOrder = Number(params.sort_order ?? 0);
@@ -230,7 +230,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
       }
 
     case 'admin_update_insurer': {
-        if (!caller.isAdmin) return json({ error: 'Forbidden: admin only' }, 403);
+        if (!caller.isCoreAdmin) return json({ error: 'Forbidden: core admin only' }, 403);
         const insurerId = String(params.insurer_id ?? '');
         if (!insurerId) return json({ error: 'insurer_id required' }, 400);
         const ALLOWED = ['name', 'code', 'description', 'is_active', 'admin_name', 'admin_email', 'pic_name', 'pic_email', 'pic_phone', 'logo_url'];
@@ -257,7 +257,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
       }
 
     case 'admin_delete_insurer': {
-        if (!caller.isAdmin) return json({ error: 'Forbidden: admin only' }, 403);
+        if (!caller.isCoreAdmin) return json({ error: 'Forbidden: core admin only' }, 403);
         const insurerId = String(params.insurer_id ?? '');
         if (!insurerId) return json({ error: 'insurer_id required' }, 400);
         const { error } = await db.from('sp_insurers').delete().eq('id', insurerId);
@@ -267,7 +267,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
       }
 
     case 'admin_save_insurer_product': {
-        if (!caller.isAdmin) return json({ error: 'Forbidden: admin only' }, 403);
+        if (!caller.isCoreAdmin) return json({ error: 'Forbidden: core admin only' }, 403);
         const insurerId = String(params.insurer_id ?? '');
         if (!insurerId) return json({ error: 'insurer_id required' }, 400);
         const payload: Record<string, unknown> = {
@@ -296,7 +296,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
       }
 
     case 'admin_delete_insurer_product': {
-        if (!caller.isAdmin) return json({ error: 'Forbidden: admin only' }, 403);
+        if (!caller.isCoreAdmin) return json({ error: 'Forbidden: core admin only' }, 403);
         const productId = String(params.product_id ?? '');
         if (!productId) return json({ error: 'product_id required' }, 400);
         const { error } = await db.from('sp_insurer_products').delete().eq('id', productId);
@@ -305,7 +305,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
       }
 
     case 'admin_save_ojk_rate_set': {
-        if (!caller.isAdmin) return json({ error: 'Forbidden: admin only' }, 403);
+        if (!caller.isCoreAdmin) return json({ error: 'Forbidden: core admin only' }, 403);
         const { data, error } = await db.from('sp_ojk_rate_sets').insert({
           version: String(params.version ?? ''),
           source_reference: String(params.source_reference ?? ''),
@@ -318,7 +318,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
       }
 
     case 'admin_activate_ojk_rate_set': {
-        if (!caller.isAdmin) return json({ error: 'Forbidden: admin only' }, 403);
+        if (!caller.isCoreAdmin) return json({ error: 'Forbidden: core admin only' }, 403);
         const rateSetId = String(params.rate_set_id ?? '');
         if (!rateSetId) return json({ error: 'rate_set_id required' }, 400);
         await db.from('sp_ojk_rate_sets').update({ is_active: false }).eq('is_active', true);
@@ -328,7 +328,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
       }
 
     case 'admin_delete_ojk_rate_set': {
-        if (!caller.isAdmin) return json({ error: 'Forbidden: admin only' }, 403);
+        if (!caller.isCoreAdmin) return json({ error: 'Forbidden: core admin only' }, 403);
         const rateSetId = String(params.rate_set_id ?? '');
         if (!rateSetId) return json({ error: 'rate_set_id required' }, 400);
         const { error } = await db.from('sp_ojk_rate_sets').delete().eq('id', rateSetId);
@@ -337,7 +337,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
       }
 
     case 'admin_save_insurer_api_config': {
-        if (!caller.isAdmin) return json({ error: 'Forbidden: admin only' }, 403);
+        if (!caller.isCoreAdmin) return json({ error: 'Forbidden: core admin only' }, 403);
         const insurerId = String(params.insurer_id ?? '');
         const endpointUrl = String(params.endpoint_url ?? '');
         const apiKey = String(params.api_key ?? '');
