@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { RefreshCw, ChevronDown, ChevronUp, Plus, Trash2, CheckCircle2, AlertTriangle, FileText, Heart, Upload, Loader2, Building2, Copy, KeyRound, FileDown, History } from 'lucide-react';
+import { RefreshCw, ChevronDown, ChevronUp, Plus, Trash2, CheckCircle2, AlertTriangle, FileText, Heart, Upload, Loader2, Building2, Copy, KeyRound, FileDown, History, Pencil, ShieldOff, ShieldCheck, X } from 'lucide-react';
 import {
   getAllB2BSubmissions,
   updateB2BSubmissionStatus,
@@ -11,6 +11,10 @@ import {
   adminAssignB2BBulkInsurer,
   uploadB2BBulkMasterPolicy,
   adminListB2BUsers,
+  adminGetB2BUser,
+  adminUpdateB2BUser,
+  adminSetB2BUserActive,
+  adminDeleteB2BUser,
   adminGetB2BBulkSourceUrl,
   adminListB2BActivity,
   setMitraTempPassword,
@@ -20,12 +24,15 @@ import {
   type SpLifeApplication,
   type SpB2BBatch,
   type SpB2BUser,
+  type SpB2BUserDetail,
+  type B2BProfileEdit,
   type SpB2BActivityEntry,
 } from '../../services/supabaseService';
 import ModuleIcon from '../shared/ModuleIcon';
-import { useConfirmDialog } from '../ui';
+import { useConfirmDialog, usePromptDialog } from '../ui';
 import { getB2BBulkBatch, type SpB2BBatchItem } from '../../services/b2bBulk';
 import AddUserWizard, { type WizardCredential } from './AddUserWizard';
+import { FIELD_MATRIX } from './wizard/kycMatrix';
 
 interface InsurerOption { id: string; name: string; }
 
@@ -33,6 +40,9 @@ interface InsurerOption { id: string; name: string; }
 
 const fmtIDR = (n: number) => 'Rp ' + n.toLocaleString('id-ID');
 const fmtDate = (s?: string) => s ? new Date(s).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+
+// Sumber enum yang sama dengan AddUserWizard — jangan duplikat daftar industri.
+const INDUSTRY_OPTIONS = FIELD_MATRIX.B2B_CLIENT.find(f => f.key === 'company_industry')?.options ?? [];
 
 // ─── Badge maps ───────────────────────────────────────────────────────────────
 
@@ -759,20 +769,93 @@ const BulkBatchCard: React.FC<{ batch: SpB2BBatch; insurers: InsurerOption[]; on
   );
 };
 
+// ─── Modal edit profil korporat (v2.9.17) ────────────────────────────────────
+
+const B2BEditUserModal: React.FC<{
+  user: SpB2BUserDetail;
+  busy: boolean;
+  onClose: () => void;
+  onSave: (patch: B2BProfileEdit) => Promise<void>;
+}> = ({ user, busy, onClose, onSave }) => {
+  const [form, setForm] = useState({
+    name: user.name ?? '',
+    phone: user.phone ?? '',
+    company_name: user.company_name ?? '',
+    company_reg_no: user.company_reg_no ?? '',
+    company_industry: user.company_industry ?? '',
+    company_npwp: user.company_npwp ?? '',
+    company_address: user.company_address ?? '',
+    pic_ktp: user.pic_ktp ?? '',
+  });
+  const set = (key: keyof typeof form, value: string) => setForm(prev => ({ ...prev, [key]: value }));
+  const inputCls = 'w-full rounded-xl border border-ds-border bg-white dark:bg-ds-card2 px-3 py-2 text-sm text-ds-ink dark:text-white focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20';
+  const labelCls = 'block text-2xs font-black uppercase tracking-wide text-ds-ink3 mb-1';
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-3 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Edit pengguna korporat">
+      <form
+        onSubmit={e => { e.preventDefault(); void onSave(form); }}
+        className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl border border-ds-border bg-white dark:bg-ds-card2 p-5 shadow-2xl space-y-3"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-black text-ds-ink dark:text-white">Edit Pengguna Korporat</h3>
+            <p className="text-2xs text-ds-ink3">{user.company_name || user.email} · versi {user.b2b_profile_version ?? 1}</p>
+          </div>
+          <button type="button" onClick={onClose} disabled={busy} className="text-ds-ink3 hover:text-ds-ink2 disabled:opacity-40"><X size={16} /></button>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div><label className={labelCls}>Nama PIC</label><input className={inputCls} value={form.name} onChange={e => set('name', e.target.value)} required /></div>
+          <div><label className={labelCls}>Telepon</label><input className={inputCls} value={form.phone} onChange={e => set('phone', e.target.value)} /></div>
+          <div className="sm:col-span-2"><label className={labelCls}>Nama Perusahaan</label><input className={inputCls} value={form.company_name} onChange={e => set('company_name', e.target.value)} required /></div>
+          <div><label className={labelCls}>NIB / No. Registrasi</label><input className={inputCls} value={form.company_reg_no} onChange={e => set('company_reg_no', e.target.value)} /></div>
+          <div>
+            <label className={labelCls}>Industri</label>
+            <select className={inputCls} value={form.company_industry} onChange={e => set('company_industry', e.target.value)}>
+              <option value="">— Pilih industri —</option>
+              {INDUSTRY_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+            </select>
+          </div>
+          <div><label className={labelCls}>NPWP Perusahaan (15/16 digit)</label><input className={inputCls} value={form.company_npwp} onChange={e => set('company_npwp', e.target.value)} placeholder="00.000.000.000.000" /></div>
+          <div><label className={labelCls}>NIK KTP PIC (16 digit)</label><input className={inputCls} value={form.pic_ktp} onChange={e => set('pic_ktp', e.target.value)} placeholder="16 digit" /></div>
+          <div className="sm:col-span-2"><label className={labelCls}>Alamat Perusahaan</label><textarea className={`${inputCls} resize-none min-h-[64px]`} value={form.company_address} onChange={e => set('company_address', e.target.value)} /></div>
+        </div>
+
+        <p className="rounded-xl bg-ds-card2 border border-ds-border p-3 text-2xs text-ds-ink3 leading-relaxed">
+          Email login, role, dan status verifikasi tidak bisa diubah dari sini. Untuk menonaktifkan akun, gunakan tombol khusus di daftar pengguna. Setiap perubahan tercatat di log aktivitas B2B.
+        </p>
+
+        <div className="flex items-center justify-end gap-2 pt-1">
+          <button type="button" onClick={onClose} disabled={busy} className="rounded-xl border border-ds-border px-4 py-2 text-sm font-bold text-ds-ink2 disabled:opacity-40">Batal</button>
+          <button type="submit" disabled={busy} className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">
+            {busy ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} {busy ? 'Menyimpan…' : 'Simpan Perubahan'}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+};
+
 // ─── Pengguna Korporat (admin provisioning B2B, v2.7.56) ─────────────────────
 //
 // Mendaftarkan akun klien korporat B2B lengkap dengan kata sandi yang dibuat
 // manual oleh admin (hanya MASTER_ADMIN; ADMIN memakai email undangan). Kata
-// sandi ditampilkan sekali dan wajib diganti pengguna saat login pertama
-// (must_change_password) — alur ganti sudah ditangani B2BLogin.
+// sandi ditampilkan sekali dan berlaku permanen sejak v2.8.8.
+// v2.9.17: daftar ini juga jadi tempat edit KYC, aktif/nonaktif, dan hapus
+// permanen bersyarat (MASTER_ADMIN saja).
 
 const UsersSection: React.FC<{ onToast: (msg: string) => void }> = ({ onToast }) => {
   const confirm = useConfirmDialog();
+  const prompt = usePromptDialog();
   const [showWizard, setShowWizard] = useState(false);
   const [credential, setCredential] = useState<WizardCredential | null>(null);
   const [users, setUsers] = useState<SpB2BUser[]>([]);
   const [listLoading, setListLoading] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [editingUser, setEditingUser] = useState<SpB2BUserDetail | null>(null);
+  const [editBusy, setEditBusy] = useState(false);
+  const [busyUserId, setBusyUserId] = useState<string | null>(null);
 
   // Caller role dibaca dari session — menentukan apakah opsi "Kata Sandi
   // Manual" tersedia (MASTER_ADMIN only).
@@ -828,8 +911,103 @@ const UsersSection: React.FC<{ onToast: (msg: string) => void }> = ({ onToast })
     onToast(`Kata sandi ${u.name || u.email} disetel ulang — tampil sekali di bawah.`);
   };
 
+  // v2.9.17 — edit KYC hanya untuk ADMIN/MASTER_ADMIN. Role diverifikasi ulang
+  // di gateway; pengecekan UI ini hanya menyembunyikan tombol yang tidak ada.
+  const canManage = callerRole === 'MASTER_ADMIN' || callerRole === 'ADMIN';
+  const canDelete = callerRole === 'MASTER_ADMIN';
+
+  const openEdit = async (u: SpB2BUser) => {
+    const res = await adminGetB2BUser(u.id);
+    if (res.error || !res.data) {
+      onToast(res.error ?? 'Gagal memuat detail pengguna.');
+      return;
+    }
+    setEditingUser(res.data);
+  };
+
+  const saveEdit = async (patch: B2BProfileEdit) => {
+    if (!editingUser || editBusy) return;
+    setEditBusy(true);
+    const res = await adminUpdateB2BUser(editingUser.id, editingUser.b2b_profile_version ?? 1, patch);
+    setEditBusy(false);
+    if (res.error || !res.data) {
+      if (res.code === 'VERSION_CONFLICT') {
+        onToast('Data berubah dari admin lain. Daftar dimuat ulang — buka edit lagi.');
+        setEditingUser(null);
+        void loadUsers();
+        return;
+      }
+      onToast(res.error ?? 'Gagal menyimpan perubahan.');
+      return;
+    }
+    setEditingUser(null);
+    onToast('Profil korporat diperbarui.');
+    void loadUsers();
+  };
+
+  const toggleActive = async (u: SpB2BUser) => {
+    if (busyUserId) return;
+    const deactivate = !u.b2b_deactivated_at;
+    const ok = await confirm({
+      title: deactivate ? 'Nonaktifkan akun korporat?' : 'Aktifkan kembali akun?',
+      description: deactivate
+        ? `${u.company_name || u.name || u.email} tidak bisa memakai portal sampai diaktifkan kembali. Data, batch, dan polis tetap aman.`
+        : `${u.company_name || u.name || u.email} boleh login kembali ke portal B2B.`,
+      confirmLabel: deactivate ? 'Nonaktifkan' : 'Aktifkan',
+      cancelLabel: 'Batal',
+      variant: deactivate ? 'danger' : 'default',
+    });
+    if (!ok) return;
+    setBusyUserId(u.id);
+    const res = await adminSetB2BUserActive(u.id, !deactivate);
+    setBusyUserId(null);
+    if (res.error || !res.data) {
+      onToast(res.error ?? 'Gagal mengubah status akun.');
+      return;
+    }
+    onToast(deactivate ? 'Akun korporat dinonaktifkan.' : 'Akun korporat diaktifkan kembali.');
+    void loadUsers();
+  };
+
+  const hardDelete = async (u: SpB2BUser) => {
+    if (busyUserId) return;
+    const typed = await prompt({
+      title: 'Hapus permanen akun korporat?',
+      description: `Hanya MASTER_ADMIN. Akun tidak bisa dikembalikan, dan penghapusan hanya berhasil bila pengguna tidak memiliki batch polis. Ketik ${u.email} untuk konfirmasi.`,
+      confirmLabel: 'Hapus permanen',
+      cancelLabel: 'Batal',
+      variant: 'danger',
+      input: { label: 'Email pengguna', placeholder: u.email, required: true },
+    });
+    if (typed === null) return;
+    if (typed.trim().toLowerCase() !== u.email.toLowerCase()) {
+      onToast('Email konfirmasi tidak cocok — penghapusan dibatalkan.');
+      return;
+    }
+    setBusyUserId(u.id);
+    const res = await adminDeleteB2BUser(u.id, typed);
+    setBusyUserId(null);
+    if (res.error || !res.data) {
+      onToast(res.code === 'ACTIVE_BATCHES'
+        ? `Gagal: pengguna masih punya ${res.batch_count ?? '≥1'} batch polis. Selesaikan atau batalkan dulu.`
+        : res.error ?? 'Gagal menghapus akun.');
+      return;
+    }
+    onToast(`Akun ${u.email} dihapus permanen.`);
+    void loadUsers();
+  };
+
   return (
     <div className="space-y-3">
+      {editingUser && (
+        <B2BEditUserModal
+          user={editingUser}
+          busy={editBusy}
+          onClose={() => setEditingUser(null)}
+          onSave={saveEdit}
+        />
+      )}
+
       {/* v2.8.5 — Unified AddUserWizard menggantikan form inline lama. Alur
           korporat (KYC perusahaan + PIC + dokumen NIB/NPWP/KTP) ada di
           kycMatrix.B2B_CLIENT, jadi wizard akan menampilkan field dan
@@ -910,8 +1088,43 @@ const UsersSection: React.FC<{ onToast: (msg: string) => void }> = ({ onToast })
                   <p className="truncate text-sm font-bold text-ds-ink dark:text-white">{u.company_name || u.name || '—'}</p>
                   <p className="truncate text-2xs text-ds-ink3">{u.name} · {u.email}{u.phone ? ` · ${u.phone}` : ''}</p>
                 </div>
-                {u.verified !== false && (
-                  <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-2xs font-black text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">AKTIF</span>
+                <span className={`rounded-full px-2 py-0.5 text-2xs font-black ${
+                  u.b2b_deactivated_at
+                    ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300'
+                    : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+                }`}>
+                  {u.b2b_deactivated_at ? 'NONAKTIF' : 'AKTIF'}
+                </span>
+                {canManage && (
+                  <>
+                    <button
+                      onClick={() => void openEdit(u)}
+                      className="inline-flex items-center gap-1 rounded-lg border border-ds-border bg-ds-card px-2 py-1 text-2xs font-bold text-ds-ink2 hover:border-emerald-400 hover:text-emerald-700"
+                    >
+                      <Pencil size={11} /> Edit
+                    </button>
+                    <button
+                      onClick={() => void toggleActive(u)}
+                      disabled={busyUserId === u.id}
+                      className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-2xs font-bold disabled:opacity-50 ${
+                        u.b2b_deactivated_at
+                          ? 'border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-900/20'
+                          : 'border-amber-300 text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-900/20'
+                      }`}
+                    >
+                      {u.b2b_deactivated_at ? <ShieldCheck size={11} /> : <ShieldOff size={11} />}
+                      {busyUserId === u.id ? '…' : u.b2b_deactivated_at ? 'Aktifkan' : 'Nonaktifkan'}
+                    </button>
+                  </>
+                )}
+                {canDelete && (
+                  <button
+                    onClick={() => void hardDelete(u)}
+                    disabled={busyUserId === u.id}
+                    className="inline-flex items-center gap-1 rounded-lg border border-rose-200 px-2 py-1 text-2xs font-bold text-rose-600 hover:bg-rose-50 disabled:opacity-50 dark:hover:bg-rose-900/20"
+                  >
+                    <Trash2 size={11} /> Hapus
+                  </button>
                 )}
                 {callerRole === 'MASTER_ADMIN' && (
                   <button

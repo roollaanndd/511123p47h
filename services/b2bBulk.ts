@@ -213,6 +213,18 @@ export interface SpB2BUser {
   company_industry: string | null;
   verified: boolean | null;
   created_at: string | null;
+  // v2.9.17 — status & optimistic lock. Field KYC (company_npwp,
+  // company_address, pic_ktp) sengaja TIDAK ada di tipe daftar: hanya
+  // adminGetB2BUser yang mengembalikannya lewat SpB2BUserDetail.
+  b2b_deactivated_at?: string | null;
+  b2b_deactivated_by?: string | null;
+  b2b_profile_version?: number;
+}
+
+export interface SpB2BUserDetail extends SpB2BUser {
+  company_npwp: string | null;
+  company_address: string | null;
+  pic_ktp: string | null;
 }
 
 /**
@@ -228,6 +240,9 @@ export async function adminCreateB2BUser(input: {
   company_name: string;
   company_reg_no?: string;
   company_industry?: string;
+  company_npwp?: string;
+  company_address?: string;
+  pic_ktp?: string;
   mode: 'password' | 'invite';
   password?: string;
   require_change?: boolean;
@@ -239,6 +254,61 @@ export async function adminListB2BUsers(): Promise<SpB2BUser[]> {
   const { data, error } = await callGateway('admin_list_b2b_users', {});
   if (error) { console.error('adminListB2BUsers:', error); return []; }
   return (data ?? []) as SpB2BUser[];
+}
+
+// ─── v2.9.17 — kelola pengguna B2B dari dashboard admin ────────────────────
+
+/** Ambil field KYC lengkap. Hanya dipanggil saat modal edit dibuka. */
+export async function adminGetB2BUser(userId: string): Promise<{ data?: SpB2BUserDetail; error?: string }> {
+  return await callGateway('admin_get_b2b_user', { user_id: userId });
+}
+
+export interface B2BProfileEdit {
+  name?: string;
+  phone?: string;
+  company_name?: string;
+  company_reg_no?: string;
+  company_industry?: string;
+  company_npwp?: string;
+  company_address?: string;
+  pic_ktp?: string;
+}
+
+/**
+ * Edit profil/KYC. `expectedVersion` wajib diisi dari data terakhir yang
+ * dibaca; gateway menolak bila ada admin lain yang mengubah lebih dulu.
+ */
+export async function adminUpdateB2BUser(
+  userId: string,
+  expectedVersion: number,
+  patch: B2BProfileEdit,
+): Promise<{ data?: SpB2BUserDetail; error?: string; code?: string }> {
+  return await callGateway('admin_update_b2b_user', {
+    user_id: userId,
+    expected_version: expectedVersion,
+    ...patch,
+  });
+}
+
+export async function adminSetB2BUserActive(
+  userId: string,
+  active: boolean,
+): Promise<{ data?: SpB2BUser; error?: string; code?: string }> {
+  return await callGateway('admin_set_b2b_user_active', { user_id: userId, active });
+}
+
+/**
+ * Hard delete — MASTER_ADMIN saja. Gateway menolak bila masih ada batch dan
+ * mengharuskan `confirmEmail` sama persis dengan email akun.
+ */
+export async function adminDeleteB2BUser(
+  userId: string,
+  confirmEmail: string,
+): Promise<{ data?: { id: string; email: string }; error?: string; code?: string; batch_count?: number }> {
+  return await callGateway('admin_delete_b2b_user', {
+    user_id: userId,
+    confirm_email: confirmEmail,
+  });
 }
 
 export async function adminIssueB2BBulkBatch(input: {

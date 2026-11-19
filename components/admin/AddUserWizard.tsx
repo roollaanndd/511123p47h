@@ -212,6 +212,11 @@ const AddUserWizard: React.FC<Props> = ({ open, onClose, callerRole, defaultRole
           company_name: fields.company_name?.trim() ?? '',
           company_reg_no: fields.company_reg_no?.trim() ?? '',
           company_industry: fields.company_industry?.trim() ?? '',
+          // v2.9.17 — field text KYC dulu dibuang di sini, sehingga akun baru
+          // tidak punya data untuk panel edit. Gateway yang menormalisasi.
+          company_npwp: fields.company_npwp?.trim() ?? '',
+          company_address: fields.company_address?.trim() ?? '',
+          pic_ktp: fields.pic_ktp?.trim() ?? '',
           mode,
           ...(mode === 'password' ? { password } : {}),
         });
