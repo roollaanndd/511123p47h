@@ -6,6 +6,7 @@
 // tabel sp_pin_resets (hash OTP, TTL 10 menit, 5 attempt) dan Resend.
 
 import type { GatewayContext, ActionResult } from './types.ts';
+import { sendEmailSafe, emailConfigFor } from '../../_shared/email.ts';
 import {
   isValidPin, makePinRecord, newOtp, verifyPin, hashPin, newPinSalt,
 } from '../../_shared/pin.ts';
@@ -144,17 +145,16 @@ export async function handleAgentPinAction(
         '<p>Jika kamu tidak meminta reset, abaikan email ini.</p>',
         '</div>',
       ].join('');
-      const mailRes = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${RESEND_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          from: 'SurePath <noreply@myinsurepath.com>',
-          to: [caller.email],
-          subject: 'Kode reset PIN SurePath',
-          html,
-        }),
+      // audit 2026-11-19: satu jalur email (_shared/email.ts).
+      // Idempotency-Key memakai id baris reset: retry tidak mengirim dua kode.
+      const mail = await sendEmailSafe(emailConfigFor(RESEND_KEY), {
+        to: caller.email,
+        subject: 'Kode reset PIN SurePath',
+        html,
+        idempotencyKey: `pin-reset:${reset.id}`,
+        tags: [{ name: 'flow', value: 'pin-reset' }],
       });
-      if (!mailRes.ok) {
+      if (!mail.ok) {
         // Jangan biarkan kode yang tidak pernah sampai jadi sampel serangan.
         await db.from('sp_pin_resets').update({ used_at: nowIso() }).eq('id', reset.id);
         return json({ error: 'Gagal mengirim email reset. Coba lagi.' }, 502);

@@ -1,6 +1,7 @@
 
 import { corsHeaders } from '../_shared/cors.ts';
 import { verifyAuth, adminOnly } from '../_shared/auth.ts';
+import { sendEmail, emailConfigFor, EmailError } from '../_shared/email.ts';
 
 Deno.serve(async (req) => {
   const CORS = corsHeaders(req.headers.get('origin'));
@@ -23,8 +24,9 @@ Deno.serve(async (req) => {
     });
 
   try {
-    const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') ?? '';
-    if (!RESEND_API_KEY) {
+    // audit 2026-11-19: konfigurasi lewat _shared/email.ts.
+    const cfg = emailConfigFor(Deno.env.get('RESEND_API_KEY') ?? '');
+    if (!cfg) {
       // Log but don't fail — email is best-effort
       console.warn('RESEND_API_KEY not set, skipping email');
       return json({ success: false, skipped: true, reason: 'RESEND_API_KEY not configured' });
@@ -154,31 +156,25 @@ Deno.serve(async (req) => {
 </body>
 </html>`;
 
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${RESEND_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: 'SurePath <noreply@myinsurepath.com>',
-        to: [to],
+    try {
+      const sent = await sendEmail(cfg, {
+        to,
         subject: emailSubject,
         html,
-      }),
-    });
-
-    if (!res.ok) {
-      const errText = await res.text();
-      console.error('Resend error:', res.status, errText);
-      return json({ success: false, error: `Resend API error ${res.status}: ${errText}` }, 500);
+        idempotencyKey: `insurer-email:${order_number}`,
+        tags: [{ name: 'flow', value: 'insurer-email' }],
+      });
+      return json({ success: true, email_id: sent.id });
+    } catch (e) {
+      const err = e as EmailError;
+      // Detail penyedia hanya untuk log server — tidak dikembalikan ke klien.
+      // Status saja: body Resend bisa memuat alamat penerima.
+      console.error('Resend error:', err?.status ?? 0);
+      return json({ success: false, error: 'Gagal mengirim email ke penyedia' }, 502);
     }
-
-    const data = await res.json();
-    return json({ success: true, email_id: data.id });
 
   } catch (err) {
     console.error('send-insurer-email error:', err);
-    return json({ success: false, error: String(err) }, 500);
+    return json({ success: false, error: 'Permintaan tidak dapat diproses' }, 500);
   }
 });
