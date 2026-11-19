@@ -157,3 +157,59 @@ describe('presign R2 — known answer dari botocore', () => {
     expect(canonicalUriForKey('a/b c.pdf')).toBe('/a/b%20c.pdf');
   });
 });
+
+describe('Resend — identitas pengirim per alur', () => {
+  const src = read('_shared/email.ts');
+  const FLOWS = ['pin-reset', 'insurer-review', 'insurer-reminder', 'insurer-email', 'daily-report'];
+
+  it.each(FLOWS)('alur %s punya identitas sendiri', (flow) => {
+    expect(src).toContain(`'${flow}':`);
+  });
+
+  it('memisahkan alamat sensitif dari digest harian', () => {
+    expect(src).toContain("'pin-reset': 'SurePath Keamanan <security@myinsurepath.com>'");
+    expect(src).toContain("'daily-report': 'SurePath Notifikasi <notifications@myinsurepath.com>'");
+    expect(src).toContain('policies@myinsurepath.com');
+  });
+
+  it('identitas bisa ditimpa tanpa mengubah kode', () => {
+    expect(src).toContain('RESEND_FROM_');
+    expect(src).toContain('senderEnvKey');
+    expect(src).toContain("env('RESEND_FROM')");
+    expect(src).toContain('fromExplicit');
+  });
+
+  it('from eksplisit dari pemanggil tetap menang', () => {
+    expect(src).toContain('if (msg.from) return msg.from;');
+  });
+
+  it('reply-to tidak dipaksakan tanpa alamat yang benar-benar ada', () => {
+    expect(src).toContain("env('RESEND_REPLY_TO')");
+    expect(src).toContain('const replyTo = msg.replyTo || cfg.replyTo;');
+  });
+});
+
+describe('Workflow setup domain Resend', () => {
+  const wf = readFileSync(join(process.cwd(), '.github/workflows/setup-resend-domain.yml'), 'utf8');
+
+  it('hanya bisa dijalankan manual, tidak jalan sendiri', () => {
+    expect(wf).toContain('workflow_dispatch:');
+    expect(wf).not.toMatch(/^ {2}push:/m);
+  });
+
+  it('tidak pernah mencetak nilai secret', () => {
+    expect(wf).not.toMatch(/echo[^\n]*\$\{?(RESEND_API_KEY|SUPABASE_ACCESS_TOKEN|CLOUDFLARE_API_TOKEN)\b/);
+  });
+
+  it('memverifikasi domain sebelum menyetel RESEND_FROM', () => {
+    const verify = wf.indexOf('Verifikasi domain');
+    const setSecret = wf.indexOf('Setel RESEND_FROM');
+    expect(verify).toBeGreaterThan(-1);
+    expect(setSecret).toBeGreaterThan(verify);
+  });
+
+  it('SMTP Auth hanya disentuh bila diminta eksplisit', () => {
+    expect(wf).toContain("inputs.configure_auth_smtp == 'true'");
+    expect(wf).toContain("default: 'false'");
+  });
+});

@@ -1,0 +1,226 @@
+name: Setup Resend domain + mailer
+# Satu tombol untuk menyiapkan pengirim email myinsurepath.com.
+#
+# Yang dikerjakan (idempoten — aman dijalankan berulang):
+#   1. memastikan domain ada di Resend (POST /domains bila belum);
+#   2. mencetak record DKIM/SPF yang diminta Resend ke ringkasan job;
+#   3. bila CLOUDFLARE_API_TOKEN punya izin DNS: membuat record itu di Cloudflare;
+#   4. memicu verifikasi dan menunggu sampai status "verified";
+#   5. menyetel RESEND_FROM di Supabase edge secrets;
+#   6. opsional: mengarahkan SMTP Supabase Auth ke Resend (OTP login,
+#      konfirmasi pendaftaran, reset password ikut lewat Resend).
+#
+# Yang TIDAK dikerjakan: menerima email. Resend hanya mengirim; inbox
+# @myinsurepath.com butuh penyedia mailbox terpisah.
+#
+# Prasyarat secret repo: RESEND_API_KEY (wajib), CLOUDFLARE_API_TOKEN (opsional,
+# untuk menulis DNS otomatis), SUPABASE_ACCESS_TOKEN + SUPABASE_PROJECT_REF
+# (untuk menyetel secret/SMTP).
+on:
+  workflow_dispatch:
+    inputs:
+      domain:
+        description: 'Domain pengirim'
+        default: 'myinsurepath.com'
+        required: true
+      add_dns:
+        description: 'true = tulis record DNS ke Cloudflare otomatis (butuh CLOUDFLARE_API_TOKEN dengan izin DNS)'
+        default: 'true'
+      configure_auth_smtp:
+        description: 'true = arahkan SMTP Supabase Auth ke Resend (mengubah alur email login/reset)'
+        default: 'false'
+
+permissions:
+  contents: read
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validasi secret wajib
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+        run: |
+          set -euo pipefail
+          missing=0
+          [ -n "${RESEND_API_KEY//[[:space:]]/}" ] || { echo "::error::Secret RESEND_API_KEY kosong. Tambahkan di Settings > Secrets and variables > Actions."; missing=1; }
+          [ -n "${SUPABASE_ACCESS_TOKEN//[[:space:]]/}" ] || { echo "::error::Secret SUPABASE_ACCESS_TOKEN kosong (dipakai untuk menyetel secret edge)."; missing=1; }
+          [ -n "${SUPABASE_PROJECT_REF//[[:space:]]/}" ] || { echo "::error::Secret SUPABASE_PROJECT_REF kosong."; missing=1; }
+          [ "$missing" = "0" ] || exit 1
+
+      - name: Pastikan domain ada di Resend
+        id: domain
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          DOMAIN: ${{ inputs.domain }}
+        run: |
+          set -euo pipefail
+          api='https://api.resend.com'
+          list=$(curl -sS -f --oauth2-bearer "$RESEND_API_KEY" "$api/domains")
+          id=$(echo "$list" | jq -r --arg d "$DOMAIN" '.data[]? | select(.name == $d) | .id' | head -n1)
+          if [ -z "$id" ]; then
+            echo "Domain belum ada — membuat baru."
+            created=$(curl -sS -f -X POST --oauth2-bearer "$RESEND_API_KEY" \
+              -H 'Content-Type: application/json' \
+              -d "$(jq -nc --arg d "$DOMAIN" '{name: $d}')" "$api/domains")
+            id=$(echo "$created" | jq -r '.id')
+          else
+            echo "Domain sudah ada (id=$id)."
+          fi
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+
+      - name: Tampilkan record DNS yang diminta Resend
+        id: records
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          DOMAIN_ID: ${{ steps.domain.outputs.id }}
+        run: |
+          set -euo pipefail
+          api='https://api.resend.com'
+          detail=$(curl -sS -f --oauth2-bearer "$RESEND_API_KEY" "$api/domains/$DOMAIN_ID")
+          status=$(echo "$detail" | jq -r '.status')
+          name=$(echo "$detail" | jq -r '.name')
+
+          {
+            echo "### Record DNS untuk ${name}"
+            echo ""
+            echo "| Type | Name | Value | Priority | Status |"
+            echo "|---|---|---|---|---|"
+            echo "$detail" | jq -r '.records[]? | "| \(.type) | \(.name) | \(.value) | \(.priority // "-") | \(.status // "-") |"'
+            echo ""
+            echo "Status domain saat ini: **${status}**"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "$detail" | jq -c '.records // []' > /tmp/records.json
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+
+      - name: Tulis record DNS ke Cloudflare (opsional)
+        if: ${{ inputs.add_dns == 'true' && steps.records.outputs.status != 'verified' }}
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          DOMAIN: ${{ inputs.domain }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CLOUDFLARE_API_TOKEN//[[:space:]]/}" ]; then
+            echo "::notice::CLOUDFLARE_API_TOKEN kosong — lewati penulisan DNS otomatis. Tambahkan record di tabel ringkasan secara manual."
+            exit 0
+          fi
+          cf='https://api.cloudflare.com/client/v4'
+          zone=$(curl -sS --oauth2-bearer "$CLOUDFLARE_API_TOKEN" "$cf/zones?name=$DOMAIN" | jq -r '.result[0].id // empty')
+          if [ -z "$zone" ]; then
+            echo "::warning::Zone $DOMAIN tidak ditemukan atau token tidak punya izin Zone:Read. Tambahkan record manual."
+            exit 0
+          fi
+          jq -c '.[]' /tmp/records.json | while read -r rec; do
+            type=$(echo "$rec" | jq -r '.type')
+            rname=$(echo "$rec" | jq -r '.name')
+            value=$(echo "$rec" | jq -r '.value')
+            priority=$(echo "$rec" | jq -r '.priority // empty')
+            payload=$(jq -nc --arg t "$type" --arg n "$rname" --arg c "$value" --arg p "$priority" \
+              '{type:$t, name:$n, content:$c, ttl:1, proxied:false} + (if $p == "" then {} else {priority: ($p|tonumber)} end)')
+            existing=$(curl -sS --oauth2-bearer "$CLOUDFLARE_API_TOKEN" "$cf/zones/$zone/dns_records?type=$type&name=$rname")
+            if [ "$(echo "$existing" | jq -r '.result | length')" != "0" ]; then
+              echo "sudah ada: $type $rname"
+              continue
+            fi
+            code=$(curl -sS -o /tmp/cf.json -w '%{http_code}' -X POST --oauth2-bearer "$CLOUDFLARE_API_TOKEN" \
+              -H 'Content-Type: application/json' -d "$payload" "$cf/zones/$zone/dns_records")
+            if [ "$code" = "200" ]; then
+              echo "dibuat: $type $rname"
+            else
+              echo "::warning::gagal membuat $type $rname (HTTP $code): $(jq -c '.errors // .' /tmp/cf.json)"
+            fi
+          done
+
+      - name: Verifikasi domain (tunggu sampai hijau)
+        id: verify
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          DOMAIN_ID: ${{ steps.domain.outputs.id }}
+        run: |
+          set -euo pipefail
+          api='https://api.resend.com'
+          curl -sS -o /dev/null -X POST --oauth2-bearer "$RESEND_API_KEY" "$api/domains/$DOMAIN_ID/verify" || true
+          for i in $(seq 1 15); do
+            status=$(curl -sS --oauth2-bearer "$RESEND_API_KEY" "$api/domains/$DOMAIN_ID" | jq -r '.status')
+            echo "percobaan $i: $status"
+            if [ "$status" = "verified" ]; then
+              echo "status=verified" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "status=pending" >> "$GITHUB_OUTPUT"
+          echo "::warning::Domain belum terverifikasi setelah ~5 menit. Propagasi DNS bisa lebih lama; jalankan ulang workflow ini nanti."
+
+      - name: Setel RESEND_FROM di Supabase
+        if: ${{ steps.verify.outputs.status == 'verified' }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          DOMAIN: ${{ inputs.domain }}
+        run: |
+          set -euo pipefail
+          tok="${SUPABASE_ACCESS_TOKEN//[[:space:]]/}"
+          ref="${SUPABASE_PROJECT_REF//[[:space:]]/}"
+          payload=$(jq -nc --arg v "SurePath <noreply@$DOMAIN>" '{secrets:[{name:"RESEND_FROM", value:$v}]}')
+          code=$(curl -sS -o /tmp/secrets.json -w '%{http_code}' -X POST --oauth2-bearer "$tok" \
+            -H 'Content-Type: application/json' -d "$payload" \
+            "https://api.supabase.com/v1/projects/$ref/secrets")
+          echo "HTTP $code"
+          [ "$code" = "200" ] || [ "$code" = "201" ] || [ "$code" = "204" ] || { jq -c '{message}' /tmp/secrets.json; exit 1; }
+
+      - name: Arahkan SMTP Supabase Auth ke Resend (opsional)
+        if: ${{ inputs.configure_auth_smtp == 'true' && steps.verify.outputs.status == 'verified' }}
+        continue-on-error: true
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          DOMAIN: ${{ inputs.domain }}
+        run: |
+          set -euo pipefail
+          tok="${SUPABASE_ACCESS_TOKEN//[[:space:]]/}"
+          ref="${SUPABASE_PROJECT_REF//[[:space:]]/}"
+          key="${RESEND_API_KEY//[[:space:]]/}"
+          payload=$(jq -nc --arg k "$key" --arg from "noreply@$DOMAIN" '{
+            smtp_host: "smtp.resend.com",
+            smtp_port: "465",
+            smtp_user: "resend",
+            smtp_pass: $k,
+            smtp_admin_email: $from,
+            smtp_sender_name: "SurePath",
+            smtp_max_frequency: "60"
+          }')
+          code=$(curl -sS -o /tmp/auth.json -w '%{http_code}' -X PATCH --oauth2-bearer "$tok" \
+            -H 'Content-Type: application/json' -d "$payload" \
+            "https://api.supabase.com/v1/projects/$ref/config/auth")
+          echo "HTTP $code"
+          if [ "$code" != "200" ]; then
+            echo "::warning::SMTP tidak tersetel lewat API (HTTP $code): $(jq -c '{message}' /tmp/auth.json 2>/dev/null || true). Setel manual: Authentication > SMTP, host smtp.resend.com:465, user resend, password = API key Resend."
+          fi
+
+      - name: Ringkasan
+        if: always()
+        env:
+          DOMAIN: ${{ inputs.domain }}
+        run: |
+          {
+            echo ""
+            echo "### Identitas pengirim yang dipakai kode"
+            echo ""
+            echo "| Alur | From |"
+            echo "|---|---|"
+            echo "| Reset PIN agen | security@${DOMAIN} |"
+            echo "| Review/reminder insurer | policies@${DOMAIN} |"
+            echo "| Digest harian admin | notifications@${DOMAIN} |"
+            echo "| Default | noreply@${DOMAIN} |"
+            echo ""
+            echo "Status verifikasi: **${{ steps.verify.outputs.status || 'tidak dijalankan' }}**"
+            echo ""
+            echo "Resend hanya mengirim. Alamat di atas tidak bisa menerima email;"
+            echo "untuk inbox gunakan penyedia mailbox terpisah."
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -18,6 +18,19 @@
 - 5 pemanggil dipindah: `send-insurer-email`, `daily-report`, `insurer-reminder-cron`,
   `actions/agentPin.ts`, `actions/orders.ts`. Tidak ada lagi `api.resend.com` di fungsi.
 - Env: `RESEND_API_KEY` (wajib), `RESEND_FROM`, `RESEND_BASE_URL`, `RESEND_TIMEOUT_MS`.
+- Identitas per alur di `FLOW_FROM`: `security@` (pin-reset), `policies@`
+  (insurer-review/reminder/email), `notifications@` (daily-report), `welcome@`.
+  Override: `RESEND_FROM_<ALUR>` > `RESEND_FROM` > bawaan alur.
+  `RESEND_REPLY_TO` opsional (kosong = tanpa header Reply-To).
+- `.github/workflows/setup-resend-domain.yml` (dispatch-only): buat domain di
+  Resend, tulis DKIM/SPF ke Cloudflare (bila `CLOUDFLARE_API_TOKEN` punya izin
+  DNS; kalau tidak, record dicetak), verifikasi, setel `RESEND_FROM`.
+  `configure_auth_smtp=true` mengarahkan SMTP Supabase Auth ke
+  `smtp.resend.com:465` — default false karena salah kredensial memblokir email
+  login pengguna baru.
+- **Belum diverifikasi 19 Nov:** domain `myinsurepath.com` belum punya record
+  Resend (`resend._domainkey` NXDOMAIN, `send.` tidak ada). MX domain menunjuk
+  `mail.myinsurepath.com`, SPF root hanya `_spf.mx.cloudflare.net`.
 - Sisa: jalur `pg_net` di migrasi `20260908` sengaja tidak diubah (sudah ter-deploy).
 
 **Berkas Cloudflare R2 (kode siap, UI belum memakai)**
