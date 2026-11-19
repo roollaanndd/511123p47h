@@ -138,7 +138,9 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
       }
 
     case 'admin_list_review_tokens': {
-        if (!caller.isAdmin) return json({ error: 'Forbidden: admin only' }, 403);
+        // v2.9.17: token review = kunci masuk ke /review/:uuid (bisa
+        // menyetujui/menolak polis atas nama insurer). Hanya peran inti.
+        if (!caller.isCoreAdmin) return json({ error: 'Forbidden: core admin only' }, 403);
         const { data, error } = await db.from('sp_review_tokens')
           .select('id, token, order_id, expires_at, insurer_action, insurer_notes, actioned_at, accessed_count, last_accessed_at, created_at, review_url')
           .order('created_at', { ascending: false })
@@ -305,7 +307,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
       }
 
     case 'admin_save_ojk_rate_set': {
-        if (!caller.isCoreAdmin) return json({ error: 'Forbidden: core admin only' }, 403);
+        if (!caller.isRateAdmin) return json({ error: 'Forbidden: rate admin only' }, 403);
         const { data, error } = await db.from('sp_ojk_rate_sets').insert({
           version: String(params.version ?? ''),
           source_reference: String(params.source_reference ?? ''),
@@ -318,7 +320,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
       }
 
     case 'admin_activate_ojk_rate_set': {
-        if (!caller.isCoreAdmin) return json({ error: 'Forbidden: core admin only' }, 403);
+        if (!caller.isRateAdmin) return json({ error: 'Forbidden: rate admin only' }, 403);
         const rateSetId = String(params.rate_set_id ?? '');
         if (!rateSetId) return json({ error: 'rate_set_id required' }, 400);
         await db.from('sp_ojk_rate_sets').update({ is_active: false }).eq('is_active', true);
@@ -328,7 +330,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
       }
 
     case 'admin_delete_ojk_rate_set': {
-        if (!caller.isCoreAdmin) return json({ error: 'Forbidden: core admin only' }, 403);
+        if (!caller.isRateAdmin) return json({ error: 'Forbidden: rate admin only' }, 403);
         const rateSetId = String(params.rate_set_id ?? '');
         if (!rateSetId) return json({ error: 'rate_set_id required' }, 400);
         const { error } = await db.from('sp_ojk_rate_sets').delete().eq('id', rateSetId);

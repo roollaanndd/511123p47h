@@ -63,12 +63,16 @@ const ADMIN_ROLES = ['MASTER_ADMIN', 'ADMIN', 'FINANCE', 'FINANCE_MANAGER', 'FIN
 // aksi yang menerbitkan/membuka kredensial atau mengubah konfigurasi partner
 // (token insurer, API key insurer, CRUD insurer) dibatasi ke peran inti.
 const CORE_ADMIN_ROLES = ['MASTER_ADMIN', 'ADMIN'];
+// Rate OJK mengubah harga semua produk. INSURANCE_ADMIN memang memegang menu
+// "Rate OJK" (components/admin/navigation.ts:200), jadi ia tetap boleh — yang
+// dicabut adalah OPERATOR dan peran lain yang tidak mengelola underwriting.
+const RATE_ADMIN_ROLES = ['MASTER_ADMIN', 'ADMIN', 'INSURANCE_ADMIN'];
 // FIX v1.44.0 (pentest C2): FINANCE_ROLES excludes OPERATOR — operators should not
 // create/update commissions or credit wallets. Previously OPERATOR was in ADMIN_ROLES
 // which gave them full financial access via admin_create_commission.
 const FINANCE_ROLES = ['MASTER_ADMIN', 'ADMIN', 'FINANCE', 'FINANCE_MANAGER', 'FINANCE_DIRECTOR'];
 
-interface Caller { authId: string; email: string; spUser: Record<string, any> | null; role: string | null; isAdmin: boolean; isCoreAdmin: boolean; isFinanceAdmin: boolean; userMetadata: Record<string, any> | null; ownerId: string; ownerIds: string[]; emailConfirmedAt: string | null; }
+interface Caller { authId: string; email: string; spUser: Record<string, any> | null; role: string | null; isAdmin: boolean; isCoreAdmin: boolean; isRateAdmin: boolean; isFinanceAdmin: boolean; userMetadata: Record<string, any> | null; ownerId: string; ownerIds: string[]; emailConfirmedAt: string | null; }
 
 const PUBLIC_ACTIONS = new Set(['submit_contact_lead', 'get_insurer_review', 'submit_insurer_decision', 'get_insurer_dashboard', 'insurer_logout', 'insurer_submit_decision_authed', 'insurer_list_payments', 'insurer_upload_policy', 'get_public_quotation', 'confirm_public_quotation', 'insurer_list_bulk_batches', 'insurer_bulk_request_upload_url', 'insurer_upload_bulk_master_policy']);
 
@@ -181,7 +185,7 @@ Deno.serve(async (req) => {
         const ipAllowed = await checkRateLimit(`ip:${clientIp}`, 60);
         if (!ipAllowed) return json({ error: 'Rate limit exceeded. Coba lagi dalam 1 jam.' }, 429);
       }
-      caller = { authId: '', email: '', spUser: null, role: null, isAdmin: false, isCoreAdmin: false, isFinanceAdmin: false, userMetadata: null, ownerId: '', ownerIds: [], emailConfirmedAt: null };
+      caller = { authId: '', email: '', spUser: null, role: null, isAdmin: false, isCoreAdmin: false, isRateAdmin: false, isFinanceAdmin: false, userMetadata: null, ownerId: '', ownerIds: [], emailConfirmedAt: null };
     } else {
       const authHeader = req.headers.get('authorization') ?? '';
       const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
@@ -216,7 +220,7 @@ Deno.serve(async (req) => {
       // reads that must also match legacy rows keyed by auth id.
       const ownerId = spUser?.id ?? authId;
       const ownerIds = [...new Set([ownerId, authId].filter(Boolean))];
-      caller = { authId, email, spUser: spUser ?? null, role: spUser?.role ?? null, isAdmin: ADMIN_ROLES.includes(spUser?.role ?? ''), isCoreAdmin: CORE_ADMIN_ROLES.includes(spUser?.role ?? ''), isFinanceAdmin: FINANCE_ROLES.includes(spUser?.role ?? ''), userMetadata, ownerId, ownerIds, emailConfirmedAt };
+      caller = { authId, email, spUser: spUser ?? null, role: spUser?.role ?? null, isAdmin: ADMIN_ROLES.includes(spUser?.role ?? ''), isCoreAdmin: CORE_ADMIN_ROLES.includes(spUser?.role ?? ''), isRateAdmin: RATE_ADMIN_ROLES.includes(spUser?.role ?? ''), isFinanceAdmin: FINANCE_ROLES.includes(spUser?.role ?? ''), userMetadata, ownerId, ownerIds, emailConfirmedAt };
     }
 
     // ── Gerbang kepercayaan akun (v2.5.6) ─────────────────────────────────

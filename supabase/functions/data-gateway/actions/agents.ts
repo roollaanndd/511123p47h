@@ -60,6 +60,23 @@ export async function handleAgentsAction(action: string, ctx: GatewayContext): P
     case 'admin_verify_agent': {
         if (!caller.isAdmin) return json({ error: 'Forbidden: admin only' }, 403);
         if (!params.agent_id) return json({ error: 'agent_id required' }, 400);
+        // v2.9.17 (audit 2026-11-19): aksi ini hanya untuk akun AGENT.
+        // Sebelumnya target tidak diperiksa, sehingga staf bisa memverifikasi
+        // akun non-agent (atau dirinya sendiri) dan menambahkan 'AGENT' ke
+        // allowed_apps tanpa melalui pendaftaran mitra.
+        {
+          const { data: targetUser } = await db.from('sp_users')
+            .select('id, role')
+            .eq('id', String(params.agent_id))
+            .maybeSingle();
+          if (!targetUser) return json({ error: 'Akun tidak ditemukan' }, 404);
+          if (String((targetUser as any).role) !== 'AGENT') {
+            return json({ error: `Hanya akun AGENT yang bisa diverifikasi (target: ${String((targetUser as any).role)})` }, 400);
+          }
+          if (String(params.agent_id) === caller.ownerId) {
+            return json({ error: 'Tidak bisa memverifikasi akun sendiri' }, 403);
+          }
+        }
         const approve = params.approve !== false; // default true
         // FIX 2026-10-26 (cross-app audit #5): this used to overwrite
         // allowed_apps with ['AGENT'], silently revoking any other grants

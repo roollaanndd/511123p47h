@@ -10,6 +10,12 @@ export interface GatewayContext {
     spUser: Record<string, any> | null;
     role: string | null;
     isAdmin: boolean;
+    // v2.9.17 (audit 2026-11-19): peran inti (MASTER_ADMIN/ADMIN). OPERATOR
+    // tetap `isAdmin` untuk antrean, tetapi tidak untuk kredensial mitra.
+    isCoreAdmin: boolean;
+    // Rate OJK menyentuh harga seluruh produk, jadi dipisah dari isCoreAdmin:
+    // INSURANCE_ADMIN memang mengelola rate (menu "Rate OJK" memberinya akses).
+    isRateAdmin: boolean;
     isFinanceAdmin: boolean;  // FIX v1.44.0: excludes OPERATOR — for commission/wallet actions
     userMetadata: Record<string, any> | null;
     // FIX v1.50.0: canonical owner id — sp_users.id when the profile exists,

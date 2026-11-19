@@ -145,7 +145,9 @@ export async function handleWalletAction(action: string, ctx: GatewayContext): P
       }
 
     case 'award_coins': {
-        if (!caller.isAdmin) return json({ error: 'Forbidden: admin only' }, 403);
+        // v2.9.17: koin dikonversi ke rupiah (rp_value = coins * 1000), jadi
+        // ini aksi finansial. OPERATOR tidak boleh mencetak koin.
+        if (!caller.isFinanceAdmin) return json({ error: 'Forbidden: finance only' }, 403);
         if (!params.agent_id || !params.coins || !params.order_id) return json({ error: 'agent_id, coins, order_id required' }, 400);
         const coins = Number(params.coins);
         const { error } = await db.from('sp_coin_ledger').insert({

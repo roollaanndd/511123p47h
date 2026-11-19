@@ -189,10 +189,17 @@ export async function handleOrdersAction(action: string, ctx: GatewayContext): P
           body: `${ins?.name ?? 'Insurer'} — ${order.order_number} (${order.client_name})`,
           order_id: orderId,
           read: false,
-          metadata: { order_id: orderId, review_url: reviewUrl, insurer_email: insurerEmail },
+          metadata: { order_id: orderId, insurer_email: insurerEmail },
         }).then(() => {}, () => {});
 
-        return json({ data: { success: true, review_url: reviewUrl, insurer_email: insurerEmail } });
+        return json({ data: {
+          success: true,
+          // v2.9.17: tautan review memuat token yang bisa dipakai menyetujui/
+          // menolak polis atas nama insurer. Operator boleh MEMICU pengiriman
+          // email, tetapi tidak boleh menerima tokennya.
+          ...(caller.isCoreAdmin ? { review_url: reviewUrl } : {}),
+          insurer_email: insurerEmail,
+        } });
       }
 
     case 'admin_queue_summary': {
