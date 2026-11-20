@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { RefreshCw, ChevronDown, ChevronUp, Plus, Trash2, CheckCircle2, AlertTriangle, FileText, Heart, Upload, Loader2, Building2, Copy, KeyRound, FileDown, History, Pencil, ShieldOff, ShieldCheck, X } from 'lucide-react';
+import { RefreshCw, ChevronDown, ChevronUp, Plus, Trash2, CheckCircle2, AlertTriangle, FileText, Heart, Upload, Loader2, Building2, Copy, KeyRound, FileDown, History, Pencil, ShieldOff, ShieldCheck, X, LayoutDashboard, Clock, FileCheck2, TrendingUp, Banknote, Users } from 'lucide-react';
+import { AdminKpiCard } from './adminUI';
 import {
   getAllB2BSubmissions,
   updateB2BSubmissionStatus,
@@ -1149,7 +1150,7 @@ const UsersSection: React.FC<{ onToast: (msg: string) => void }> = ({ onToast })
 const BULK_STATUSES = ['SUBMITTED', 'INVOICED', 'PAID', 'ISSUED', 'CANCELLED'];
 
 const B2BAdminView: React.FC = () => {
-  const [tab, setTab] = useState<'b2b' | 'bulk' | 'life' | 'users' | 'activity'>('b2b');
+  const [tab, setTab] = useState<'overview' | 'b2b' | 'bulk' | 'life' | 'users' | 'activity'>('overview');
   const [b2bSubs, setB2bSubs] = useState<SpB2BSubmission[]>([]);
   const [bulkBatches, setBulkBatches] = useState<SpB2BBatch[]>([]);
   const [lifeApps, setLifeApps] = useState<SpLifeApplication[]>([]);
@@ -1215,7 +1216,8 @@ const B2BAdminView: React.FC = () => {
       {toast && <Toast msg={toast} onDone={() => setToast('')} />}
 
       {/* Sub-tabs */}
-      <div className="flex items-center gap-1 px-5 pt-5 pb-3">
+      <div className="flex items-center gap-1 px-5 pt-5 pb-3 flex-wrap">
+        <TabBtn active={tab === 'overview'} onClick={() => setTab('overview')} icon={<LayoutDashboard size={18} />} label="Overview" />
         <TabBtn active={tab === 'b2b'} onClick={() => setTab('b2b')} icon={<ModuleIcon id="b2b" size={22} />} label="B2B Submissions" />
         <TabBtn active={tab === 'bulk'} onClick={() => setTab('bulk')} icon={<ModuleIcon id="documents" size={22} />} label="Bulk Batches" badge={bulkAwaitingPayment + bulkAwaitingIssuance} />
         <TabBtn active={tab === 'life'} onClick={() => setTab('life')} icon={<ModuleIcon id="family_health" size={22} />} label="Life Applications" />
@@ -1226,7 +1228,8 @@ const B2BAdminView: React.FC = () => {
         </button>
       </div>
 
-      {/* Filter Pills + search */}
+      {/* Filter Pills + search — overview, users, activity have no filter bar */}
+      {tab !== 'overview' && tab !== 'users' && tab !== 'activity' && (
       <div className="flex gap-2 px-5 pb-3 overflow-x-auto items-center">
         {tab === 'b2b' && ['ALL', ...B2B_STATUSES].map(f => (
           <FilterPill key={f} label={f} active={b2bFilter === f} onClick={() => setB2bFilter(f)} />
@@ -1237,21 +1240,20 @@ const B2BAdminView: React.FC = () => {
         {tab === 'life' && ['ALL', ...LIFE_STATUSES].map(f => (
           <FilterPill key={f} label={f} active={lifeFilter === f} onClick={() => setLifeFilter(f)} />
         ))}
-        {tab !== 'users' && tab !== 'activity' && (
-          <div className="ml-auto relative flex-shrink-0">
-            <input
-              value={searchQ}
-              onChange={e => setSearchQ(e.target.value)}
-              placeholder={tab === 'bulk' ? 'Cari batch / perusahaan / polis…' : tab === 'b2b' ? 'Cari perusahaan / PIC…' : 'Cari nasabah / produk…'}
-              className="w-64 pl-8 pr-2 py-1.5 text-xs rounded-lg border border-ds-border bg-white dark:bg-ds-card2 outline-none focus:border-indigo-400"
-            />
-            <svg aria-hidden className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ds-ink3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z" /></svg>
-            {searchQ && (
-              <button onClick={() => setSearchQ('')} aria-label="Hapus pencarian" className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-ds-ink3 hover:text-ds-ink2 text-xs">✕</button>
-            )}
-          </div>
-        )}
+        <div className="ml-auto relative flex-shrink-0">
+          <input
+            value={searchQ}
+            onChange={e => setSearchQ(e.target.value)}
+            placeholder={tab === 'bulk' ? 'Cari batch / perusahaan / polis…' : tab === 'b2b' ? 'Cari perusahaan / PIC…' : 'Cari nasabah / produk…'}
+            className="w-64 pl-8 pr-2 py-1.5 text-xs rounded-lg border border-ds-border bg-white dark:bg-ds-card2 outline-none focus:border-indigo-400"
+          />
+          <svg aria-hidden className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ds-ink3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z" /></svg>
+          {searchQ && (
+            <button onClick={() => setSearchQ('')} aria-label="Hapus pencarian" className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-ds-ink3 hover:text-ds-ink2 text-xs">✕</button>
+          )}
+        </div>
       </div>
+      )}
 
       {/* Content */}
       <div className="px-5 pb-8 space-y-3">
@@ -1267,6 +1269,14 @@ const B2BAdminView: React.FC = () => {
           <div className="flex items-center justify-center py-16 text-ds-ink3 text-sm gap-2">
             <RefreshCw size={16} className="animate-spin" /> Loading…
           </div>
+        ) : tab === 'overview' ? (
+          <B2BOverviewSection
+            b2bSubs={b2bSubs}
+            bulkBatches={bulkBatches}
+            lifeApps={lifeApps}
+            insurers={insurers}
+            onNavigate={setTab}
+          />
         ) : tab === 'b2b' ? (
           visibleB2b.length === 0 ? (
             <Empty />
@@ -1296,6 +1306,205 @@ const B2BAdminView: React.FC = () => {
             ))
           )
         )}
+      </div>
+    </div>
+  );
+};
+
+// ─── B2B Overview Section (v2.9.23) ─────────────────────────────────────────
+//
+// Strategic landing tab for admin B2B: one glance tells them where the queue
+// stands and what needs attention first. Consumes data already fetched by the
+// parent load() so no extra network calls.
+//
+// Layout:
+//   1. KPI strip (6 cards) — pending, quoted, awaiting payment, awaiting
+//      issuance, life pending, total premium YTD.
+//   2. Action-required panel — urgent items with deep-link buttons that
+//      switch tabs + filter.
+//   3. Quick actions — jump to the most common follow-ups.
+
+const B2BOverviewSection: React.FC<{
+  b2bSubs: SpB2BSubmission[];
+  bulkBatches: SpB2BBatch[];
+  lifeApps: SpLifeApplication[];
+  insurers: InsurerOption[];
+  onNavigate: (tab: 'overview' | 'b2b' | 'bulk' | 'life' | 'users' | 'activity') => void;
+}> = ({ b2bSubs, bulkBatches, lifeApps, insurers, onNavigate }) => {
+  const pendingReview = b2bSubs.filter(s => s.status === 'SUBMITTED' || s.status === 'REVIEWING').length;
+  const quotedOpen    = b2bSubs.filter(s => s.status === 'QUOTED').length;
+  const acceptedYtd   = b2bSubs.filter(s => s.status === 'ACCEPTED').length;
+  const awaitingPay   = bulkBatches.filter(b => b.status === 'SUBMITTED' || b.status === 'INVOICED').length;
+  const awaitingIss   = bulkBatches.filter(b => b.status === 'PAID').length;
+  const issuedBatches = bulkBatches.filter(b => b.status === 'ISSUED').length;
+  const lifePending   = lifeApps.filter(a => a.status === 'SUBMITTED' || a.status === 'UNDERWRITING').length;
+  const premiumYtd    = bulkBatches
+    .filter(b => b.status === 'PAID' || b.status === 'ISSUED')
+    .reduce((s, b) => s + (b.total_amount ?? 0), 0);
+  const totalFleetUnits = bulkBatches.reduce((s, b) => s + (b.item_count ?? 0), 0);
+  const uniqueClients = new Set([
+    ...b2bSubs.map(s => s.client_id).filter(Boolean),
+    ...bulkBatches.map(b => b.client_id).filter(Boolean),
+  ]).size;
+
+  const needsAttention = pendingReview + awaitingPay + awaitingIss + lifePending;
+
+  return (
+    <div className="space-y-5">
+      {/* KPI strip */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <AdminKpiCard
+          label="Perlu Review"
+          value={pendingReview}
+          sub="Submissions SUBMITTED/REVIEWING"
+          icon={Clock}
+          tone="amber"
+          onClick={() => onNavigate('b2b')}
+        />
+        <AdminKpiCard
+          label="Open Quotes"
+          value={quotedOpen}
+          sub="Menunggu keputusan klien"
+          icon={FileCheck2}
+          tone="violet"
+          onClick={() => onNavigate('b2b')}
+        />
+        <AdminKpiCard
+          label="Await Payment"
+          value={awaitingPay}
+          sub="Bulk batches SUBMITTED/INVOICED"
+          icon={Banknote}
+          tone="amber"
+          onClick={() => onNavigate('bulk')}
+        />
+        <AdminKpiCard
+          label="Await Issuance"
+          value={awaitingIss}
+          sub="PAID, polis induk belum terbit"
+          icon={ShieldCheck}
+          tone="rose"
+          onClick={() => onNavigate('bulk')}
+        />
+        <AdminKpiCard
+          label="Life Pending"
+          value={lifePending}
+          sub="SUBMITTED/UNDERWRITING"
+          icon={Heart}
+          tone="blue"
+          onClick={() => onNavigate('life')}
+        />
+        <AdminKpiCard
+          label="Premi (YTD)"
+          value={fmtIDR(premiumYtd)}
+          sub={`${issuedBatches} batch issued`}
+          icon={TrendingUp}
+          tone="green"
+        />
+      </div>
+
+      {/* Secondary stats */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="rounded-2xl border border-ds-border bg-ds-card p-4">
+          <p className="text-2xs font-black uppercase tracking-widest text-ds-ink3">Klien Korporat</p>
+          <p className="text-2xl font-black text-ds-ink mt-1 tabular-nums">{uniqueClients}</p>
+          <p className="text-2xs text-ds-ink3 mt-1">Dengan aktivitas</p>
+        </div>
+        <div className="rounded-2xl border border-ds-border bg-ds-card p-4">
+          <p className="text-2xs font-black uppercase tracking-widest text-ds-ink3">Unit Armada</p>
+          <p className="text-2xl font-black text-ds-ink mt-1 tabular-nums">{totalFleetUnits.toLocaleString('id-ID')}</p>
+          <p className="text-2xs text-ds-ink3 mt-1">Semua batch</p>
+        </div>
+        <div className="rounded-2xl border border-ds-border bg-ds-card p-4">
+          <p className="text-2xs font-black uppercase tracking-widest text-ds-ink3">Submission Diterima</p>
+          <p className="text-2xl font-black text-ds-ink mt-1 tabular-nums">{acceptedYtd}</p>
+          <p className="text-2xs text-ds-ink3 mt-1">Status ACCEPTED</p>
+        </div>
+        <div className="rounded-2xl border border-ds-border bg-ds-card p-4">
+          <p className="text-2xs font-black uppercase tracking-widest text-ds-ink3">Asuransi Aktif</p>
+          <p className="text-2xl font-black text-ds-ink mt-1 tabular-nums">{insurers.length}</p>
+          <p className="text-2xs text-ds-ink3 mt-1">Dapat ditugaskan</p>
+        </div>
+      </div>
+
+      {/* Action-required panel */}
+      {needsAttention > 0 && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50/70 dark:bg-amber-900/10 dark:border-amber-800/40 p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <AlertTriangle size={16} className="text-amber-600" />
+            <p className="text-sm font-black uppercase tracking-wider text-amber-900 dark:text-amber-200">
+              {needsAttention} item butuh tindakan
+            </p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {pendingReview > 0 && (
+              <button
+                onClick={() => onNavigate('b2b')}
+                className="text-left bg-white dark:bg-ds-card p-3 rounded-xl border border-ds-border hover:border-amber-400 transition-colors"
+              >
+                <p className="text-xs font-bold text-ds-ink">Review submission</p>
+                <p className="text-lg font-black text-amber-700 tabular-nums mt-0.5">{pendingReview}</p>
+                <p className="text-2xs text-ds-ink3">Buka tab B2B →</p>
+              </button>
+            )}
+            {awaitingPay > 0 && (
+              <button
+                onClick={() => onNavigate('bulk')}
+                className="text-left bg-white dark:bg-ds-card p-3 rounded-xl border border-ds-border hover:border-amber-400 transition-colors"
+              >
+                <p className="text-xs font-bold text-ds-ink">Tunggu pembayaran</p>
+                <p className="text-lg font-black text-amber-700 tabular-nums mt-0.5">{awaitingPay}</p>
+                <p className="text-2xs text-ds-ink3">Buka tab Bulk Batches →</p>
+              </button>
+            )}
+            {awaitingIss > 0 && (
+              <button
+                onClick={() => onNavigate('bulk')}
+                className="text-left bg-white dark:bg-ds-card p-3 rounded-xl border border-ds-border hover:border-rose-400 transition-colors"
+              >
+                <p className="text-xs font-bold text-ds-ink">Terbitkan polis induk</p>
+                <p className="text-lg font-black text-rose-700 tabular-nums mt-0.5">{awaitingIss}</p>
+                <p className="text-2xs text-ds-ink3">Buka tab Bulk Batches →</p>
+              </button>
+            )}
+            {lifePending > 0 && (
+              <button
+                onClick={() => onNavigate('life')}
+                className="text-left bg-white dark:bg-ds-card p-3 rounded-xl border border-ds-border hover:border-blue-400 transition-colors"
+              >
+                <p className="text-xs font-bold text-ds-ink">Life underwriting</p>
+                <p className="text-lg font-black text-blue-700 tabular-nums mt-0.5">{lifePending}</p>
+                <p className="text-2xs text-ds-ink3">Buka tab Life →</p>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Quick nav row */}
+      <div className="rounded-2xl border border-ds-border bg-ds-card p-5">
+        <p className="text-2xs font-black uppercase tracking-[0.18em] text-ds-ink3 mb-3">Navigasi cepat</p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+          <button onClick={() => onNavigate('users')} className="flex items-center gap-2 p-3 rounded-xl border border-ds-border hover:border-emerald-400 transition-colors text-left">
+            <Users size={14} className="text-emerald-600" />
+            <span className="text-xs font-bold text-ds-ink">Pengguna</span>
+          </button>
+          <button onClick={() => onNavigate('b2b')} className="flex items-center gap-2 p-3 rounded-xl border border-ds-border hover:border-emerald-400 transition-colors text-left">
+            <FileText size={14} className="text-emerald-600" />
+            <span className="text-xs font-bold text-ds-ink">Submissions</span>
+          </button>
+          <button onClick={() => onNavigate('bulk')} className="flex items-center gap-2 p-3 rounded-xl border border-ds-border hover:border-emerald-400 transition-colors text-left">
+            <ModuleIcon id="documents" size={16} />
+            <span className="text-xs font-bold text-ds-ink">Bulk Batches</span>
+          </button>
+          <button onClick={() => onNavigate('life')} className="flex items-center gap-2 p-3 rounded-xl border border-ds-border hover:border-emerald-400 transition-colors text-left">
+            <Heart size={14} className="text-emerald-600" />
+            <span className="text-xs font-bold text-ds-ink">Life Apps</span>
+          </button>
+          <button onClick={() => onNavigate('activity')} className="flex items-center gap-2 p-3 rounded-xl border border-ds-border hover:border-emerald-400 transition-colors text-left">
+            <History size={14} className="text-emerald-600" />
+            <span className="text-xs font-bold text-ds-ink">Aktivitas</span>
+          </button>
+        </div>
       </div>
     </div>
   );

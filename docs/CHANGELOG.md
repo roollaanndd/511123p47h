@@ -1,5 +1,79 @@
 # SurePath - Changelog
 
+## v2.9.23 - 2026-11-20
+
+### Perbaikan: profil B2B tidak tersimpan
+
+- **Akar masalah**: `services/users.ts` → `updateB2BProfile` menulis langsung
+  ke `sp_users` dari browser. Tabel ini bermode **deny-all RLS** (dilindungi
+  data-gateway), sehingga setiap `UPDATE` ditolak tanpa UI yang jelas.
+  Toast error memang muncul, tetapi pesan "gagal, coba lagi" membuat user
+  mengira ini masalah koneksi — padahal arsitekturnya memang tidak
+  memperbolehkan jalur itu.
+- **Perbaikan**:
+  - `services/users.ts` — `updateB2BProfile` sekarang memanggil aksi
+    gateway `update_my_profile` (identitas caller diverifikasi server-side
+    dari JWT). `clientId` tidak lagi diperlukan tetapi parameter dipertahankan
+    untuk kompatibilitas pemanggil lama.
+  - `supabase/functions/data-gateway/actions/users.ts`:
+    - `update_my_profile` SAFE list diperluas: `company_name`,
+      `company_reg_no`, `company_industry` — khusus role `B2B_CLIENT`
+      (agen individual tidak dapat memasukkan field ini).
+    - `get_user_profile` SELECT list diperluas: `address`,
+      `company_name`, `company_reg_no`, `company_industry`,
+      `profile_photo_url` — supaya form B2B melihat data tersimpan.
+- **⚠️ Butuh deploy edge function** — perubahan di `supabase/functions/`
+  tidak otomatis masuk produksi:
+  ```
+  supabase functions deploy data-gateway --project-ref uyjgeteelnswphyzkjwi
+  ```
+
+### Admin dashboard — tab Overview B2B baru
+
+- Tab default B2B Admin sekarang **Overview**, bukan langsung daftar
+  submissions. Layout strategic:
+  - **KPI strip** 6 kartu: Perlu Review, Open Quotes, Await Payment,
+    Await Issuance, Life Pending, Premi YTD. Semua mengklik → deep-link
+    ke tab terkait.
+  - **Baris statistik sekunder** 4 kartu: Klien Korporat (unique with
+    activity), Unit Armada (total batch item_count), Submission Diterima,
+    Asuransi Aktif.
+  - **Action-required panel** amber, hanya muncul bila ada
+    `needsAttention > 0` — dipecah per kategori dengan tombol deep-link.
+  - **Quick navigation** 5 shortcut (Pengguna, Submissions, Bulk,
+    Life, Aktivitas).
+- Dibangun dari data yang sudah dimuat `load()` di `B2BAdminView` — tidak
+  menambah panggilan jaringan baru. Memakai primitif `AdminKpiCard`
+  dari `components/admin/adminUI.tsx`.
+- Tab sekarang: **Overview** · B2B Submissions · Bulk Batches · Life
+  Applications · Pengguna Korporat · Aktivitas.
+
+### Peta jalan portal B2B — fitur yang disarankan ditambahkan
+
+Agar portal B2B lengkap end-to-end, berikutnya dipertimbangkan (PR
+terpisah, tidak masuk rilis ini):
+
+1. **Klaim** — klien B2B tidak dapat mengajukan/memantau klaim via portal.
+   Tabel `sp_claims` sudah ada; butuh UI B2B + aksi gateway baru.
+2. **Pusat dokumen** — semua polis, polis induk, sertifikat COI dalam
+   satu tampilan terfilter + unduh. Konsolidasi akses `sp_documents`.
+3. **Riwayat pembayaran & tanda terima** — statement bulanan, unduh
+   kuitansi per invoice. Data sudah ada di `sp_payments`.
+4. **Manajemen tim/PIC** — beberapa PIC di bawah satu akun B2B dengan
+   peran (viewer/operator/approver). Saat ini satu akun = satu PIC.
+5. **Analitik belanja** — tren premi bulanan, loss ratio, perbandingan
+   penanggung. Chart line + kartu ringkasan.
+6. **Preferensi notifikasi** — kontrol email/SMS per jenis kejadian.
+7. **Endorsement request** — tambah/hapus unit, ubah coverage pada polis
+   aktif. Pasangan dari `sp_endorsements` admin yang sudah ada.
+8. **Request COI on-demand** — sertifikat asuransi untuk vendor/klien
+   akhir, PDF generator. Butuh template + aksi gateway.
+9. **Notifikasi perpanjangan** — pengingat otomatis N hari sebelum habis
+   (sudah ada mesin retensi; perlu kanal push via FCM yang sudah
+   terpasang untuk agen).
+10. **Audit log mandiri** — klien B2B melihat aktivitas akunnya sendiri
+    (`sp_b2b_activity_log` sudah ada, dipakai admin — perlu view klien).
+
 ## v2.9.22 - 2026-11-20
 
 ### Portal B2B — anti-slop + migrasi B2BFleetCalendar ke kit B2B
