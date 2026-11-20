@@ -459,6 +459,22 @@ export async function handleB2BBulkAction(action: string, ctx: GatewayContext): 
       }
       const { data, error } = await q;
       if (error) return err(error.message, 400);
+
+      // v2.9.25 — opt-in: ikut tandatangani master_policy_document_url utk
+      // ISSUED batch, sehingga layar Dokumen bisa langsung memberi link unduh
+      // tanpa satu panggilan tambahan per baris. Default perilaku lama (tidak
+      // menandatangani) dipertahankan untuk pemanggil yang hanya butuh ID.
+      if (params.include_master_policy_url === true && data && data.length > 0) {
+        const withUrls = await Promise.all((data as any[]).map(async (b: any) => {
+          if (!b.master_policy_document_url || b.master_policy_document_url.startsWith('http')) {
+            return { ...b, master_policy_signed_url: null };
+          }
+          const { data: signed } = await db.storage.from('b2b-documents').createSignedUrl(b.master_policy_document_url, 300);
+          return { ...b, master_policy_signed_url: signed?.signedUrl ?? null };
+        }));
+        return ok(withUrls);
+      }
+
       return ok(data ?? []);
     }
 

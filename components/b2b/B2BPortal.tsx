@@ -11,7 +11,7 @@
 
 import React, { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import {
-  LayoutDashboard, Plus, User, Sparkles, ShieldCheck, CalendarDays, History, Wrench, Banknote, ClipboardList,
+  LayoutDashboard, Plus, User, Sparkles, ShieldCheck, CalendarDays, History, Wrench, Banknote, ClipboardList, BarChart3, FolderOpen,
 } from 'lucide-react';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import { Language, UserRole } from '../../types';
@@ -42,6 +42,8 @@ const B2BQuotes        = lazy(() => import('./B2BQuotes'));
 const B2BProfile       = lazy(() => import('./B2BProfile'));
 const B2BAuditLog      = lazy(() => import('./B2BAuditLog'));
 const B2BPayments      = lazy(() => import('./B2BPayments'));
+const B2BAnalytics     = lazy(() => import('./B2BAnalytics'));
+const B2BDocuments     = lazy(() => import('./B2BDocuments'));
 const WorkshopDirectory = lazy(() => import('../shared/WorkshopDirectory'));
 
 interface Props {
@@ -60,7 +62,7 @@ type Section =
   | 'submissions' | 'batches'
   | 'quotes'
   | 'workshops'
-  | 'payments' | 'audit'
+  | 'payments' | 'audit' | 'analytics' | 'documents'
   | 'profile';
 
 const B2BPortal: React.FC<Props> = ({ client, onLogout, lang }) => {
@@ -163,6 +165,8 @@ const B2BPortal: React.FC<Props> = ({ client, onLogout, lang }) => {
     },
     { id: 'fleet', label: t('Fleet Calendar', 'Kalender Armada'), icon: CalendarDays, groupLabel: t('Monitor', 'Pantau') },
     { id: 'payments', label: t('Payments', 'Pembayaran'), icon: Banknote, groupLabel: t('Monitor', 'Pantau') },
+    { id: 'documents', label: t('Documents', 'Dokumen'), icon: FolderOpen, groupLabel: t('Monitor', 'Pantau') },
+    { id: 'analytics', label: t('Analytics', 'Analitik'), icon: BarChart3, groupLabel: t('Monitor', 'Pantau') },
     { id: 'audit', label: t('Activity Log', 'Riwayat Aktivitas'), icon: ClipboardList, groupLabel: t('Monitor', 'Pantau') },
     { id: 'workshops', label: t('Workshop directory', 'Direktori Bengkel'), icon: Wrench, groupLabel: t('Monitor', 'Pantau') },
     { id: 'profile', label: t('Profile', 'Profil'), icon: User, groupLabel: t('Account', 'Akun') },
@@ -183,6 +187,8 @@ const B2BPortal: React.FC<Props> = ({ client, onLogout, lang }) => {
       case 'batches':     return [root, crMonitor, t('Orders & Batches', 'Order Unit & Batch')];
       case 'quotes':      return [root, crMonitor, t('Quotes', 'Penawaran')];
       case 'payments':    return [root, crMonitor, t('Payments', 'Pembayaran')];
+      case 'documents':   return [root, crMonitor, t('Documents', 'Dokumen')];
+      case 'analytics':   return [root, crMonitor, t('Analytics', 'Analitik')];
       case 'audit':       return [root, crMonitor, t('Activity Log', 'Riwayat Aktivitas')];
       case 'profile':     return [root, t('Profile', 'Profil')];
     }
@@ -330,6 +336,41 @@ const B2BPortal: React.FC<Props> = ({ client, onLogout, lang }) => {
         return (
           <Suspense fallback={<B2BPageSkeleton variant="list" />}>
             <B2BPayments lang={lang} />
+          </Suspense>
+        );
+      case 'analytics':
+        // Analytics bekerja identik untuk klien dan master (semua perhitungan
+        // client-side dari props). Master melihat agregat semua klien.
+        return (
+          <Suspense fallback={<B2BPageSkeleton variant="dashboard" />}>
+            <B2BAnalytics
+              submissions={submissions}
+              quotes={quotes}
+              bulkBatches={bulkBatches}
+              lang={lang}
+            />
+          </Suspense>
+        );
+      case 'documents':
+        if (isMaster) {
+          return (
+            <div className="max-w-md mx-auto mt-8">
+              <B2BGlass className="p-6 text-center space-y-3">
+                <div className="mx-auto w-11 h-11 rounded-2xl flex items-center justify-center" style={{ background: 'rgba(79,70,229,0.1)' }}>
+                  <ShieldCheck size={18} className="text-indigo-600" />
+                </div>
+                <p className="font-black text-sm text-slate-900">{t('Monitor Mode', 'Mode Pantau')}</p>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  {t('Documents for all clients are visible under CMS → B2B → Bulk Batches.',
+                     'Dokumen seluruh klien dapat dilihat pada CMS → B2B → Bulk Batches.')}
+                </p>
+              </B2BGlass>
+            </div>
+          );
+        }
+        return (
+          <Suspense fallback={<B2BPageSkeleton variant="list" />}>
+            <B2BDocuments lang={lang} />
           </Suspense>
         );
       case 'audit':

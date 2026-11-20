@@ -1,5 +1,57 @@
 # SurePath - Changelog
 
+## v2.9.25 - 2026-11-20
+
+### Portal B2B — fitur baru dari roadmap (#5 & #2)
+
+**Roadmap #5 — B2BAnalytics** (`components/b2b/B2BAnalytics.tsx`)
+- Layar baru "Analitik" di sidebar portal B2B grup "Pantau".
+- Semua perhitungan client-side dari props `submissions`/`quotes`/`bulkBatches`
+  yang sudah dimuat `B2BPortal.loadData()` — tidak menambah gateway call baru.
+- 4 KPI: Premi Lunas YTD, Open Exposure, Rata-rata per Batch, Pertumbuhan MoM.
+- 12-month premium trend chart — SVG inline bar chart dengan gradient
+  indigo, tanpa chart library.
+- 3 breakdown panel: Bauran Produk, Penanggung Teratas, Status Batch —
+  horizontal bar reusable dengan tone semantik.
+- Portfolio summary footer: Total unit, Semua pengajuan, Semua batch,
+  Penawaran aktif.
+- Berfungsi identik untuk klien dan Master Admin (master melihat agregat
+  semua klien).
+
+**Roadmap #2 — B2BDocuments** (`components/b2b/B2BDocuments.tsx`)
+- Layar baru "Dokumen" di sidebar portal B2B grup "Pantau".
+- Pusat dokumen resmi klien: polis induk batch massal yang sudah terbit,
+  masing-masing dengan tombol unduh langsung (signed URL 5 menit dari
+  bucket privat `b2b-documents`).
+- Search + filter "Hanya yang terbit" default aktif.
+- Tiap kartu: nomor batch (mono), status chip, company name, item count,
+  total amount, lalu panel polis induk (nomor polis + insurer + tanggal
+  terbit + tombol Download).
+- Deteksi URL legacy (format `http://`) → ditampilkan chip "Lama" dengan
+  tooltip minta ke SurePath.
+
+**Gateway (opt-in extension):**
+- `b2b_bulk_list_batches` menerima parameter baru `include_master_policy_url`.
+  Default behavior tidak berubah (backward-compatible). Bila `true`, server
+  menandatangani `master_policy_document_url` di bucket privat untuk setiap
+  batch ISSUED dan mengembalikannya sebagai `master_policy_signed_url`.
+  Menghindari N+1 panggilan dari layar Dokumen.
+
+**Service helper:**
+- `getMyB2BBatchesWithDocuments()` di `services/b2bBulk.ts` memanggil
+  gateway dengan flag di atas. Type: `SpB2BBatchWithSignedUrl`.
+
+**⚠️ Butuh deploy edge function** (sama seperti v2.9.23 + v2.9.24).
+
+### Progress roadmap
+
+Sudah dibangun: **#3** (Payment history), **#5** (Analytics), **#2**
+(Documents center), **#10** (Audit log mandiri).
+
+Belum: **#1** Klaim, **#4** Team/PIC (perlu schema), **#6** Notification prefs
+(perlu schema), **#7** Endorsement (perlu schema), **#8** COI generator
+(perlu PDF lib), **#9** Pengingat perpanjangan (perlu FCM cron).
+
 ## v2.9.24 - 2026-11-20
 
 ### Portal B2B — fitur baru dari roadmap (#3 & #10)
