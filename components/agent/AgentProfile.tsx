@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Mail, Phone, MapPin, ShieldCheck, BadgeCheck, Edit2, Save, X, LogOut, Copy, CheckCircle, Loader2, LockKeyhole, AlertCircle, Camera, Building2, ChevronRight, FileCheck2, Download } from 'lucide-react';
+import { User, Mail, Phone, MapPin, ShieldCheck, BadgeCheck, Edit2, Save, X, LogOut, Copy, CheckCircle, Loader2, LockKeyhole, AlertCircle, Camera, Building2, FileCheck2, Download } from 'lucide-react';
 import { Language } from '../../types';
 import { APP_VERSION } from '../../src/version';
 import {
@@ -17,7 +17,7 @@ import { generateAgreementPDF } from '../../services/agreementPdf';
 import { useTierDefinitions, getTierByCode } from '../../hooks/useTierDefinitions';
 import ChangePasswordModal from '../shared/ChangePasswordModal';
 import { moduleIcon } from '../shared/ModuleIcon';
-import { AgGlass, AgSection, AgRow, AgChip, AgTile, AgButton, AgEmpty } from './ui/kit';
+import { AgGlass, AgSection, AgChip } from './ui/kit';
 import AgIcon from './ui/AgIcon';
 
 interface Props {

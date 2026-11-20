@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowDownLeft, ArrowUpRight, Clock, CheckCircle2, XCircle, AlertCircle, RefreshCw, ChevronRight, Info } from 'lucide-react';
+import { ArrowUpRight, CheckCircle2, XCircle, AlertCircle, RefreshCw, Info } from 'lucide-react';
 import {
   getMyWallet, getMyWalletTransactions, getMyWithdrawals,
   requestWithdrawal, getAgentCoinBalance,
@@ -7,7 +7,7 @@ import {
   type AgentWallet, type WalletTransaction, type Withdrawal
 } from '../../services/supabaseService';
 import ModuleIcon from '../shared/ModuleIcon';
-import { AgGlass, AgSection, AgRow, AgEmpty, AgChip, AgPageHeader, AgButton, AgTile, AgSkeleton } from './ui/kit';
+import { AgGlass, AgSection, AgEmpty, AgChip, AgPageHeader, AgButton } from './ui/kit';
 import AgIcon from './ui/AgIcon';
 
 const BANKS = [
@@ -536,7 +536,7 @@ const AgentWalletView: React.FC = () => {
           )}
           <div className="space-y-3">
             {withdrawals.map(wd => {
-              const { cls, label } = statusBadge(wd.status);
+              const { label } = statusBadge(wd.status);
               const isPending = wd.status?.startsWith('PENDING');
               const tone = isPending ? 'spark' : wd.status === 'DISBURSED' ? 'green' : wd.status?.includes('REJECTED') ? 'danger' : 'mute';
               return (
@@ -566,7 +566,7 @@ const AgentWalletView: React.FC = () => {
                   )}
                   {wd.scheduled_disburse_at && wd.status !== 'DISBURSED' && (
                     <p className="ag-caption flex items-center gap-1.5">
-                      <AgIcon name="clock" size={11} />
+                      <AgIcon name="history" size={11} />
                       Dijadwalkan cair: {new Date(wd.scheduled_disburse_at).toLocaleString('id-ID')}
                     </p>
                   )}

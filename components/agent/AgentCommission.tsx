@@ -7,7 +7,7 @@ import { effectiveCommissionRate, simulateCommission } from '../../services/comm
 import { IcWallet, IcCoin } from './AgentIcons';
 import ModuleIcon from '../shared/ModuleIcon';
 import { moduleIcon } from '../shared/ModuleIcon';
-import { AgGlass, AgSection, AgRow, AgEmpty, AgChip, AgButton, AgTile, AgCountUp } from './ui/kit';
+import { AgGlass, AgEmpty, AgChip } from './ui/kit';
 
 interface Props {
   agentId: string;
@@ -17,11 +17,6 @@ interface Props {
 
 type TabId = 'all' | 'pending' | 'paid' | 'byproduct' | 'coins';
 
-const statusColors: Record<string, string> = {
-  PAID: 'bg-ds-green-tint text-ds-green',
-  PENDING: 'bg-amber-100 text-amber-700',
-  CANCELLED: 'bg-rose-50 text-ds-red',
-};
 
 const productIcons: Record<string, React.ElementType> = {
   CAR: moduleIcon('car_protection'), TRAVEL: moduleIcon('travel_safe'), PA: moduleIcon('personal_safety'), MPAR: moduleIcon('item_shield'),
@@ -316,7 +311,6 @@ const AgentCommission: React.FC<Props> = ({ agentId, lang, onNavigate }) => {
           ) : (
             coinLedger.map((entry, i) => {
               const isEarned = entry.type === 'EARNED';
-              const isRedeemed = entry.type === 'REDEEMED';
               return (
                 <AgGlass key={entry.id ?? i} className="p-4 flex items-center gap-3">
                   <span className="ag-tile h-10 w-10 shrink-0"><ModuleIcon id="commission" size={24} /></span>
