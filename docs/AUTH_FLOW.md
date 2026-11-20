@@ -66,21 +66,22 @@ Jangan "merapikan" id ini — `sp_clients`, `sp_commissions`, dll mereferensikan
 
 ### 4. Google Identity Services (renderButton-first, v2.9.21)
 1. `services/googleAuth.ts` memuat GIS lalu memanggil **`renderButton` langsung ke slot di kartu login** melalui `components/shared/GoogleSignInButton.tsx`. Tidak ada `prompt()` One Tap dan tidak ada overlay fallback — cooldown FedCM yang dulu membuat klik kedua "mati" tidak lagi dilibatkan, dan pengguna tidak disuruh menutup dialog tambahan.
-2. Callback GIS menerima ID token. `supabase.auth.signInWithIdToken({ provider: 'google', token, nonce })` memverifikasinya. `nonce` mentah dikirim ke Supabase harus merupakan preimage dari SHA-256 `nonce` yang diberikan ke `accounts.id.initialize`; kontrak ini diuji di `services/__tests__/googleAuth.test.ts`. Jangan pernah menukar keduanya atau menghapus nonce.
-3. `App.tsx` / `AuthGate` resolves the Supabase session → finds the `sp_users` profile. Tidak ada profil dan tidak ada role di
+2. Jika `VITE_GOOGLE_CLIENT_ID` belum ada atau script GIS diblokir, slot tidak dibiarkan kosong: `GoogleSignInButton` menampilkan tombol fallback bertanda "Lanjutkan dengan Google". Pesan detail env var tetap di `console.warn` untuk operator; pengguna melihat pesan singkat dan bisa memilih login email. Tombol resmi dipakai kembali begitu konfigurasi tersedia.
+3. Callback GIS menerima ID token. `supabase.auth.signInWithIdToken({ provider: 'google', token, nonce })` memverifikasinya. `nonce` mentah dikirim ke Supabase harus merupakan preimage dari SHA-256 `nonce` yang diberikan ke `accounts.id.initialize`; kontrak ini diuji di `services/__tests__/googleAuth.test.ts`. Jangan pernah menukar keduanya atau menghapus nonce.
+4. `App.tsx` / `AuthGate` resolves the Supabase session → finds the `sp_users` profile. Tidak ada profil dan tidak ada role di
    metadata → `RoleSelectionScreen` → user pilih Nasabah / Mitra / Klien Korporat →
    `ensure_profile({ role, phone, name })` (B2B lewat `createB2BClientProfile`). Pilihan ini dibuat **sekali** saat profil terbentuk; login berikutnya memakai role tersimpan sebagai routing, bukan otoritas.
-4. **Header wajib GIS.** CSP harus mengizinkan `https://accounts.google.com` pada
+5. **Header wajib GIS.** CSP harus mengizinkan `https://accounts.google.com` pada
    `script-src`, `connect-src`, `frame-src`, dan `https://accounts.google.com/gsi/style`
    pada `style-src`. Tanpa `style-src`, stylesheet Google diblokir sehingga tombol Google tidak tampil. COOP harus `same-origin-allow-popups` karena alur akun Google memakai popup; `same-origin` memutus `window.opener` sehingga popup gagal berkomunikasi. Ketiga sumber konfigurasi (`vercel.json`, `public/_headers`,
    `server.ts`) harus konsisten; dijaga oleh
    `services/__tests__/googleAuthHeaders.test.ts`.
-5. **Dua jalur, satu layar.** Pada web, `?code=` di URL membuat `App.tsx` menahan render
+6. **Dua jalur, satu layar.** Pada web, `?code=` di URL membuat `App.tsx` menahan render
    (`oauthLoading`) sampai profil selesai dicek. Pada APK native (deep link) tidak ada
    `?code=`, jadi `AuthGate` yang sedang tampil ikut menangkap event `SIGNED_IN` — karena
    itu `AuthGate` juga harus bisa memunculkan pemilih role, lewat prop
    `onNeedsRoleSelection`. Tanpa itu, pengguna Android selalu berakhir sebagai nasabah.
-6. **Client ID harus cocok dengan Supabase.** Nilai `VITE_GOOGLE_CLIENT_ID` yang dipakai
+7. **Client ID harus cocok dengan Supabase.** Nilai `VITE_GOOGLE_CLIENT_ID` yang dipakai
    GIS di browser harus tercantum di Supabase Dashboard → Authentication → Providers →
    Google → *Client IDs*. Beberapa client ID boleh ditulis comma-separated dengan web
    client di depan. Jika tidak, Supabase menerima token Google tetapi menolak audience

@@ -114,6 +114,11 @@ const GENERIC_START_ERROR = 'Tidak dapat memulai login Google. Silakan coba lagi
  */
 export function googleAuthErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message.trim() : '';
+  // The raw error (with the env var name) stays in console.warn for operators;
+  // end users only need to know which alternative they can use.
+  if (message.includes('VITE_GOOGLE_CLIENT_ID')) {
+    return 'Login Google belum tersedia. Silakan masuk dengan email atau hubungi administrator.';
+  }
   return message || GENERIC_START_ERROR;
 }
 

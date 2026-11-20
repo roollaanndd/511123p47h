@@ -8,7 +8,9 @@
   langsung di kartu login (`components/shared/GoogleSignInButton.tsx`). Alur lama
   memanggil `prompt()` One Tap lalu memunculkan overlay tombol saat popup di-skip —
   klik kedua sering terasa mati karena cooldown perambang/FedCM dan pengguna harus
-  menutup dialog tambahan. Keduanya dihapus.
+  menutup dialog tambahan. Keduanya dihapus. Jika client ID belum ada atau script
+  GIS diblokir, tombol fallback tetap tampil dan menjelaskan alternatif login email
+  saat diklik — slot tidak pernah dibiarkan kosong.
 - Pasangan nonce raw ↔ SHA-256 dan `supabase.auth.signInWithIdToken` tetap dipertahankan;
   test kontrak ditulis ulang (9 test) untuk memastikan tombol dirender sejak awal,
   `prompt()` tidak dipanggil, cleanup aman saat unmount, dan error Supabase jujur.

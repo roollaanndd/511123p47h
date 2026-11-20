@@ -188,6 +188,11 @@ describe('googleAuthErrorMessage', () => {
       .toBe('Login Google dibatalkan. Klik tombol Google untuk mencoba lagi.');
   });
 
+  it('hides env-var jargon from users while keeping the specific failure', () => {
+    expect(googleAuthErrorMessage(new Error('Google login belum dikonfigurasi. Tambahkan VITE_GOOGLE_CLIENT_ID.')))
+      .toBe('Login Google belum tersedia. Silakan masuk dengan email atau hubungi administrator.');
+  });
+
   it('falls back to the generic message for non-Error throw values', () => {
     expect(googleAuthErrorMessage(undefined))
       .toBe('Tidak dapat memulai login Google. Silakan coba lagi.');

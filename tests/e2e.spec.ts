@@ -161,7 +161,8 @@ test.describe('UI smoke tests', () => {
   test('login entry shows the sign-in form with Google first', async ({ page }) => {
     await page.goto(`${BASE_URL}/login`);
     await expect(page.getByRole('heading', { name: /selamat datang kembali/i })).toBeVisible({ timeout: 10_000 });
-    await expect(page.locator('.sp-google-slot')).toBeVisible();
+    // Both the official GIS slot and the no-config fallback carry this class.
+    await expect(page.locator('.sp-google-slot:visible')).toBeVisible();
     await expect(page.getByRole('link', { name: 'Nasabah' })).toBeVisible();
   });
 
