@@ -75,7 +75,6 @@ const B2BDocuments: React.FC<Props> = ({ lang }) => {
     return rows;
   }, [batches, query, onlyIssued]);
 
-  const issuedCount = batches.filter(b => b.status === 'ISSUED').length;
   const availableCount = batches.filter(b => b.status === 'ISSUED' && !!b.master_policy_signed_url).length;
 
   return (
