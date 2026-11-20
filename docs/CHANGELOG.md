@@ -1,5 +1,34 @@
 # SurePath - Changelog
 
+## v2.9.22 - 2026-11-20
+
+### Portal B2B — anti-slop + migrasi B2BFleetCalendar ke kit B2B
+
+- **B2BDashboard hero** dibersihkan: pola SVG kontur topografi (data-URL ~1KB)
+  dan satu radial blur slate dihapus. Tersisa pearl gradient teduh + satu
+  radial indigo halus di kanan-atas — menegaskan aksen brand B2B tanpa visual
+  noise. Tidak mengubah layout, props, atau dark mode.
+- **B2BFleetCalendar** dimigrasi penuh ke `b2b/dashboard/ui.tsx`:
+  - 3 kartu KPI tangan → `B2BKpi` (tabular-nums otomatis, count-up, ikon,
+    tone semantik `success`/`warn`/`spark`)
+  - Kartu CSV export, loading, empty state → `B2BGlass`
+  - Tombol CSV → `B2BButton variant="primary" icon={Download}`
+  - Badge tier → `B2BPill` dengan tone peta `HEALTHY→success`, `SOON/CRITICAL→warn`,
+    `EXPIRED→danger` (hilangkan warna inline tier)
+  - Nomor polis pakai JetBrains Mono inline + `b2b-stagger` animasi
+  - 19 pemakaian `ds-*` → 0
+
+### Status admin + B2B secara keseluruhan
+
+- Admin CMS (`components/admin/adminUI.tsx`) sudah pakai sistem token
+  `ds-*` yang konsisten dengan `AdminKpiCard`, `AdminStatusBadge`,
+  `AdminEmptyState`, `AdminErrorBanner`, `AdminPageHeader`, `AdminSectionCard`
+  — tidak butuh Kaca Pagi (bukan aplikasi mobile konsumen).
+- Portal B2B (`components/b2b/dashboard/ui.tsx`) sudah pakai kit B2B
+  mandiri (indigo-primary, glass, Sora). Setelah PR ini hanya
+  `B2BUnitOrder.tsx` (wizard panjang) dan `B2BBulkImport.tsx` yang masih
+  banyak `ds-*` — ditinggalkan ke PR terpisah karena blast radius besar.
+
 ## v2.9.21 - 2026-11-20
 
 ### Desain ulang layar dalam portal agen — Kaca Pagi kit
