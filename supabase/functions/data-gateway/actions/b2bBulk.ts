@@ -886,6 +886,85 @@ export async function handleB2BBulkAction(action: string, ctx: GatewayContext): 
       return ok(data ?? []);
     }
 
+    // ── Klien B2B: log aktivitas sendiri ────────────────────────────────────
+    // v2.9.24 (roadmap #10). Klien B2B melihat seluruh aktivitas akunnya
+    // (impor massal, invoice dibuat, pembayaran, polis terbit) tanpa perlu
+    // minta ke admin. Dibatasi: hanya baris dengan client_id milik caller,
+    // maksimum 200 baris per halaman, terbaru dulu.
+    case 'b2b_my_activity_log': {
+      if (!caller.spUser) return err('No profile', 403);
+      if (caller.spUser.role !== 'B2B_CLIENT') return err('Forbidden: B2B only', 403);
+      const limit = Math.min(Math.max(Number(params.limit) || 100, 1), 200);
+      const offset = Math.max(Number(params.offset) || 0, 0);
+      const { data, error } = await db.from('sp_b2b_activity_log')
+        .select('*')
+        .eq('client_id', caller.spUser.id)
+        .order('created_at', { ascending: false })
+        .range(offset, offset + limit - 1);
+      if (error) return err(error.message, 400);
+      return ok(data ?? []);
+    }
+
+    // ── Klien B2B: riwayat pembayaran (invoice batch + policy order) ────────
+    // v2.9.24 (roadmap #3). Satu pintu untuk semua pembayaran milik klien:
+    // invoice batch massal (via sp_b2b_batches.client_id) dan pembayaran
+    // polis individual (via sp_policy_orders.client_id). Tidak menduplikasi
+    // get_my_payments — aksi itu hanya covers order-based; aksi ini juga
+    // batch-based, yang merupakan mayoritas use case B2B.
+    case 'b2b_my_payments': {
+      if (!caller.spUser) return err('No profile', 403);
+      if (caller.spUser.role !== 'B2B_CLIENT') return err('Forbidden: B2B only', 403);
+
+      // Kumpulkan id batch milik caller
+      const { data: myBatches, error: bErr } = await db
+        .from('sp_b2b_batches')
+        .select('id, batch_number, company_name, total_amount, status, item_count')
+        .eq('client_id', caller.spUser.id);
+      if (bErr) return err(bErr.message, 400);
+      const batchIds = (myBatches ?? []).map((b: any) => String(b.id));
+      const batchMeta: Record<string, any> = {};
+      for (const b of (myBatches ?? [])) batchMeta[String(b.id)] = b;
+
+      // Kumpulkan id order milik caller
+      const { data: myOrders, error: oErr } = await db
+        .from('sp_policy_orders')
+        .select('id, product_name, premium_amount, status')
+        .eq('client_id', caller.spUser.id);
+      if (oErr) return err(oErr.message, 400);
+      const orderIds = (myOrders ?? []).map((o: any) => String(o.id));
+      const orderMeta: Record<string, any> = {};
+      for (const o of (myOrders ?? [])) orderMeta[String(o.id)] = o;
+
+      if (batchIds.length === 0 && orderIds.length === 0) return ok([]);
+
+      // Ambil payments: batch_id ATAU order_id milik caller
+      const orFilter = [
+        batchIds.length ? `batch_id.in.(${batchIds.join(',')})` : null,
+        orderIds.length ? `order_id.in.(${orderIds.join(',')})` : null,
+      ].filter(Boolean).join(',');
+      const { data: payments, error: pErr } = await db
+        .from('sp_payments')
+        .select('id, batch_id, order_id, invoice_url, status, paid_amount, xendit_fee, created_at, paid_at, expired_at')
+        .or(orFilter)
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false })
+        .limit(500);
+      if (pErr) return err(pErr.message, 400);
+
+      // Enrichment ringan: tempel judul yang bisa dibaca manusia
+      const enriched = (payments ?? []).map((p: any) => ({
+        ...p,
+        _kind: p.batch_id ? 'batch' : 'order',
+        _title: p.batch_id
+          ? (batchMeta[p.batch_id]?.batch_number ?? '(batch dihapus)')
+          : (orderMeta[p.order_id]?.product_name ?? '(order dihapus)'),
+        _subtitle: p.batch_id
+          ? (batchMeta[p.batch_id]?.company_name ?? '')
+          : (orderMeta[p.order_id]?.status ?? ''),
+      }));
+      return ok(enriched);
+    }
+
     default:
       return null;
   }

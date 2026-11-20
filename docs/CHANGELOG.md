@@ -1,5 +1,54 @@
 # SurePath - Changelog
 
+## v2.9.24 - 2026-11-20
+
+### Portal B2B — fitur baru dari roadmap (#3 & #10)
+
+**Roadmap #10 — Audit Log mandiri klien B2B** (`B2BAuditLog.tsx`)
+- Layar baru pada sidebar portal B2B grup "Pantau": "Riwayat Aktivitas".
+- Klien B2B melihat seluruh aktivitas akunnya (impor massal, invoice, bayar,
+  polis induk terbit, unduhan file sumber) dengan stempel waktu dan aktor.
+- Aktor di-mask: `B2B_CLIENT → "Anda"`, `ADMIN/MASTER_ADMIN → "Tim SurePath"`,
+  `INSURER → "Asuransi"` — melindungi privasi operator internal.
+- Paginasi 50 baris per load, maksimum 200 per request gateway.
+- Tone chip per aktor (info/accent/warn/neutral) + ikon kontekstual per aksi.
+
+**Roadmap #3 — Riwayat Pembayaran B2B** (`B2BPayments.tsx`)
+- Layar baru pada sidebar portal B2B grup "Pantau": "Pembayaran".
+- Satu pintu untuk semua invoice: batch massal (`sp_payments.batch_id`) dan
+  polis individual (`sp_payments.order_id`). Pill `Batch`/`Polis` memisahkan.
+- KPI strip: Total Lunas, Menunggu, Jumlah Transaksi, Bulan Ini.
+- Filter: Semua / Lunas / Menunggu / Lainnya.
+- Aksi per baris: "Bayar sekarang" (jalur Xendit) bila PENDING, "Lihat
+  invoice" selalu bila `invoice_url` ada.
+- Data diperkaya server-side dengan `_title` + `_subtitle` untuk judul yang
+  dapat dibaca manusia tanpa N+1 request klien.
+
+**Gateway actions baru** (`supabase/functions/data-gateway/actions/b2bBulk.ts`):
+- `b2b_my_activity_log` — role-gated B2B_CLIENT, filter `client_id` otomatis
+  dari JWT, maks 200 baris per halaman, terbaru dulu.
+- `b2b_my_payments` — role-gated B2B_CLIENT, JOIN implisit dengan
+  `sp_b2b_batches` dan `sp_policy_orders` milik caller, maks 500 entri.
+
+**⚠️ Butuh deploy edge function** (sama seperti v2.9.23):
+```
+supabase functions deploy data-gateway --project-ref uyjgeteelnswphyzkjwi
+```
+
+### Catatan deploy
+
+Data-gateway v2.9.23 (perbaikan simpan profil B2B) **masih belum di-deploy
+di produksi**. Deploy edge function manual di pihak user (bukan via sesi ini)
+karena payload 1.8 MB (sebagian besar `data/workshopPartners.ts` ~1.1 MB)
+melebihi batas tool-call inline MCP. Dua opsi:
+- **A (direkomendasikan)**: Aktifkan auto-deploy workflow
+  (`.github/workflows/deploy-edge-functions.yml`) dengan menambah dua
+  repo secret di GitHub: `SUPABASE_ACCESS_TOKEN` dan
+  `SUPABASE_PROJECT_REF=uyjgeteelnswphyzkjwi`. Setelah itu push ke `main`
+  otomatis deploy.
+- **B**: Deploy manual dari laptop:
+  `supabase functions deploy data-gateway --project-ref uyjgeteelnswphyzkjwi`.
+
 ## v2.9.23 - 2026-11-20
 
 ### Perbaikan: profil B2B tidak tersimpan
