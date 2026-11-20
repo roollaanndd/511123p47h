@@ -164,30 +164,18 @@ const B2BDashboard: React.FC<Props> = ({
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
-      {/* ── Hero glassmorphism — v2.9.7 ──────────────────────────────────────
-          Mengganti gradasi tri-warna "AI slop" (indigo → emerald → orange) yang
-          tadinya menerjang teks nama perusahaan, dengan kartu glass yang teduh:
-          panel kaca di atas dua lingkaran blur, nama perusahaan solid ink dengan
-          chip verifikasi. Aksen tetap emerald SurePath, bukan pelangi. */}
+      {/* ── Hero glassmorphism — v2.9.22 anti-slop refresh ───────────────────
+          Sebelumnya: pearl gradient + SVG kontur topografi + dua radial blur +
+          panel kaca. Kombinasinya bising. Sekarang: satu pearl gradient teduh +
+          satu aksen indigo halus di kanan-atas (menegaskan brand B2B) + panel
+          kaca. Nama perusahaan tetap solid ink, chip live dot emerald. */}
       <div className="relative overflow-hidden rounded-3xl">
-        {/* Latar: pearl gradient + kontur topografi halus + bayangan slate */}
         <div aria-hidden className="absolute inset-0 pointer-events-none rounded-3xl overflow-hidden">
-          {/* Base pearl gradient */}
           <div className="absolute inset-0" style={{
-            background: 'linear-gradient(135deg, #f8fafc 0%, #ffffff 45%, #f1f5f9 100%)',
+            background: 'linear-gradient(135deg, #f8fafc 0%, #ffffff 55%, #eef2ff 100%)',
           }} />
-          {/* Topographic contour SVG pattern — very faint, premium feel */}
-          <div className="absolute inset-0" style={{
-            backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cpath d='M60 0 Q80 30 60 60 Q40 90 60 120' fill='none' stroke='%2394a3b8' stroke-width='0.6' opacity='0.25'/%3E%3Cpath d='M0 60 Q30 40 60 60 Q90 80 120 60' fill='none' stroke='%2394a3b8' stroke-width='0.6' opacity='0.25'/%3E%3Cpath d='M20 0 Q50 40 20 80' fill='none' stroke='%2394a3b8' stroke-width='0.4' opacity='0.18'/%3E%3Cpath d='M100 40 Q70 70 100 120' fill='none' stroke='%2394a3b8' stroke-width='0.4' opacity='0.18'/%3E%3C/svg%3E")`,
-            backgroundSize: '120px 120px',
-          }} />
-          {/* Soft slate radial on top-right */}
-          <div className="absolute -right-16 -top-20 w-80 h-80 rounded-full" style={{
-            background: 'radial-gradient(circle at 60% 30%, rgba(148,163,184,0.18), transparent 65%)',
-          }} />
-          {/* Soft slate radial on bottom-left */}
-          <div className="absolute -left-16 -bottom-24 w-72 h-72 rounded-full" style={{
-            background: 'radial-gradient(circle at 35% 70%, rgba(226,232,240,0.55), transparent 60%)',
+          <div className="absolute -right-24 -top-24 w-80 h-80 rounded-full" style={{
+            background: 'radial-gradient(circle at 60% 30%, rgba(99,102,241,0.14), transparent 65%)',
           }} />
         </div>
         {/* Panel kaca utama */}

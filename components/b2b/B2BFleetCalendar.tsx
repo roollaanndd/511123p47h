@@ -13,9 +13,10 @@ import { CalendarDays, Download, AlertTriangle, ShieldCheck } from 'lucide-react
 import { Language } from '../../types';
 import { getCustomerOrders } from '../../services/supabaseService';
 import {
-  buildRenewalQueue, TIER_LABEL_ID, TIER_LABEL_EN, TIER_COLOR,
+  buildRenewalQueue, TIER_LABEL_ID, TIER_LABEL_EN,
   formatEndDate, type RenewalCandidate,
 } from '../../services/renewalEngine';
+import { B2BGlass, B2BKpi, B2BPill, B2BButton, type B2BPillTone } from './dashboard/ui';
 
 /** Deterministic CSV (finance-calendar paste). Bom-free: rows only. */
 export function fleetCsv(queue: RenewalCandidate[]): string {
@@ -25,6 +26,13 @@ export function fleetCsv(queue: RenewalCandidate[]): string {
   );
   return [head, ...rows].join('\n');
 }
+
+const TIER_TONE: Record<string, B2BPillTone> = {
+  HEALTHY:  'success',
+  SOON:     'warn',
+  CRITICAL: 'warn',
+  EXPIRED:  'danger',
+};
 
 interface Props { lang: Language }
 
@@ -72,79 +80,82 @@ const B2BFleetCalendar: React.FC<Props> = ({ lang }) => {
   };
 
   return (
-    <div className="sp-modern-app space-y-5 pb-24">
-      {/* KPI row */}
-      <div className="grid grid-cols-3 gap-3">
-        <div className="rounded-2xl border border-ds-border bg-ds-card p-4">
-          <div className="flex items-center gap-1.5">
-            <ShieldCheck size={13} className="text-emerald-500" />
-            <p className="text-2xs font-black uppercase tracking-widest text-ds-ink3">{t('Covered units', 'Unit terlindungi')}</p>
-          </div>
-          <p className="text-xl font-black text-ds-ink mt-1 tabular-nums">{queue.length}</p>
-        </div>
-        <div className="rounded-2xl border border-ds-border bg-ds-card p-4">
-          <div className="flex items-center gap-1.5">
-            <CalendarDays size={13} className="text-sky-500" />
-            <p className="text-2xs font-black uppercase tracking-widest text-ds-ink3">{t('Due ≤30 days', 'Tempo ≤30 hari')}</p>
-          </div>
-          <p className="text-xl font-black text-ds-ink mt-1 tabular-nums">{dueSoon}</p>
-        </div>
-        <div className="rounded-2xl border border-ds-border bg-ds-card p-4">
-          <div className="flex items-center gap-1.5">
-            <AlertTriangle size={13} className="text-rose-500" />
-            <p className="text-2xs font-black uppercase tracking-widest text-ds-ink3">{t('Expired', 'Kedaluwarsa')}</p>
-          </div>
-          <p className={`text-xl font-black mt-1 tabular-nums ${expired > 0 ? 'text-rose-500' : 'text-ds-ink'}`}>{expired}</p>
-        </div>
+    <div className="max-w-7xl mx-auto space-y-5 pb-24">
+      {/* KPI row — B2B kit, tabular numerals via b2b-numerals */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 lg:gap-4 b2b-stagger">
+        <B2BKpi
+          label={t('Covered units', 'Unit terlindungi')}
+          value={queue.length}
+          tone="success"
+          icon={ShieldCheck}
+        />
+        <B2BKpi
+          label={t('Due ≤30 days', 'Tempo ≤30 hari')}
+          value={dueSoon}
+          tone={dueSoon > 0 ? 'warn' : 'default'}
+          icon={CalendarDays}
+        />
+        <B2BKpi
+          label={t('Expired', 'Kedaluwarsa')}
+          value={expired}
+          tone={expired > 0 ? 'spark' : 'default'}
+          icon={AlertTriangle}
+        />
       </div>
 
-      {/* CSV export */}
-      <div className="flex items-center justify-between rounded-2xl border border-ds-border bg-ds-card p-4">
-        <p className="text-xs text-ds-ink2 m-0 pr-3">
+      {/* CSV export — glass panel with primary action */}
+      <B2BGlass className="p-5 flex items-center justify-between gap-3">
+        <p className="text-xs text-slate-500 m-0 pr-3">
           {t('Renewal schedule for the finance calendar.', 'Jadwal perpanjangan untuk kalender keuangan.')}
         </p>
-        <button
+        <B2BButton
+          variant="primary"
+          icon={Download}
           onClick={downloadCsv}
           disabled={queue.length === 0}
-          className="flex items-center gap-2 rounded-xl bg-ds-green px-4 py-2.5 text-xs font-black text-ds-on-green active:scale-95 transition-transform cursor-pointer disabled:opacity-40"
         >
-          <Download size={14} /> CSV
-        </button>
-      </div>
+          CSV
+        </B2BButton>
+      </B2BGlass>
 
       {/* Month sections */}
       {loading ? (
-        <div className="rounded-2xl border border-dashed border-ds-border p-10 text-center text-sm text-ds-ink3">
+        <B2BGlass className="p-10 text-center text-sm text-slate-500">
           {t('Loading fleet…', 'Memuat armada…')}
-        </div>
+        </B2BGlass>
       ) : months.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-ds-border p-10 text-center text-sm text-ds-ink3">
+        <B2BGlass className="p-10 text-center text-sm text-slate-500">
           {t('No issued unit policies yet.', 'Belum ada polis unit yang diterbitkan.')}
-        </div>
+        </B2BGlass>
       ) : months.map(([key, units]) => (
-        <div key={key}>
-          <p className="text-xs font-black uppercase tracking-widest text-ds-ink3 mb-2">{monthLabel(key)}</p>
+        <section key={key} className="space-y-2">
+          <p className="text-[11px] font-black uppercase tracking-widest text-slate-500">{monthLabel(key)}</p>
           <div className="space-y-2">
             {units.map(u => {
               const label = lang === Language.EN ? TIER_LABEL_EN[u.tier] : TIER_LABEL_ID[u.tier];
+              const tone = TIER_TONE[u.tier] ?? 'neutral';
+              const daySuffix = u.tier !== 'HEALTHY' ? ` · ${u.daysLeft < 0 ? Math.abs(u.daysLeft) : u.daysLeft}h` : '';
               return (
-                <div key={u.orderId} className="flex items-center justify-between gap-3 rounded-2xl border border-ds-border bg-ds-card p-4">
+                <B2BGlass key={u.orderId} className="flex items-center justify-between gap-3 p-4">
                   <div className="min-w-0">
-                    <p className="text-sm font-black text-ds-ink truncate">{u.policyNumber}</p>
-                    <p className="text-xs text-ds-ink3 truncate">{u.productName} · {formatEndDate(u.endDate, lang === Language.EN ? 'EN' : 'ID')}</p>
+                    <p className="text-sm font-black text-slate-900 truncate" style={{ fontFamily: '"JetBrains Mono",monospace', fontSize: 12 }}>
+                      {u.policyNumber}
+                    </p>
+                    <p className="text-xs text-slate-500 truncate mt-0.5">
+                      {u.productName} · {formatEndDate(u.endDate, lang === Language.EN ? 'EN' : 'ID')}
+                    </p>
                   </div>
-                  <span className="flex-shrink-0 text-2xs font-black uppercase tracking-widest px-2 py-1 rounded-full"
-                    style={{ background: `${TIER_COLOR[u.tier]}18`, color: TIER_COLOR[u.tier] }}>
-                    {label}{u.tier !== 'HEALTHY' ? ` · ${u.daysLeft < 0 ? Math.abs(u.daysLeft) : u.daysLeft}h` : ''}
-                  </span>
-                </div>
+                  <B2BPill tone={tone} className="flex-shrink-0">
+                    {label}{daySuffix}
+                  </B2BPill>
+                </B2BGlass>
               );
             })}
           </div>
-        </div>
+        </section>
       ))}
 
-      <p className="text-2xs text-ds-ink3 leading-relaxed">
+      <p className="text-[11px] text-slate-500 leading-relaxed">
         {t('Units inside bulk batches appear here once issued as individual policies.',
            'Unit dalam batch massal muncul di sini setelah diterbitkan sebagai polis individual.')}
       </p>

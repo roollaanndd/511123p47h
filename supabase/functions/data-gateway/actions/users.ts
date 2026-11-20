@@ -331,9 +331,17 @@ export async function handleUsersAction(action: string, ctx: GatewayContext): Pr
 
     case 'update_my_profile': {
         if (!caller.spUser) return json({ error: 'No profile' }, 403);
-        const SAFE = ['name', 'phone', 'address', 'profile_photo_url', 'ktp_document_url'];
+        // Semua peran boleh perbarui field pribadi dasar; field perusahaan
+        // hanya boleh di-update oleh B2B_CLIENT (akun korporat), sehingga
+        // seorang agen individual tidak dapat mengisi field yang tidak
+        // relevan dengan perannya.
+        const SAFE_BASE = ['name', 'phone', 'address', 'profile_photo_url', 'ktp_document_url'];
+        const SAFE_B2B  = ['company_name', 'company_reg_no', 'company_industry'];
+        const allowed = caller.spUser.role === 'B2B_CLIENT'
+          ? [...SAFE_BASE, ...SAFE_B2B]
+          : SAFE_BASE;
         const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
-        for (const k of SAFE) {
+        for (const k of allowed) {
           if (k in params) updates[k] = params[k];
         }
         const { data, error } = await db.from('sp_users').update(updates).eq('id', caller.spUser.id).select().maybeSingle();
@@ -345,7 +353,10 @@ export async function handleUsersAction(action: string, ctx: GatewayContext): Pr
         if (!caller.spUser) return json({ error: 'No profile' }, 403);
         const targetId = params.user_id ? String(params.user_id) : caller.spUser.id;
         if (targetId !== caller.spUser.id && !caller.isAdmin) return json({ error: 'Forbidden' }, 403);
-        const { data, error } = await db.from('sp_users').select('id, email, name, phone, role, agent_code, tier, verified, commission_rate, created_at').eq('id', targetId).maybeSingle();
+        // Field perusahaan + alamat ikut dikembalikan supaya form profil B2B
+        // dapat menampilkan data yang tersimpan; kolom sensitif (PIN, token)
+        // tetap diabaikan.
+        const { data, error } = await db.from('sp_users').select('id, email, name, phone, address, role, agent_code, tier, verified, commission_rate, company_name, company_reg_no, company_industry, profile_photo_url, created_at').eq('id', targetId).maybeSingle();
         if (error) return json({ error: error.message }, 400);
         return json({ data });
       }

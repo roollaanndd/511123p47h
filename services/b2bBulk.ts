@@ -405,6 +405,51 @@ export async function adminListB2BActivity(opts: { limit?: number; offset?: numb
   return (data ?? []) as SpB2BActivityEntry[];
 }
 
+// v2.9.24 — roadmap #10: client-side audit log (B2B melihat aktivitas sendiri).
+// Gateway memastikan client_id otomatis = caller sendiri.
+export async function getMyB2BActivity(opts: { limit?: number; offset?: number } = {}): Promise<SpB2BActivityEntry[]> {
+  const { data, error } = await callGateway('b2b_my_activity_log', {
+    limit: opts.limit,
+    offset: opts.offset,
+  });
+  if (error) { console.error('getMyB2BActivity:', error); return []; }
+  return (data ?? []) as SpB2BActivityEntry[];
+}
+
+// v2.9.24 — roadmap #3: riwayat pembayaran B2B (batch + order).
+export interface B2BPaymentEntry {
+  id: string;
+  batch_id: string | null;
+  order_id: string | null;
+  invoice_url: string | null;
+  status: string;
+  paid_amount: number | null;
+  xendit_fee: number | null;
+  created_at: string;
+  paid_at: string | null;
+  expired_at: string | null;
+  _kind: 'batch' | 'order';
+  _title: string;
+  _subtitle: string;
+}
+
+export async function getMyB2BPayments(): Promise<B2BPaymentEntry[]> {
+  const { data, error } = await callGateway('b2b_my_payments', {});
+  if (error) { console.error('getMyB2BPayments:', error); return []; }
+  return (data ?? []) as B2BPaymentEntry[];
+}
+
+// v2.9.25 — roadmap #2: Documents Center. Mirip `getB2BBulkBatches` tetapi
+// ikut menandatangani master_policy_document_url pada ISSUED batch, supaya
+// layar dokumen dapat merender link unduh langsung.
+export type SpB2BBatchWithSignedUrl = SpB2BBatch & { master_policy_signed_url?: string | null };
+
+export async function getMyB2BBatchesWithDocuments(): Promise<SpB2BBatchWithSignedUrl[]> {
+  const { data, error } = await callGateway('b2b_bulk_list_batches', { include_master_policy_url: true });
+  if (error) { console.error('getMyB2BBatchesWithDocuments:', error); return []; }
+  return (data ?? []) as SpB2BBatchWithSignedUrl[];
+}
+
 // FIX 2026-11-05: b2b-documents is a PRIVATE bucket. The previous version of
 // this function uploaded directly with the browser client (which happened to
 // satisfy the bucket's owner-folder INSERT policy because the path's first

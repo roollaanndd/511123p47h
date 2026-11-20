@@ -328,14 +328,25 @@ export async function getB2BProfile(clientId: string): Promise<SpUser | null> {
   return getAgentProfile(clientId);
 }
 
+// FIX 2026-11-20 (v2.9.23): dulu menulis langsung ke `sp_users` dari browser,
+// yang diblokir deny-all RLS sehingga perubahan profil B2B tidak pernah
+// tersimpan tanpa pesan kesalahan yang jelas. Sekarang rutenya lewat aksi
+// gateway `update_my_profile` — identitas caller diverifikasi server-side dari
+// JWT, dan izin kolom `company_*` khusus role `B2B_CLIENT` berada di sana.
+// `clientId` tidak lagi diperlukan karena aksi selalu beroperasi pada caller
+// sendiri, tapi parameter dipertahankan untuk kompatibilitas pemanggil lama.
 export async function updateB2BProfile(
-  clientId: string,
+  _clientId: string,
   data: Partial<SpUser>
 ): Promise<boolean> {
-  const { error } = await supabase
-    .from('sp_users')
-    .update({ ...data, updated_at: new Date().toISOString() })
-    .eq('id', clientId);
+  const { error } = await callGateway('update_my_profile', {
+    name: data.name,
+    phone: data.phone,
+    address: data.address,
+    company_name: data.company_name,
+    company_reg_no: data.company_reg_no,
+    company_industry: data.company_industry,
+  });
   if (error) { console.error('updateB2BProfile:', error); return false; }
   return true;
 }

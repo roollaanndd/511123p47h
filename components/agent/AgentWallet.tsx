@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowDownLeft, ArrowUpRight, Clock, CheckCircle2, XCircle, AlertCircle, RefreshCw, ChevronRight, Info } from 'lucide-react';
+import { ArrowUpRight, CheckCircle2, XCircle, AlertCircle, RefreshCw, Info } from 'lucide-react';
 import {
   getMyWallet, getMyWalletTransactions, getMyWithdrawals,
   requestWithdrawal, getAgentCoinBalance,
   supabase,
   type AgentWallet, type WalletTransaction, type Withdrawal
 } from '../../services/supabaseService';
-import { AgentEmpty } from './AgentArt';
 import ModuleIcon from '../shared/ModuleIcon';
+import { AgGlass, AgSection, AgEmpty, AgChip, AgPageHeader, AgButton } from './ui/kit';
+import AgIcon from './ui/AgIcon';
 
 const BANKS = [
   { code: 'BCA',     name: 'BCA' },
@@ -366,32 +367,32 @@ const AgentWalletView: React.FC = () => {
 
   if (loading) {
     return (
-      <div role="status" aria-live="polite" className="flex flex-col items-center justify-center gap-3 py-20">
-        <RefreshCw size={24} className="animate-spin motion-reduce:animate-none" style={{ color: '#00C896' }} />
-        <span className="text-xs font-semibold text-ds-ink3">Memuat data dompet…</span>
+      <div role="status" aria-live="polite" className="flex flex-col items-center justify-center gap-3 py-24 ag-rise">
+        <span className="h-7 w-7 animate-spin rounded-full border-[3px] border-current border-t-transparent motion-reduce:animate-none" style={{ color: 'var(--ag-green)' }} aria-hidden="true" />
+        <span className="ag-caption">Memuat data dompet…</span>
       </div>
     );
   }
 
   if (loadError) {
     return (
-      <div role="alert" className="mx-4 my-8 rounded-2xl border border-ds-red/25 bg-ds-red/5 p-5">
-        <h2 className="text-sm font-black text-ds-ink">Data dompet belum dapat dimuat</h2>
-        <p className="mt-2 text-xs leading-relaxed text-ds-ink3">Saldo dan riwayat belum bisa diverifikasi. Demi keamanan, penarikan dana dinonaktifkan sampai data berhasil dimuat.</p>
-        <button type="button" onClick={() => void load()} className="mt-4 min-h-11 rounded-xl bg-ds-green px-4 py-2 text-xs font-black text-ds-on-green">Coba lagi</button>
+      <div role="alert" className="mx-5 my-8 ag-rise">
+        <AgGlass className="p-5 space-y-3">
+          <h2 className="text-sm font-bold" style={{ color: 'var(--ag-ink)' }}>Data dompet belum dapat dimuat</h2>
+          <p className="ag-caption leading-relaxed">Saldo dan riwayat belum bisa diverifikasi. Demi keamanan, penarikan dana dinonaktifkan sampai data berhasil dimuat.</p>
+          <AgButton variant="primary" size="sm" onClick={() => void load()}>Coba lagi</AgButton>
+        </AgGlass>
       </div>
     );
   }
 
   if (showWithdrawForm) {
     return (
-      <div className="space-y-6 animate-fade-in motion-reduce:animate-none pb-24 px-1 font-sora">
-        <div className="flex items-center gap-3">
-          <button onClick={() => setShowWithdrawForm(false)} className="p-2 rounded-xl bg-ds-card2 border border-ds-border active:scale-95 motion-reduce:active:scale-100 transition-all">
-            <ChevronRight size={20} className="rotate-180 text-ds-ink2" />
-          </button>
-          <h2 className="text-xl font-black uppercase tracking-tight text-ds-ink">Tarik Dana</h2>
-        </div>
+      <div className="space-y-6 pb-24 px-1">
+        <AgPageHeader
+          title="Tarik Dana"
+          onBack={() => setShowWithdrawForm(false)}
+        />
         <WithdrawForm
           balance={wallet?.balance ?? 0}
           coinBalance={coinBalance}
@@ -407,9 +408,9 @@ const AgentWalletView: React.FC = () => {
   }
 
   return (
-    <div className="sp-agent-wallet bg-ds-bg min-h-screen pb-28">
+    <div className="min-h-screen pb-28">
       {/* Balance card — premium bank-card look */}
-      <div className="sp-agent-hero mx-5 mt-5 rounded-[2rem] p-5 text-white sp-enter relative overflow-hidden"
+      <div className="ag-rise mx-5 mt-5 rounded-[2rem] p-5 text-white relative overflow-hidden"
         style={{ background: 'linear-gradient(120deg, #0B1120 0%, #0E3B2E 55%, #0B5E3B 100%)', boxShadow: '0 16px 44px -14px rgba(11,17,32,0.55)' }}>
         <div aria-hidden className="absolute -top-14 -right-12 w-52 h-52 rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(0,193,106,0.26), transparent 70%)' }} />
         <svg aria-hidden className="absolute right-0 bottom-0 h-4/5 opacity-[0.10] pointer-events-none" viewBox="0 0 200 140" fill="none">
@@ -426,7 +427,7 @@ const AgentWalletView: React.FC = () => {
                 </span>
                 <p className="text-white/60 text-xs font-medium uppercase tracking-wide">Saldo Tersedia</p>
               </div>
-              <h2 className="text-3xl font-bold font-mono text-white">{IDR(wallet?.balance ?? 0)}</h2>
+              <h2 className="text-3xl font-bold font-mono text-white" style={{ fontVariantNumeric: 'tabular-nums' }}>{IDR(wallet?.balance ?? 0)}</h2>
               <p className="text-white/40 text-xs mt-1">Saldo Dompet</p>
             </div>
             <div className="w-12 h-12 rounded-2xl bg-white/15 flex items-center justify-center">
@@ -467,32 +468,32 @@ const AgentWalletView: React.FC = () => {
 
       {/* Registered accounts summary */}
       {savedAccounts.length > 0 && (
-        <div className="space-y-2 mx-5 mt-4">
-          <p className="text-[0.55rem] font-black uppercase tracking-widest text-ds-ink3">Rekening Terdaftar</p>
-          {savedAccounts.map((acc, idx) => (
-            <div key={idx} className="flex items-center gap-3 p-3 rounded-2xl sp-glass">
-              <div className="w-10 h-10 rounded-xl bg-ds-green-tint flex items-center justify-center">
-                <ModuleIcon id="bank" glyph="bank" size={28} />
-              </div>
-              <div className="flex-1">
-                <p className="text-xs font-black text-ds-ink">{acc.bank_code} · {acc.account_number}</p>
-                <p className="text-[10px] text-ds-ink3">{acc.account_holder_name}{acc.label ? ` · ${acc.label}` : ''}</p>
-              </div>
-              <button onClick={() => handleDeleteAccount(idx)} className="p-1.5 rounded-lg text-ds-ink3 hover:text-ds-red transition-colors">
-                <XCircle size={14} />
-              </button>
-            </div>
-          ))}
-        </div>
+        <AgSection title="Rekening Terdaftar" className="mx-5 mt-4" index={0}>
+          <div className="space-y-2">
+            {savedAccounts.map((acc, idx) => (
+              <AgGlass key={idx} className="flex items-center gap-3 px-4 py-3">
+                <span className="ag-tile h-10 w-10 shrink-0"><ModuleIcon id="bank" glyph="bank" size={22} /></span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold truncate" style={{ color: 'var(--ag-ink)', fontVariantNumeric: 'tabular-nums' }}>{acc.bank_code} · {acc.account_number}</p>
+                  <p className="ag-caption truncate">{acc.account_holder_name}{acc.label ? ` · ${acc.label}` : ''}</p>
+                </div>
+                <button type="button" onClick={() => handleDeleteAccount(idx)} className="ag-iconbtn ag-press shrink-0" aria-label="Hapus rekening">
+                  <AgIcon name="close" size={16} strokeWidth={2} />
+                </button>
+              </AgGlass>
+            ))}
+          </div>
+        </AgSection>
       )}
 
       {/* Tabs */}
-      <div className="flex gap-2 bg-ds-card2 border border-ds-border p-1.5 rounded-2xl mx-5 mt-4">
+      <div className="flex gap-1.5 mx-5 mt-4 p-1.5 rounded-2xl" style={{ background: 'var(--ag-surface2)', border: '1px solid var(--ag-hairline)' }}>
         {(['ledger', 'withdrawals', 'accounts'] as const).map(t => (
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`flex-1 py-3 rounded-xl text-[0.55rem] font-black uppercase tracking-widest transition-all ${tab === t ? 'bg-ds-green text-ds-on-green shadow-ds-green' : 'text-ds-ink3'}`}
+            className={`ag-press flex-1 py-2.5 rounded-[14px] text-[0.6rem] font-black uppercase tracking-widest transition-all ${tab === t ? 'text-white' : 'ag-caption'}`}
+            style={tab === t ? { background: 'var(--ag-green)', color: '#fff', boxShadow: '0 2px 8px -2px var(--ag-green)' } : {}}
           >
             {t === 'ledger' ? 'Riwayat' : t === 'withdrawals' ? 'Penarikan' : 'Rekening'}
           </button>
@@ -501,78 +502,79 @@ const AgentWalletView: React.FC = () => {
 
       {/* Ledger */}
       {tab === 'ledger' && (
-        <div className="sp-glass rounded-2xl mx-5 mt-4 overflow-hidden">
-          {txns.length === 0 && (
-            <AgentEmpty title="Belum ada transaksi" desc="Riwayat mutasi dompet Anda akan tampil di sini." />
-          )}
-          {txns.map(tx => (
-            <div key={tx.id} className="flex items-center gap-3 px-4 py-3 border-b border-ds-border bg-ds-card">
-              <div className="w-9 h-9 rounded-xl bg-ds-green-tint flex items-center justify-center flex-shrink-0">
-                {tx.amount > 0 ? <ArrowDownLeft size={18} className="text-ds-green" /> : <ArrowUpRight size={18} className="text-ds-amber" />}
+        <AgSection title="Riwayat Mutasi" className="mx-5 mt-4" index={1}>
+          <AgGlass className="overflow-hidden">
+            {txns.length === 0 && (
+              <AgEmpty icon="wallet" title="Belum ada transaksi" body="Riwayat mutasi dompet akan tampil di sini." />
+            )}
+            {txns.map(tx => (
+              <div key={tx.id} className="ag-row" style={{ borderBottom: '1px solid var(--ag-hairline)' }}>
+                <span className="ag-tile h-9 w-9 shrink-0" style={{ borderRadius: 12 }}>
+                  <AgIcon name={tx.amount > 0 ? 'download' : 'withdraw'} size={17} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium" style={{ color: 'var(--ag-ink)' }}>{tx.description ?? tx.type}</span>
+                  <span className="ag-caption mt-0.5 block truncate">{new Date(tx.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                </span>
+                <div className="text-right shrink-0">
+                  <p className="text-sm font-semibold" style={{ color: tx.amount > 0 ? 'var(--ag-green)' : 'var(--ag-amber,#F59E0B)', fontVariantNumeric: 'tabular-nums' }}>
+                    {tx.amount > 0 ? '+' : ''}{IDR(tx.amount)}
+                  </p>
+                  <p className="ag-caption" style={{ fontVariantNumeric: 'tabular-nums' }}>{IDR(tx.balance_after)}</p>
+                </div>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-ds-ink flex-1 truncate">{tx.description ?? tx.type}</p>
-                <p className="text-xs text-ds-ink3">{new Date(tx.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
-              </div>
-              <div className="text-right flex-shrink-0">
-                <p className={`text-sm font-semibold font-mono ${tx.amount > 0 ? 'text-ds-green' : 'text-ds-amber'}`}>
-                  {tx.amount > 0 ? '+' : ''}{IDR(tx.amount)}
-                </p>
-                <p className="text-[0.45rem] text-ds-ink3">{IDR(tx.balance_after)}</p>
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </AgGlass>
+        </AgSection>
       )}
 
       {/* Withdrawals */}
       {tab === 'withdrawals' && (
-        <div className="space-y-3 mx-5 mt-4">
+        <AgSection title="Riwayat Penarikan" className="mx-5 mt-4" index={1}>
           {withdrawals.length === 0 && (
-            <AgentEmpty title="Belum ada riwayat penarikan" desc="Ajukan penarikan dana dan pantau statusnya di sini." />
+            <AgEmpty icon="wallet" title="Belum ada riwayat penarikan" body="Ajukan penarikan dana dan pantau statusnya di sini." />
           )}
-          {withdrawals.map(wd => {
-            const { cls, label } = statusBadge(wd.status);
-            const isPending = wd.status?.startsWith('PENDING');
-            return (
-              <div key={wd.id} className="sp-glass rounded-2xl px-4 py-3 space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <ModuleIcon id="bank" glyph="bank" size={26} />
-                    <div>
-                      <p className="text-sm font-medium text-ds-ink">{wd.bank_code} · {wd.account_number}</p>
-                      <p className="text-xs text-ds-ink3">{wd.account_holder_name}</p>
+          <div className="space-y-3">
+            {withdrawals.map(wd => {
+              const { label } = statusBadge(wd.status);
+              const isPending = wd.status?.startsWith('PENDING');
+              const tone = isPending ? 'spark' : wd.status === 'DISBURSED' ? 'green' : wd.status?.includes('REJECTED') ? 'danger' : 'mute';
+              return (
+                <AgGlass key={wd.id} className="px-4 py-3 space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <span className="ag-tile h-10 w-10 shrink-0"><ModuleIcon id="bank" glyph="bank" size={22} /></span>
+                      <div>
+                        <p className="text-sm font-semibold" style={{ color: 'var(--ag-ink)' }}>{wd.bank_code} · {wd.account_number}</p>
+                        <p className="ag-caption">{wd.account_holder_name}</p>
+                      </div>
+                    </div>
+                    <AgChip tone={tone as any}>{label}</AgChip>
+                  </div>
+                  <div className="flex justify-between items-end pt-2" style={{ borderTop: '1px solid var(--ag-hairline)' }}>
+                    <div className="ag-caption space-y-0.5">
+                      <p style={{ fontVariantNumeric: 'tabular-nums' }}>Diminta: {IDR(wd.amount)}</p>
+                      <p style={{ fontVariantNumeric: 'tabular-nums' }}>Biaya: {IDR(wd.xendit_fee)} · Diterima: {IDR(wd.net_amount)}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-bold" style={{ color: 'var(--ag-ink)', fontVariantNumeric: 'tabular-nums' }}>{IDR(wd.net_amount)}</p>
+                      <p className="ag-caption">{new Date(wd.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
                     </div>
                   </div>
-                  {isPending ? (
-                    <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-100">{label}</span>
-                  ) : (
-                    <span className={`text-[0.45rem] font-black uppercase tracking-widest px-2.5 py-1 rounded-full border ${cls}`}>{label}</span>
+                  {wd.rejection_reason && (
+                    <p className="ag-caption rounded-xl px-3 py-2" style={{ background: 'var(--ag-red-bg,rgba(239,68,68,0.08))', color: 'var(--ag-red,#EF4444)' }}>Alasan ditolak: {wd.rejection_reason}</p>
                   )}
-                </div>
-                <div className="flex justify-between items-end pt-1 border-t border-ds-border">
-                  <div>
-                    <p className="text-[0.5rem] text-ds-ink3">Diminta: {IDR(wd.amount)}</p>
-                    <p className="text-[0.5rem] text-ds-ink3">Biaya: {IDR(wd.xendit_fee)} · Diterima: {IDR(wd.net_amount)}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-black text-ds-ink">{IDR(wd.net_amount)}</p>
-                    <p className="text-[0.45rem] text-ds-ink3">{new Date(wd.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
-                  </div>
-                </div>
-                {wd.rejection_reason && (
-                  <p className="text-[0.5rem] text-ds-red bg-red-500/10 rounded-xl px-3 py-2">Alasan ditolak: {wd.rejection_reason}</p>
-                )}
-                {wd.scheduled_disburse_at && wd.status !== 'DISBURSED' && (
-                  <p className="text-[0.5rem] text-ds-amber flex items-center gap-1">
-                    <Clock size={10} />
-                    Dijadwalkan cair: {new Date(wd.scheduled_disburse_at).toLocaleString('id-ID')}
-                  </p>
-                )}
-              </div>
-            );
-          })}
-        </div>
+                  {wd.scheduled_disburse_at && wd.status !== 'DISBURSED' && (
+                    <p className="ag-caption flex items-center gap-1.5">
+                      <AgIcon name="history" size={11} />
+                      Dijadwalkan cair: {new Date(wd.scheduled_disburse_at).toLocaleString('id-ID')}
+                    </p>
+                  )}
+                </AgGlass>
+              );
+            })}
+          </div>
+        </AgSection>
       )}
 
       {/* Accounts tab — manage saved bank accounts */}
@@ -586,7 +588,7 @@ const AgentWalletView: React.FC = () => {
             </div>
           ) : (
             savedAccounts.map((acc, idx) => (
-              <div key={idx} className="flex items-center gap-3 p-4 rounded-2xl sp-glass">
+              <div key={idx} className="ag-glass flex items-center gap-3 p-4 rounded-2xl">
                 <div className="w-11 h-11 rounded-xl bg-ds-green-tint flex items-center justify-center">
                   <ModuleIcon id="bank" glyph="bank" size={30} />
                 </div>

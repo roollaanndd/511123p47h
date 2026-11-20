@@ -4,10 +4,10 @@ import { Language } from '../../types';
 import { getAgentCommissions, getAgentCoinBalance, getAgentCoinLedger, getMyWithdrawals, type SpCommission, type SpCoinLedger } from '../../services/supabaseService';
 import { formatIDR } from '../car-wizard/WizardUI';
 import { effectiveCommissionRate, simulateCommission } from '../../services/commissionSimulator';
-import { AgentArtKeyframes, SpotWallet, AgentEmpty } from './AgentArt';
 import { IcWallet, IcCoin } from './AgentIcons';
 import ModuleIcon from '../shared/ModuleIcon';
 import { moduleIcon } from '../shared/ModuleIcon';
+import { AgGlass, AgEmpty, AgChip } from './ui/kit';
 
 interface Props {
   agentId: string;
@@ -17,11 +17,6 @@ interface Props {
 
 type TabId = 'all' | 'pending' | 'paid' | 'byproduct' | 'coins';
 
-const statusColors: Record<string, string> = {
-  PAID: 'bg-ds-green-tint text-ds-green',
-  PENDING: 'bg-amber-100 text-amber-700',
-  CANCELLED: 'bg-rose-50 text-ds-red',
-};
 
 const productIcons: Record<string, React.ElementType> = {
   CAR: moduleIcon('car_protection'), TRAVEL: moduleIcon('travel_safe'), PA: moduleIcon('personal_safety'), MPAR: moduleIcon('item_shield'),
@@ -132,21 +127,22 @@ const AgentCommission: React.FC<Props> = ({ agentId, lang, onNavigate }) => {
     <div className="sp-agent-commission bg-ds-bg min-h-screen pb-28">
 
       {/* Balance Hero Card — bank-card look */}
-      <AgentArtKeyframes />
-      <div className="sp-agent-hero mx-4 mt-5 rounded-[1.75rem] p-5 text-white space-y-4 relative overflow-hidden"
+      <div className="ag-rise mx-4 mt-5 rounded-[1.75rem] p-5 text-white space-y-4 relative overflow-hidden"
         style={{ background: 'linear-gradient(120deg, #0B1120 0%, #0E3B2E 55%, #0B5E3B 100%)', boxShadow: '0 16px 40px -14px rgba(11,17,32,0.55)' }}>
-        <div aria-hidden className="absolute -top-14 -right-10 w-48 h-48 rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(0,193,106,0.26), transparent 70%)' }} />
-        <svg aria-hidden className="absolute right-0 top-0 h-full opacity-[0.12] pointer-events-none" viewBox="0 0 200 140" fill="none">
-          <circle cx="175" cy="20" r="72" stroke="#fff" strokeWidth="1.2" />
-          <circle cx="175" cy="20" r="48" stroke="#fff" strokeWidth="1.2" />
+        <svg aria-hidden className="absolute right-0 bottom-0 h-full opacity-[0.07] pointer-events-none" viewBox="0 0 160 120" fill="none">
+          <circle cx="140" cy="110" r="80" stroke="#fff" strokeWidth="1.2" />
+          <circle cx="140" cy="110" r="52" stroke="#fff" strokeWidth="1.2" />
+          <circle cx="140" cy="110" r="28" stroke="#fff" strokeWidth="1.2" />
         </svg>
         <div className="relative z-10 flex items-center justify-between">
           <p className="text-white/60 text-xs font-medium uppercase tracking-wide">{t('Total Earned', 'Total Komisi')}</p>
           <span className="text-white/50" style={{ ['--ic-tint' as string]: 'rgba(255,255,255,0.12)' }}><IcWallet size={22} /></span>
         </div>
         <div className="relative z-10 flex items-center justify-between gap-3">
-          <p className="text-3xl font-bold font-mono text-white">{formatIDR(totalEarned)}</p>
-          <div className="-my-3 flex-shrink-0"><SpotWallet size={72} /></div>
+          <p className="text-3xl font-bold text-white" style={{ fontVariantNumeric: 'tabular-nums', fontFamily: 'ui-monospace, monospace' }}>{formatIDR(totalEarned)}</p>
+          <div className="w-16 h-16 rounded-2xl bg-white/10 flex items-center justify-center shrink-0">
+            <IcWallet size={32} />
+          </div>
         </div>
 
         <div className="relative z-10 grid grid-cols-2 gap-3">
@@ -174,7 +170,7 @@ const AgentCommission: React.FC<Props> = ({ agentId, lang, onNavigate }) => {
       </div>
 
       {/* Commission Simulator — motivation that is measurable */}
-      <div className="mx-4 mt-3 sp-glass rounded-[1.5rem] p-5">
+      <div className="mx-4 mt-3 ag-glass rounded-[1.5rem] p-5">
         <p className="text-ds-ink2 text-xs font-black uppercase tracking-widest">{t('Commission Simulator', 'Simulator Komisi')}</p>
         <p className="text-ds-ink3 text-[10px] mt-1 mb-3">
           {histRate !== null
@@ -214,7 +210,7 @@ const AgentCommission: React.FC<Props> = ({ agentId, lang, onNavigate }) => {
       </div>
 
       {/* Coins Balance Card */}
-      <div className="mx-4 mt-3 sp-glass rounded-[1.5rem] p-5">
+      <div className="mx-4 mt-3 ag-glass rounded-[1.5rem] p-5">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <div className="w-9 h-9 bg-amber-50 rounded-xl flex items-center justify-center text-ds-amber" style={{ ['--ic-tint' as string]: 'rgba(245,158,11,0.15)' }}>
@@ -236,7 +232,7 @@ const AgentCommission: React.FC<Props> = ({ agentId, lang, onNavigate }) => {
 
       {/* Month Stats */}
       <div className="grid grid-cols-2 gap-3 mx-4 mt-3">
-        <div className="sp-glass rounded-[1.5rem] p-4">
+        <div className="ag-glass rounded-[1.5rem] p-4">
           <p className="text-[10px] font-bold text-ds-ink3 uppercase tracking-widest mb-1">{t('This Month', 'Bulan Ini')}</p>
           <p className="font-black text-lg tracking-tight text-ds-ink">{formatIDR(thisMonth)}</p>
           {monthGrowth !== 0 && (
@@ -246,7 +242,7 @@ const AgentCommission: React.FC<Props> = ({ agentId, lang, onNavigate }) => {
             </div>
           )}
         </div>
-        <div className="sp-glass rounded-[1.5rem] p-4">
+        <div className="ag-glass rounded-[1.5rem] p-4">
           <p className="text-[10px] font-bold text-ds-ink3 uppercase tracking-widest mb-1">{t('Last Month', 'Bulan Lalu')}</p>
           <p className="font-black text-lg tracking-tight text-ds-ink">{formatIDR(lastMonth)}</p>
           <p className="text-[10px] text-ds-ink3 font-bold mt-1">{paid.filter(c => {
@@ -257,16 +253,17 @@ const AgentCommission: React.FC<Props> = ({ agentId, lang, onNavigate }) => {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 overflow-x-auto pb-1 px-4 mt-4">
+      <div className="flex gap-2 overflow-x-auto pb-1 px-4 mt-4" style={{ scrollbarWidth: 'none' }}>
         {tabs.map(tab => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`flex-shrink-0 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 motion-reduce:active:scale-100 ${
-              activeTab === tab.id
-                ? 'bg-ds-navy text-white shadow-ds-navy'
-                : 'bg-ds-card border border-ds-border text-ds-ink3'
+            className={`ag-press flex-shrink-0 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${
+              activeTab === tab.id ? 'text-white' : 'ag-caption'
             }`}
+            style={activeTab === tab.id
+              ? { background: 'var(--ag-green)', color: '#fff' }
+              : { background: 'var(--ag-surface2)', border: '1px solid var(--ag-hairline)' }}
           >
             {lang === Language.EN ? tab.enLabel : tab.idLabel}
           </button>
@@ -288,19 +285,19 @@ const AgentCommission: React.FC<Props> = ({ agentId, lang, onNavigate }) => {
             const Icon = productIcons[type] ?? moduleIcon('product');
             const colorClass = productColors[type] ?? 'bg-ds-card2 text-ds-ink3';
             return (
-              <div key={type} className="sp-glass rounded-2xl p-4 flex items-center gap-4">
+              <AgGlass key={type} className="p-4 flex items-center gap-4">
                 <div className={`w-11 h-11 rounded-2xl ${colorClass} flex items-center justify-center flex-shrink-0`}>
-                  <Icon size={32} />
+                  <Icon size={30} />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-black text-sm text-ds-ink">{type}</p>
-                  <p className="text-[10px] text-ds-ink3 font-bold">{count} {t('transactions', 'transaksi')}</p>
+                  <p className="font-semibold text-sm" style={{ color: 'var(--ag-ink)' }}>{type}</p>
+                  <p className="ag-caption">{count} {t('transactions', 'transaksi')}</p>
                 </div>
-                <div className="text-right flex-shrink-0">
-                  <p className="font-black text-sm text-ds-green">{formatIDR(total)}</p>
-                  {pend > 0 && <p className="text-[10px] text-ds-amber font-bold">{formatIDR(pend)} {t('pending', 'pending')}</p>}
+                <div className="text-right shrink-0">
+                  <p className="font-bold text-sm" style={{ color: 'var(--ag-green)', fontVariantNumeric: 'tabular-nums' }}>{formatIDR(total)}</p>
+                  {pend > 0 && <p className="ag-caption" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatIDR(pend)} pending</p>}
                 </div>
-              </div>
+              </AgGlass>
             );
           })}
         </div>
@@ -310,32 +307,24 @@ const AgentCommission: React.FC<Props> = ({ agentId, lang, onNavigate }) => {
       {activeTab === 'coins' && (
         <div className="space-y-2 px-4 mt-2">
           {coinLedger.length === 0 ? (
-            <div className="bg-ds-card2 rounded-2xl border border-ds-border">
-              <AgentEmpty
-                title={t('No coin history yet', 'Belum ada riwayat koin')}
-                desc={t('Earn coins when policies are issued.', 'Dapatkan koin saat polis diterbitkan.')}
-              />
-            </div>
+            <AgEmpty icon="spark" title={t('No coin history yet', 'Belum ada riwayat koin')} body={t('Earn coins when policies are issued.', 'Dapatkan koin saat polis diterbitkan.')} />
           ) : (
             coinLedger.map((entry, i) => {
               const isEarned = entry.type === 'EARNED';
-              const isRedeemed = entry.type === 'REDEEMED';
               return (
-                <div key={entry.id ?? i} className="sp-glass rounded-2xl p-4 flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0 ${isEarned ? 'bg-amber-50 text-ds-amber' : isRedeemed ? 'bg-rose-50 text-ds-red' : 'bg-ds-card2 text-ds-ink3'}`}>
-                    <ModuleIcon id="commission" size={28} />
-                  </div>
+                <AgGlass key={entry.id ?? i} className="p-4 flex items-center gap-3">
+                  <span className="ag-tile h-10 w-10 shrink-0"><ModuleIcon id="commission" size={24} /></span>
                   <div className="flex-1 min-w-0">
-                    <p className="font-black text-sm text-ds-ink truncate">{entry.description ?? (isEarned ? t('Coins Earned', 'Koin Diperoleh') : t('Coins Redeemed', 'Koin Digunakan'))}</p>
-                    <p className="text-[10px] text-ds-ink3 font-bold mt-0.5">{entry.created_at ? new Date(entry.created_at).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'}</p>
+                    <p className="font-semibold text-sm truncate" style={{ color: 'var(--ag-ink)' }}>{entry.description ?? (isEarned ? t('Coins Earned', 'Koin Diperoleh') : t('Coins Redeemed', 'Koin Digunakan'))}</p>
+                    <p className="ag-caption mt-0.5">{entry.created_at ? new Date(entry.created_at).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'}</p>
                   </div>
-                  <div className="text-right flex-shrink-0">
-                    <p className={`font-black text-sm ${isEarned ? 'text-ds-amber' : 'text-ds-red'}`}>
+                  <div className="text-right shrink-0">
+                    <p className="font-bold text-sm" style={{ color: isEarned ? 'var(--ag-amber,#F59E0B)' : 'var(--ag-red,#EF4444)', fontVariantNumeric: 'tabular-nums' }}>
                       {isEarned ? '+' : '-'}{Math.abs(entry.coins).toLocaleString('id-ID')} koin
                     </p>
-                    <p className="text-[10px] text-ds-ink3 font-bold">{formatIDR(Math.abs(entry.rp_value))}</p>
+                    <p className="ag-caption" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatIDR(Math.abs(entry.rp_value))}</p>
                   </div>
-                </div>
+                </AgGlass>
               );
             })
           )}
@@ -347,52 +336,36 @@ const AgentCommission: React.FC<Props> = ({ agentId, lang, onNavigate }) => {
         <div className="space-y-2 px-4 mt-2">
           {loading ? (
             Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="sp-glass rounded-2xl p-4 animate-pulse h-16" />
+              <div key={i} className="ag-glass rounded-2xl p-4 h-16 ag-skel" />
             ))
           ) : getFilteredCommissions().length === 0 ? (
-            <div className="bg-ds-card2 rounded-2xl border border-ds-border">
-              <AgentEmpty
-                title={t('No commissions found', 'Belum ada komisi')}
-                desc={t('Create a quote and convert it to a policy to earn commissions.', 'Buat penawaran dan konversikan ke polis untuk mendapatkan komisi.')}
-              />
-            </div>
+            <AgEmpty icon="wallet" title={t('No commissions found', 'Belum ada komisi')} body={t('Create a quote and convert it to a policy to earn commissions.', 'Buat penawaran dan konversikan ke polis untuk mendapatkan komisi.')} />
           ) : (
             getFilteredCommissions().map((c, i) => {
               const Icon = productIcons[c.product_type] ?? moduleIcon('product');
               const colorClass = productColors[c.product_type] ?? 'bg-ds-card2 text-ds-ink3';
+              const chipTone = c.status === 'PAID' ? 'green' : c.status === 'PENDING' ? 'spark' : c.status === 'CANCELLED' ? 'danger' : 'mute';
               return (
-                <div key={c.id ?? i} className="sp-glass rounded-2xl p-4 flex items-center gap-3">
+                <AgGlass key={c.id ?? i} className="p-4 flex items-center gap-3">
                   <div className={`w-9 h-9 rounded-xl ${colorClass} flex items-center justify-center flex-shrink-0`}>
                     <Icon size={28} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-ds-ink truncate">{c.client_name}</p>
+                    <p className="text-sm font-semibold truncate" style={{ color: 'var(--ag-ink)' }}>{c.client_name}</p>
                     <div className="flex items-center gap-2 mt-0.5">
-                      <span className="text-[10px] text-ds-ink3 font-bold uppercase">{c.product_type}</span>
-                      <span className="text-[10px] text-ds-ink3">·</span>
-                      <span className="text-xs text-ds-ink3">{formatDate(c.created_at)}</span>
+                      <span className="ag-caption font-bold uppercase">{c.product_type}</span>
+                      <span className="ag-caption">·</span>
+                      <span className="ag-caption">{formatDate(c.created_at)}</span>
                     </div>
-                    <p className="text-[10px] text-ds-ink3 font-medium mt-0.5">
-                      {t('Premium:', 'Premi:')} {formatIDR(c.premium_amount)}
+                    <p className="ag-caption mt-0.5" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                      {t('Premi:', 'Premi:')} {formatIDR(c.premium_amount)}
                     </p>
                   </div>
-                  <div className="text-right flex-shrink-0">
-                    <p className="text-sm font-semibold text-ds-green font-mono">+{formatIDR(c.commission_amount)}</p>
-                    {c.status === 'PAID' ? (
-                      <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-ds-green-tint text-ds-green mt-1 inline-block">
-                        {c.status}
-                      </span>
-                    ) : c.status === 'PENDING' ? (
-                      <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 mt-1 inline-block">
-                        {c.status}
-                      </span>
-                    ) : (
-                      <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full mt-1 inline-block ${statusColors[c.status] ?? 'bg-ds-card2 text-ds-ink3'}`}>
-                        {c.status}
-                      </span>
-                    )}
+                  <div className="text-right flex-shrink-0 space-y-1">
+                    <p className="text-sm font-semibold" style={{ color: 'var(--ag-green)', fontVariantNumeric: 'tabular-nums', fontFamily: 'ui-monospace, monospace' }}>+{formatIDR(c.commission_amount)}</p>
+                    <AgChip tone={chipTone as any}>{c.status}</AgChip>
                   </div>
-                </div>
+                </AgGlass>
               );
             })
           )}

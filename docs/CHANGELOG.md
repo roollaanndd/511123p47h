@@ -1,5 +1,225 @@
 # SurePath - Changelog
 
+## v2.9.25 - 2026-11-20
+
+### Portal B2B — fitur baru dari roadmap (#5 & #2)
+
+**Roadmap #5 — B2BAnalytics** (`components/b2b/B2BAnalytics.tsx`)
+- Layar baru "Analitik" di sidebar portal B2B grup "Pantau".
+- Semua perhitungan client-side dari props `submissions`/`quotes`/`bulkBatches`
+  yang sudah dimuat `B2BPortal.loadData()` — tidak menambah gateway call baru.
+- 4 KPI: Premi Lunas YTD, Open Exposure, Rata-rata per Batch, Pertumbuhan MoM.
+- 12-month premium trend chart — SVG inline bar chart dengan gradient
+  indigo, tanpa chart library.
+- 3 breakdown panel: Bauran Produk, Penanggung Teratas, Status Batch —
+  horizontal bar reusable dengan tone semantik.
+- Portfolio summary footer: Total unit, Semua pengajuan, Semua batch,
+  Penawaran aktif.
+- Berfungsi identik untuk klien dan Master Admin (master melihat agregat
+  semua klien).
+
+**Roadmap #2 — B2BDocuments** (`components/b2b/B2BDocuments.tsx`)
+- Layar baru "Dokumen" di sidebar portal B2B grup "Pantau".
+- Pusat dokumen resmi klien: polis induk batch massal yang sudah terbit,
+  masing-masing dengan tombol unduh langsung (signed URL 5 menit dari
+  bucket privat `b2b-documents`).
+- Search + filter "Hanya yang terbit" default aktif.
+- Tiap kartu: nomor batch (mono), status chip, company name, item count,
+  total amount, lalu panel polis induk (nomor polis + insurer + tanggal
+  terbit + tombol Download).
+- Deteksi URL legacy (format `http://`) → ditampilkan chip "Lama" dengan
+  tooltip minta ke SurePath.
+
+**Gateway (opt-in extension):**
+- `b2b_bulk_list_batches` menerima parameter baru `include_master_policy_url`.
+  Default behavior tidak berubah (backward-compatible). Bila `true`, server
+  menandatangani `master_policy_document_url` di bucket privat untuk setiap
+  batch ISSUED dan mengembalikannya sebagai `master_policy_signed_url`.
+  Menghindari N+1 panggilan dari layar Dokumen.
+
+**Service helper:**
+- `getMyB2BBatchesWithDocuments()` di `services/b2bBulk.ts` memanggil
+  gateway dengan flag di atas. Type: `SpB2BBatchWithSignedUrl`.
+
+**⚠️ Butuh deploy edge function** (sama seperti v2.9.23 + v2.9.24).
+
+### Progress roadmap
+
+Sudah dibangun: **#3** (Payment history), **#5** (Analytics), **#2**
+(Documents center), **#10** (Audit log mandiri).
+
+Belum: **#1** Klaim, **#4** Team/PIC (perlu schema), **#6** Notification prefs
+(perlu schema), **#7** Endorsement (perlu schema), **#8** COI generator
+(perlu PDF lib), **#9** Pengingat perpanjangan (perlu FCM cron).
+
+## v2.9.24 - 2026-11-20
+
+### Portal B2B — fitur baru dari roadmap (#3 & #10)
+
+**Roadmap #10 — Audit Log mandiri klien B2B** (`B2BAuditLog.tsx`)
+- Layar baru pada sidebar portal B2B grup "Pantau": "Riwayat Aktivitas".
+- Klien B2B melihat seluruh aktivitas akunnya (impor massal, invoice, bayar,
+  polis induk terbit, unduhan file sumber) dengan stempel waktu dan aktor.
+- Aktor di-mask: `B2B_CLIENT → "Anda"`, `ADMIN/MASTER_ADMIN → "Tim SurePath"`,
+  `INSURER → "Asuransi"` — melindungi privasi operator internal.
+- Paginasi 50 baris per load, maksimum 200 per request gateway.
+- Tone chip per aktor (info/accent/warn/neutral) + ikon kontekstual per aksi.
+
+**Roadmap #3 — Riwayat Pembayaran B2B** (`B2BPayments.tsx`)
+- Layar baru pada sidebar portal B2B grup "Pantau": "Pembayaran".
+- Satu pintu untuk semua invoice: batch massal (`sp_payments.batch_id`) dan
+  polis individual (`sp_payments.order_id`). Pill `Batch`/`Polis` memisahkan.
+- KPI strip: Total Lunas, Menunggu, Jumlah Transaksi, Bulan Ini.
+- Filter: Semua / Lunas / Menunggu / Lainnya.
+- Aksi per baris: "Bayar sekarang" (jalur Xendit) bila PENDING, "Lihat
+  invoice" selalu bila `invoice_url` ada.
+- Data diperkaya server-side dengan `_title` + `_subtitle` untuk judul yang
+  dapat dibaca manusia tanpa N+1 request klien.
+
+**Gateway actions baru** (`supabase/functions/data-gateway/actions/b2bBulk.ts`):
+- `b2b_my_activity_log` — role-gated B2B_CLIENT, filter `client_id` otomatis
+  dari JWT, maks 200 baris per halaman, terbaru dulu.
+- `b2b_my_payments` — role-gated B2B_CLIENT, JOIN implisit dengan
+  `sp_b2b_batches` dan `sp_policy_orders` milik caller, maks 500 entri.
+
+**⚠️ Butuh deploy edge function** (sama seperti v2.9.23):
+```
+supabase functions deploy data-gateway --project-ref uyjgeteelnswphyzkjwi
+```
+
+### Catatan deploy
+
+Data-gateway v2.9.23 (perbaikan simpan profil B2B) **masih belum di-deploy
+di produksi**. Deploy edge function manual di pihak user (bukan via sesi ini)
+karena payload 1.8 MB (sebagian besar `data/workshopPartners.ts` ~1.1 MB)
+melebihi batas tool-call inline MCP. Dua opsi:
+- **A (direkomendasikan)**: Aktifkan auto-deploy workflow
+  (`.github/workflows/deploy-edge-functions.yml`) dengan menambah dua
+  repo secret di GitHub: `SUPABASE_ACCESS_TOKEN` dan
+  `SUPABASE_PROJECT_REF=uyjgeteelnswphyzkjwi`. Setelah itu push ke `main`
+  otomatis deploy.
+- **B**: Deploy manual dari laptop:
+  `supabase functions deploy data-gateway --project-ref uyjgeteelnswphyzkjwi`.
+
+## v2.9.23 - 2026-11-20
+
+### Perbaikan: profil B2B tidak tersimpan
+
+- **Akar masalah**: `services/users.ts` → `updateB2BProfile` menulis langsung
+  ke `sp_users` dari browser. Tabel ini bermode **deny-all RLS** (dilindungi
+  data-gateway), sehingga setiap `UPDATE` ditolak tanpa UI yang jelas.
+  Toast error memang muncul, tetapi pesan "gagal, coba lagi" membuat user
+  mengira ini masalah koneksi — padahal arsitekturnya memang tidak
+  memperbolehkan jalur itu.
+- **Perbaikan**:
+  - `services/users.ts` — `updateB2BProfile` sekarang memanggil aksi
+    gateway `update_my_profile` (identitas caller diverifikasi server-side
+    dari JWT). `clientId` tidak lagi diperlukan tetapi parameter dipertahankan
+    untuk kompatibilitas pemanggil lama.
+  - `supabase/functions/data-gateway/actions/users.ts`:
+    - `update_my_profile` SAFE list diperluas: `company_name`,
+      `company_reg_no`, `company_industry` — khusus role `B2B_CLIENT`
+      (agen individual tidak dapat memasukkan field ini).
+    - `get_user_profile` SELECT list diperluas: `address`,
+      `company_name`, `company_reg_no`, `company_industry`,
+      `profile_photo_url` — supaya form B2B melihat data tersimpan.
+- **⚠️ Butuh deploy edge function** — perubahan di `supabase/functions/`
+  tidak otomatis masuk produksi:
+  ```
+  supabase functions deploy data-gateway --project-ref uyjgeteelnswphyzkjwi
+  ```
+
+### Admin dashboard — tab Overview B2B baru
+
+- Tab default B2B Admin sekarang **Overview**, bukan langsung daftar
+  submissions. Layout strategic:
+  - **KPI strip** 6 kartu: Perlu Review, Open Quotes, Await Payment,
+    Await Issuance, Life Pending, Premi YTD. Semua mengklik → deep-link
+    ke tab terkait.
+  - **Baris statistik sekunder** 4 kartu: Klien Korporat (unique with
+    activity), Unit Armada (total batch item_count), Submission Diterima,
+    Asuransi Aktif.
+  - **Action-required panel** amber, hanya muncul bila ada
+    `needsAttention > 0` — dipecah per kategori dengan tombol deep-link.
+  - **Quick navigation** 5 shortcut (Pengguna, Submissions, Bulk,
+    Life, Aktivitas).
+- Dibangun dari data yang sudah dimuat `load()` di `B2BAdminView` — tidak
+  menambah panggilan jaringan baru. Memakai primitif `AdminKpiCard`
+  dari `components/admin/adminUI.tsx`.
+- Tab sekarang: **Overview** · B2B Submissions · Bulk Batches · Life
+  Applications · Pengguna Korporat · Aktivitas.
+
+### Peta jalan portal B2B — fitur yang disarankan ditambahkan
+
+Agar portal B2B lengkap end-to-end, berikutnya dipertimbangkan (PR
+terpisah, tidak masuk rilis ini):
+
+1. **Klaim** — klien B2B tidak dapat mengajukan/memantau klaim via portal.
+   Tabel `sp_claims` sudah ada; butuh UI B2B + aksi gateway baru.
+2. **Pusat dokumen** — semua polis, polis induk, sertifikat COI dalam
+   satu tampilan terfilter + unduh. Konsolidasi akses `sp_documents`.
+3. **Riwayat pembayaran & tanda terima** — statement bulanan, unduh
+   kuitansi per invoice. Data sudah ada di `sp_payments`.
+4. **Manajemen tim/PIC** — beberapa PIC di bawah satu akun B2B dengan
+   peran (viewer/operator/approver). Saat ini satu akun = satu PIC.
+5. **Analitik belanja** — tren premi bulanan, loss ratio, perbandingan
+   penanggung. Chart line + kartu ringkasan.
+6. **Preferensi notifikasi** — kontrol email/SMS per jenis kejadian.
+7. **Endorsement request** — tambah/hapus unit, ubah coverage pada polis
+   aktif. Pasangan dari `sp_endorsements` admin yang sudah ada.
+8. **Request COI on-demand** — sertifikat asuransi untuk vendor/klien
+   akhir, PDF generator. Butuh template + aksi gateway.
+9. **Notifikasi perpanjangan** — pengingat otomatis N hari sebelum habis
+   (sudah ada mesin retensi; perlu kanal push via FCM yang sudah
+   terpasang untuk agen).
+10. **Audit log mandiri** — klien B2B melihat aktivitas akunnya sendiri
+    (`sp_b2b_activity_log` sudah ada, dipakai admin — perlu view klien).
+
+## v2.9.22 - 2026-11-20
+
+### Portal B2B — anti-slop + migrasi B2BFleetCalendar ke kit B2B
+
+- **B2BDashboard hero** dibersihkan: pola SVG kontur topografi (data-URL ~1KB)
+  dan satu radial blur slate dihapus. Tersisa pearl gradient teduh + satu
+  radial indigo halus di kanan-atas — menegaskan aksen brand B2B tanpa visual
+  noise. Tidak mengubah layout, props, atau dark mode.
+- **B2BFleetCalendar** dimigrasi penuh ke `b2b/dashboard/ui.tsx`:
+  - 3 kartu KPI tangan → `B2BKpi` (tabular-nums otomatis, count-up, ikon,
+    tone semantik `success`/`warn`/`spark`)
+  - Kartu CSV export, loading, empty state → `B2BGlass`
+  - Tombol CSV → `B2BButton variant="primary" icon={Download}`
+  - Badge tier → `B2BPill` dengan tone peta `HEALTHY→success`, `SOON/CRITICAL→warn`,
+    `EXPIRED→danger` (hilangkan warna inline tier)
+  - Nomor polis pakai JetBrains Mono inline + `b2b-stagger` animasi
+  - 19 pemakaian `ds-*` → 0
+
+### Status admin + B2B secara keseluruhan
+
+- Admin CMS (`components/admin/adminUI.tsx`) sudah pakai sistem token
+  `ds-*` yang konsisten dengan `AdminKpiCard`, `AdminStatusBadge`,
+  `AdminEmptyState`, `AdminErrorBanner`, `AdminPageHeader`, `AdminSectionCard`
+  — tidak butuh Kaca Pagi (bukan aplikasi mobile konsumen).
+- Portal B2B (`components/b2b/dashboard/ui.tsx`) sudah pakai kit B2B
+  mandiri (indigo-primary, glass, Sora). Setelah PR ini hanya
+  `B2BUnitOrder.tsx` (wizard panjang) dan `B2BBulkImport.tsx` yang masih
+  banyak `ds-*` — ditinggalkan ke PR terpisah karena blast radius besar.
+
+## v2.9.21 - 2026-11-20
+
+### Desain ulang layar dalam portal agen — Kaca Pagi kit
+
+- **AgentWallet**, **AgentCommission**, **AgentProfile** dimigrasi penuh ke
+  sistem desain Kaca Pagi (`src/styles/agent-glass.css` + `components/agent/ui/kit.tsx`).
+- Semua nilai uang menggunakan `fontVariantNumeric: 'tabular-nums'` agar
+  kolom angka sejajar.
+- Dekorasi anti-slop dihapus: `AgentArtKeyframes`, `SpotWallet` (ilustrasi
+  bundaran dekoratif), dan gradien radial blob di hero komisi.
+- Tab bar tiap layar diganti pill berbasis `var(--ag-surface2)` / `var(--ag-green)`.
+- Baris navigasi profil menggunakan pola `ag-row ag-press` + `ag-tile` + `AgIcon`.
+- Status dokumen dan status tarik dana menggunakan `AgChip` dengan tone semantik
+  (`green` / `spark` / `danger` / `mute`).
+- Semua state kosong menggunakan `AgEmpty` dari kit (bukan `AgentEmpty` dari AgentArt).
+
 ## v2.9.20 - 2026-11-19
 
 ### Perbaikan approval mitra tidak tersimpan
