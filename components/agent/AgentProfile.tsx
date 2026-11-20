@@ -17,6 +17,8 @@ import { generateAgreementPDF } from '../../services/agreementPdf';
 import { useTierDefinitions, getTierByCode } from '../../hooks/useTierDefinitions';
 import ChangePasswordModal from '../shared/ChangePasswordModal';
 import { moduleIcon } from '../shared/ModuleIcon';
+import { AgGlass, AgSection, AgRow, AgChip, AgTile, AgButton, AgEmpty } from './ui/kit';
+import AgIcon from './ui/AgIcon';
 
 interface Props {
   agent: any;
@@ -188,7 +190,7 @@ const AgentProfile: React.FC<Props> = ({ agent, agentId, lang, onLogout, onNavig
   const tierDef = getTierByCode(tiers, tierCode);
 
   return (
-    <div className="bg-ds-bg min-h-screen pb-28 font-sora">
+    <div className="min-h-screen pb-28">
       {showChangePassword && <ChangePasswordModal email={profile?.email ?? agent?.email ?? ""} lang={lang} onClose={() => setShowChangePassword(false)} />}
 
       {/* Avatar + Name hero — pita hijau korporat + adegan super app, selaras
@@ -256,15 +258,15 @@ const AgentProfile: React.FC<Props> = ({ agent, agentId, lang, onLogout, onNavig
 
       {/* Stats strip */}
       {stats && (
-        <div className="flex bg-ds-card border-b border-ds-border">
+        <div className="flex" style={{ background: 'var(--ag-surface)', borderBottom: '1px solid var(--ag-hairline)' }}>
           {[
-            { value: stats.policiesCount, label: t('Policies', 'Polis') },
-            { value: formatIDR(stats.totalCommissionAllTime), label: t('Total Earned', 'Total Komisi') },
-            { value: stats.clientsCount, label: t('Clients', 'Klien') },
+            { value: stats.policiesCount.toString(), label: t('Policies', 'Polis') },
+            { value: formatIDR(stats.totalCommissionAllTime), label: t('Total Komisi', 'Total Komisi') },
+            { value: stats.clientsCount.toString(), label: t('Clients', 'Klien') },
           ].map((item, i) => (
-            <div key={i} className="flex-1 text-center px-2 py-4 border-r last:border-r-0 border-ds-border">
-              <p className="text-sm font-black text-ds-ink font-mono">{item.value}</p>
-              <p className="text-[10px] text-ds-ink3 font-bold mt-0.5 uppercase tracking-widest">{item.label}</p>
+            <div key={i} className="flex-1 text-center px-2 py-4" style={{ borderRight: i < 2 ? '1px solid var(--ag-hairline)' : undefined }}>
+              <p className="text-sm font-bold" style={{ color: 'var(--ag-ink)', fontVariantNumeric: 'tabular-nums' }}>{item.value}</p>
+              <p className="ag-caption mt-0.5 uppercase tracking-widest">{item.label}</p>
             </div>
           ))}
         </div>
@@ -285,7 +287,7 @@ const AgentProfile: React.FC<Props> = ({ agent, agentId, lang, onLogout, onNavig
       )}
 
       {tierDef && (
-        <section className="mx-5 mt-4 rounded-2xl border border-ds-border bg-ds-card p-4" aria-label={t('Agent tier details', 'Detail tier agen')}>
+        <section className="mx-5 mt-4 ag-glass rounded-2xl p-4" aria-label={t('Agent tier details', 'Detail tier agen')}>
           <div className="flex items-center gap-3">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-xl" style={{ color: tierDef.color || '#64748b', background: `${tierDef.color || '#64748b'}18` }}>
               {tierDef.emoji || '✦'}
@@ -319,24 +321,25 @@ const AgentProfile: React.FC<Props> = ({ agent, agentId, lang, onLogout, onNavig
       <AgentHandlerCard />
 
       {/* Referral Link */}
-      <div className="mx-5 mt-4 sp-glass rounded-2xl p-4">
-        <p className="text-[10px] font-bold text-ds-ink3 uppercase tracking-widest mb-2">Link Rekrutmen Mitra</p>
-        <div className="flex items-center gap-2 bg-ds-card2 rounded-xl p-3">
-          <p className="text-xs font-mono text-ds-ink2 flex-1 truncate">
-            https://myinsurepath.com?ref={profile?.agent_code}
-          </p>
-          <button
-            onClick={() => { navigator.clipboard.writeText(`https://myinsurepath.com?ref=${profile?.agent_code}`); }}
-            className="text-ds-green hover:text-ds-green-dk transition"
-          >
-            <Copy className="w-4 h-4" />
-          </button>
-        </div>
-        <p className="text-[9px] text-ds-ink3 mt-2">Bagikan link ini untuk merekrut agen baru di bawah kamu.</p>
-      </div>
+      <AgSection title="Link Rekrutmen" className="mx-5 mt-4" index={2}>
+        <AgGlass className="p-4 space-y-3">
+          <div className="flex items-center gap-2 rounded-xl p-3" style={{ background: 'var(--ag-surface2)', border: '1px solid var(--ag-hairline)' }}>
+            <p className="text-xs font-mono flex-1 truncate" style={{ color: 'var(--ag-ink2)' }}>
+              myinsurepath.com?ref={profile?.agent_code}
+            </p>
+            <button type="button"
+              onClick={() => { navigator.clipboard.writeText(`https://myinsurepath.com?ref=${profile?.agent_code}`); }}
+              className="ag-iconbtn ag-press shrink-0" aria-label="Salin link"
+            >
+              <AgIcon name="copy" size={16} />
+            </button>
+          </div>
+          <p className="ag-caption">Bagikan link ini untuk merekrut agen baru di bawah kamu.</p>
+        </AgGlass>
+      </AgSection>
 
       {/* Partnership agreement — fetched from the signed agreement record for the authenticated agent. */}
-      <section className="mx-5 mt-4 rounded-2xl sp-glass overflow-hidden" aria-labelledby="agent-agreement-heading">
+      <section className="mx-5 mt-4 ag-glass rounded-2xl overflow-hidden" aria-labelledby="agent-agreement-heading">
         <div className="px-5 py-4 flex items-center gap-3 border-b border-ds-border">
           <div className="w-10 h-10 rounded-xl bg-ds-green-tint flex items-center justify-center">
             <FileCheck2 className="w-5 h-5 text-ds-green" />
@@ -393,69 +396,66 @@ const AgentProfile: React.FC<Props> = ({ agent, agentId, lang, onLogout, onNavig
       </section>
 
       {/* Document Status */}
-      <div className="mx-5 mt-4 rounded-2xl sp-glass overflow-hidden">
-        <div className="px-5 py-3 border-b border-ds-border">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-ds-ink3">Status Dokumen</span>
-        </div>
-        <div className="divide-y divide-ds-border">
+      <AgSection title="Status Dokumen" className="mx-5 mt-4" index={3}>
+        <AgGlass className="overflow-hidden">
           {[
             { label: 'KTP', done: !!profile?.ktp },
-            { label: 'Foto Profil', done: false },
+            { label: 'Foto Profil', done: !!(profile as any)?.profile_photo_url },
             { label: 'Rekening Bank', done: false },
             { label: 'Verifikasi Admin', done: !!profile?.verified },
-          ].map(doc => (
-            <div key={doc.label} className="flex items-center justify-between px-5 py-3">
-              <span className="text-sm font-semibold text-ds-ink">{doc.label}</span>
-              {doc.done
-                ? <span className="flex items-center gap-1 text-xs font-black text-ds-green bg-ds-green-tint px-2.5 py-1 rounded-full"><CheckCircle className="w-3.5 h-3.5" /> Lengkap</span>
-                : <span className="flex items-center gap-1 text-xs font-black text-ds-amber bg-ds-amber-lt px-2.5 py-1 rounded-full"><AlertCircle className="w-3.5 h-3.5" /> Belum</span>}
+          ].map((doc, i, arr) => (
+            <div key={doc.label} className="flex items-center justify-between px-5 py-3" style={i < arr.length - 1 ? { borderBottom: '1px solid var(--ag-hairline)' } : {}}>
+              <span className="text-sm font-medium" style={{ color: 'var(--ag-ink)' }}>{doc.label}</span>
+              <AgChip tone={doc.done ? 'green' : 'spark'} icon={doc.done ? 'check' : 'history'}>
+                {doc.done ? 'Lengkap' : 'Belum'}
+              </AgChip>
             </div>
           ))}
-        </div>
-      </div>
+        </AgGlass>
+      </AgSection>
 
       {/* Secondary navigation grouped by purpose */}
       {onNavigate && (
         <>
-          <div className="mx-5 mt-5">
-            <p className="text-[10px] font-black uppercase tracking-widest text-ds-ink3 mb-2">{t('Business', 'Bisnis')}</p>
-            <div className="rounded-2xl sp-glass overflow-hidden">
+          <AgSection title={t('Bisnis', 'Bisnis')} className="mx-5 mt-5" index={4}>
+            <AgGlass className="overflow-hidden">
               {[
-                { id: 'network', label: t('Agent network', 'Jaringan Agen'), icon: moduleIcon('network','network') },
-                { id: 'leaderboard', label: t('Leaderboard', 'Papan Peringkat'), icon: moduleIcon('tier_promo','trophy') },
-                { id: 'renewals', label: t('Policy renewals', 'Perpanjangan Polis'), icon: moduleIcon('renewal','renewal') },
-                { id: 'endorsements', label: t('Policy endorsements', 'Perubahan Polis'), icon: moduleIcon('endorsements') },
-              ].map(item => (
+                { id: 'network', label: t('Jaringan Agen', 'Jaringan Agen'), icon: moduleIcon('network','network') },
+                { id: 'leaderboard', label: t('Papan Peringkat', 'Papan Peringkat'), icon: moduleIcon('tier_promo','trophy') },
+                { id: 'renewals', label: t('Perpanjangan Polis', 'Perpanjangan Polis'), icon: moduleIcon('renewal','renewal') },
+                { id: 'endorsements', label: t('Perubahan Polis', 'Perubahan Polis'), icon: moduleIcon('endorsements') },
+              ].map((item, i, arr) => (
                 <button key={item.id} type="button" onClick={() => onNavigate(item.id)}
-                  className="flex items-center gap-3 px-5 py-4 border-b last:border-b-0 border-ds-border active:bg-ds-card2 transition-colors w-full">
-                  <div className="w-10 h-10 rounded-xl bg-ds-card2 border border-ds-border flex items-center justify-center text-ds-ink2 flex-shrink-0"><item.icon size={26} /></div>
-                  <span className="text-sm font-medium text-ds-ink flex-1 text-left">{item.label}</span>
-                  <ChevronRight size={16} className="text-ds-ink3" />
+                  className="ag-row ag-press w-full"
+                  style={i < arr.length - 1 ? { borderBottom: '1px solid var(--ag-hairline)' } : {}}>
+                  <span className="ag-tile h-10 w-10 shrink-0"><item.icon size={22} /></span>
+                  <span className="flex-1 text-left text-sm font-medium" style={{ color: 'var(--ag-ink)' }}>{item.label}</span>
+                  <AgIcon name="chevron" size={16} strokeWidth={2} className="opacity-40" />
                 </button>
               ))}
-            </div>
-          </div>
-          <div className="mx-5 mt-5">
-            <p className="text-[10px] font-black uppercase tracking-widest text-ds-ink3 mb-2">{t('Earnings', 'Penghasilan')}</p>
-            <div className="rounded-2xl sp-glass overflow-hidden">
+            </AgGlass>
+          </AgSection>
+          <AgSection title={t('Penghasilan', 'Penghasilan')} className="mx-5 mt-4" index={5}>
+            <AgGlass className="overflow-hidden">
               {[
-                { id: 'commission', label: t('Commissions & history', 'Komisi & Riwayat'), icon: moduleIcon('commission') },
-                { id: 'wallet', label: t('Wallet & withdrawals', 'Dompet & Penarikan'), icon: moduleIcon('withdraw','wallet') },
-              ].map(item => (
+                { id: 'commission', label: t('Komisi & Riwayat', 'Komisi & Riwayat'), icon: moduleIcon('commission') },
+                { id: 'wallet', label: t('Dompet & Penarikan', 'Dompet & Penarikan'), icon: moduleIcon('withdraw','wallet') },
+              ].map((item, i, arr) => (
                 <button key={item.id} type="button" onClick={() => onNavigate(item.id)}
-                  className="flex items-center gap-3 px-5 py-4 border-b last:border-b-0 border-ds-border active:bg-ds-card2 transition-colors w-full">
-                  <div className="w-10 h-10 rounded-xl bg-ds-card2 border border-ds-border flex items-center justify-center text-ds-ink2 flex-shrink-0"><item.icon size={26} /></div>
-                  <span className="text-sm font-medium text-ds-ink flex-1 text-left">{item.label}</span>
-                  <ChevronRight size={16} className="text-ds-ink3" />
+                  className="ag-row ag-press w-full"
+                  style={i < arr.length - 1 ? { borderBottom: '1px solid var(--ag-hairline)' } : {}}>
+                  <span className="ag-tile h-10 w-10 shrink-0"><item.icon size={22} /></span>
+                  <span className="flex-1 text-left text-sm font-medium" style={{ color: 'var(--ag-ink)' }}>{item.label}</span>
+                  <AgIcon name="chevron" size={16} strokeWidth={2} className="opacity-40" />
                 </button>
               ))}
-            </div>
-          </div>
+            </AgGlass>
+          </AgSection>
         </>
       )}
 
       {/* Profile Info */}
-      <div className="mx-5 mt-4 rounded-2xl sp-glass overflow-hidden">
+      <div className="mx-5 mt-4 ag-glass rounded-2xl overflow-hidden">
         <div className="flex items-center justify-between px-5 py-3 border-b border-ds-border">
           <span className="text-[10px] font-bold uppercase tracking-widest text-ds-ink3">
             {t('Personal Info', 'Informasi Pribadi')}
@@ -614,19 +614,19 @@ const AgentProfile: React.FC<Props> = ({ agent, agentId, lang, onLogout, onNavig
 
       {/* Info Grid */}
       <div className="mx-5 mt-4 grid grid-cols-2 gap-3 sp-stagger-cards">
-        <div className="sp-glass rounded-2xl p-4">
+        <div className="ag-glass rounded-2xl p-4">
           <p className="text-[9px] font-bold uppercase tracking-widest text-ds-ink3 mb-1">Bergabung</p>
           <p className="text-sm font-black text-ds-ink">
             {profile?.created_at ? new Date(profile.created_at).toLocaleDateString('id-ID', {day:'numeric',month:'short',year:'numeric'}) : '—'}
           </p>
         </div>
-        <div className="sp-glass rounded-2xl p-4">
+        <div className="ag-glass rounded-2xl p-4">
           <p className="text-[9px] font-bold uppercase tracking-widest text-ds-ink3 mb-1">Status</p>
           <span className={`text-xs font-black px-2.5 py-1 rounded-full ${(profile as any)?.verified ? 'bg-ds-green-tint text-ds-green' : 'bg-ds-amber-lt text-ds-amber'}`}>
             {(profile as any)?.verified ? 'Terverifikasi' : 'Pending'}
           </span>
         </div>
-        <div className="sp-glass rounded-2xl p-4">
+        <div className="ag-glass rounded-2xl p-4">
           <p className="text-[9px] font-bold uppercase tracking-widest text-ds-ink3 mb-1">Kode Referral</p>
           <button
             onClick={() => { navigator.clipboard.writeText(agent?.agent_code ?? profile?.agent_code ?? ''); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
@@ -635,7 +635,7 @@ const AgentProfile: React.FC<Props> = ({ agent, agentId, lang, onLogout, onNavig
             {agent?.agent_code ?? profile?.agent_code ?? '—'} {copied ? '✓' : <Copy size={10} />}
           </button>
         </div>
-        <div className="sp-glass rounded-2xl p-4">
+        <div className="ag-glass rounded-2xl p-4">
           <p className="text-[9px] font-bold uppercase tracking-widest text-ds-ink3 mb-1">Downline</p>
           <p className="text-sm font-black text-ds-ink">{(profile as any)?.downline_count ?? 0}</p>
         </div>
@@ -645,21 +645,21 @@ const AgentProfile: React.FC<Props> = ({ agent, agentId, lang, onLogout, onNavig
       <div className="mx-5 mt-4">
         <p className="text-[10px] font-bold uppercase tracking-widest text-ds-ink3 mb-3">Performa</p>
         <div className="grid grid-cols-2 gap-3 sp-stagger-cards">
-          <div className="sp-glass rounded-2xl p-4 text-center">
+          <div className="ag-glass rounded-2xl p-4 text-center">
             <p className="text-[9px] font-bold uppercase tracking-widest text-ds-ink3 mb-1">Komisi Bulan Ini</p>
             <p className="text-base font-black text-ds-green">
               {stats ? `Rp ${(stats.totalCommissionMonth/1000000).toFixed(1)}jt` : '—'}
             </p>
           </div>
-          <div className="sp-glass rounded-2xl p-4 text-center">
+          <div className="ag-glass rounded-2xl p-4 text-center">
             <p className="text-[9px] font-bold uppercase tracking-widest text-ds-ink3 mb-1">Total Klien</p>
             <p className="text-base font-black text-ds-ink">{stats?.clientsCount ?? '—'}</p>
           </div>
-          <div className="sp-glass rounded-2xl p-4 text-center">
+          <div className="ag-glass rounded-2xl p-4 text-center">
             <p className="text-[9px] font-bold uppercase tracking-widest text-ds-ink3 mb-1">Polis Aktif</p>
             <p className="text-base font-black text-ds-ink">{stats?.policiesCount ?? '—'}</p>
           </div>
-          <div className="sp-glass rounded-2xl p-4 text-center">
+          <div className="ag-glass rounded-2xl p-4 text-center">
             <p className="text-[9px] font-bold uppercase tracking-widest text-ds-ink3 mb-1">Total Komisi</p>
             <p className="text-base font-black text-ds-blue">
               {stats ? `Rp ${(stats.totalCommissionAllTime/1000000).toFixed(1)}jt` : '—'}
@@ -672,7 +672,7 @@ const AgentProfile: React.FC<Props> = ({ agent, agentId, lang, onLogout, onNavig
       <div className="mx-5 mt-5">
         <p className="text-[10px] font-black uppercase tracking-widest text-ds-ink3 mb-3">{t('Earnings account', 'Rekening Penghasilan')}</p>
         {savedAccount ? (
-          <div className="sp-glass rounded-2xl p-4 flex items-center justify-between">
+          <div className="ag-glass rounded-2xl p-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <Building2 className="w-5 h-5 text-ds-blue" />
               <div>
@@ -729,7 +729,7 @@ const AgentProfile: React.FC<Props> = ({ agent, agentId, lang, onLogout, onNavig
       {/* Help and settings */}
       <div className="mx-5 mt-5">
         <p className="text-[10px] font-black uppercase tracking-widest text-ds-ink3 mb-2">{t('Help & Settings', 'Bantuan & Pengaturan')}</p>
-        <div className="rounded-2xl sp-glass p-4 flex items-start gap-3">
+        <div className="ag-glass rounded-2xl p-4 flex items-start gap-3">
           <div className="w-9 h-9 rounded-xl bg-ds-green-tint flex items-center justify-center text-ds-green shrink-0"><ShieldCheck size={17} /></div>
           <div>
             <p className="text-sm font-semibold text-ds-ink">{t('Need help?', 'Butuh bantuan?')}</p>

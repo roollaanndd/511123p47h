@@ -1,5 +1,21 @@
 # SurePath - Changelog
 
+## v2.9.21 - 2026-11-20
+
+### Desain ulang layar dalam portal agen — Kaca Pagi kit
+
+- **AgentWallet**, **AgentCommission**, **AgentProfile** dimigrasi penuh ke
+  sistem desain Kaca Pagi (`src/styles/agent-glass.css` + `components/agent/ui/kit.tsx`).
+- Semua nilai uang menggunakan `fontVariantNumeric: 'tabular-nums'` agar
+  kolom angka sejajar.
+- Dekorasi anti-slop dihapus: `AgentArtKeyframes`, `SpotWallet` (ilustrasi
+  bundaran dekoratif), dan gradien radial blob di hero komisi.
+- Tab bar tiap layar diganti pill berbasis `var(--ag-surface2)` / `var(--ag-green)`.
+- Baris navigasi profil menggunakan pola `ag-row ag-press` + `ag-tile` + `AgIcon`.
+- Status dokumen dan status tarik dana menggunakan `AgChip` dengan tone semantik
+  (`green` / `spark` / `danger` / `mute`).
+- Semua state kosong menggunakan `AgEmpty` dari kit (bukan `AgentEmpty` dari AgentArt).
+
 ## v2.9.20 - 2026-11-19
 
 ### Perbaikan approval mitra tidak tersimpan
