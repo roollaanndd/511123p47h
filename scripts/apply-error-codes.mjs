@@ -65,13 +65,36 @@ for (const file of walk(ACTIONS_DIR)) {
 
   // Ensure import present
   if (!RE_IMPORT_PRESENT.test(out)) {
-    // Insert after the last existing import line (handles multi-line imports).
-    const importBlockEnd = out.search(/^(?!import|\/\/|\/\*|\s*$)/m);
-    if (importBlockEnd === -1) {
+    // Place the import AFTER the last `} from '…';` line (so multi-line
+    // imports aren't split) or AFTER the last single-line `import … from …;`,
+    // whichever comes later. A naive "first non-import line" rule split
+    // multi-line blocks and made the file a syntax error (v2.9.30 bugfix).
+    const lines = out.split('\n');
+    let lastImportEnd = -1;
+    let inMultiLineImport = false;
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = lines[i];
+      if (inMultiLineImport) {
+        if (/^\s*}\s*from\s+['"][^'"]+['"]\s*;?\s*$/.test(line)) {
+          inMultiLineImport = false;
+          lastImportEnd = i;
+        }
+        continue;
+      }
+      if (/^\s*import\s+[^'"]*\{[^}]*$/.test(line)) {
+        inMultiLineImport = true;
+        continue;
+      }
+      if (/^\s*import\s+.*from\s+['"][^'"]+['"]\s*;?\s*$/.test(line)) {
+        lastImportEnd = i;
+      }
+    }
+    if (lastImportEnd === -1) {
       summary.skipped.push({ file, reason: 'no import block found' });
       continue;
     }
-    out = out.slice(0, importBlockEnd) + ADD_IMPORT + '\n' + out.slice(importBlockEnd);
+    lines.splice(lastImportEnd + 1, 0, ADD_IMPORT);
+    out = lines.join('\n');
     summary.importsAdded += 1;
   }
 

@@ -9,9 +9,9 @@ import type { GatewayContext, ActionResult } from './types.ts';
 import { sendEmailSafe, emailConfigFor, escapeHtml } from '../../_shared/email.ts';
 import { renderEmail, tokenBlock, paragraphBlock } from '../../_shared/emailLayout.ts';
 import {
-import { safeError } from '../../_shared/errorMap.ts';
   isValidPin, makePinRecord, newOtp, verifyPin, hashPin, newPinSalt,
 } from '../../_shared/pin.ts';
+import { safeError } from '../../_shared/errorMap.ts';
 
 const json = (body: unknown, status = 200): ActionResult => ({ status, body });
 

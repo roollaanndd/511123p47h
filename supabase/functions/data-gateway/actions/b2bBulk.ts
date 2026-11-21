@@ -12,12 +12,12 @@
 // override in the review grid) do.
 import type { GatewayContext, ActionResult } from './types.ts';
 import {
-import { safeError } from '../../_shared/errorMap.ts';
   calcBulkPremium, calcBulkTotals, isValidIsoDate, addMonthsToIsoDate,
   MULTI_YEAR_DEPRECIATION_RATE, MULTI_YEAR_MAX_TENOR_MONTHS,
   type VehicleClass, type Zone, type BulkPremiumResult, type FleetCoverage,
   type FleetAddOns,
 } from '../../_shared/b2bFleetRating.ts';
+import { safeError } from '../../_shared/errorMap.ts';
 import { loadActiveBulkRateConfig } from './b2bSettings.ts';
 import { logB2BActivity } from '../../_shared/b2bActivityLog.ts';
 
