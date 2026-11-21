@@ -60,12 +60,18 @@ const RoleSelectionScreen: React.FC<Props> = ({ authUser, onComplete, onCancel, 
 
   const handleConfirm = async () => {
     if (!selected) return;
-    if (!phone.trim()) { setError('Nomor HP wajib diisi'); return; }
+    // v2.9.28: nomor HP tidak lagi wajib di layar ini — Google OAuth sudah
+    // memverifikasi email, dan layar klaim/beli polis yang benar-benar butuh
+    // HP akan memintanya saat itu juga. Mengurangi gesekan "sign in → form
+    // panjang" yang dulunya memaksa pendaftar baru mengisi field sebelum
+    // sempat melihat produk. Field perusahaan tetap wajib untuk B2B karena
+    // nama perusahaan adalah bagian intrinsik akun korporat.
     if (selected === 'B2B_CLIENT' && !companyName.trim()) { setError('Nama perusahaan wajib diisi'); return; }
 
     setLoading(true);
     setError('');
 
+    const phoneValue = phone.trim() || null;
     try {
       let profile: any = null;
 
@@ -73,7 +79,7 @@ const RoleSelectionScreen: React.FC<Props> = ({ authUser, onComplete, onCancel, 
         // referral_code links this user to the upline who shared the ?ref= link
         profile = await ensureProfile({
           name: authUser.name,
-          phone: phone.trim(),
+          phone: phoneValue,
           role: 'CUSTOMER',
           referral_code: refCode || null,
         });
@@ -81,7 +87,7 @@ const RoleSelectionScreen: React.FC<Props> = ({ authUser, onComplete, onCancel, 
       } else if (selected === 'AGENT') {
         profile = await ensureProfile({
           name: authUser.name,
-          phone: phone.trim(),
+          phone: phoneValue,
           role: 'AGENT',
           referral_code: refCode || null,
         });
@@ -96,7 +102,7 @@ const RoleSelectionScreen: React.FC<Props> = ({ authUser, onComplete, onCancel, 
           id: authUser.id,
           name: authUser.name,
           email: authUser.email,
-          phone: phone.trim(),
+          phone: phoneValue,
           company_name: companyName.trim(),
         });
       }
@@ -185,7 +191,7 @@ const RoleSelectionScreen: React.FC<Props> = ({ authUser, onComplete, onCancel, 
           <div className="flex flex-col gap-2.5 mb-4">
             <div>
               <label className="block text-[0.7rem] text-white/55 mb-1.5">
-                Nomor HP
+                Nomor HP <span className="text-white/35">(opsional — bisa ditambahkan nanti)</span>
               </label>
               <input
                 type="tel"
