@@ -61,6 +61,39 @@ belum di-merge). Nomor 2.9.27 di PR ini dipilih agar tidak bertabrakan
 dengan penomoran PR tersebut. Setelah kedua PR merge, versi final di
 `main` akan 2.9.27 (karena 2.9.27 > 2.9.26 dan `src/version.ts` pakai
 nilai paling akhir).
+## v2.9.26 - 2026-11-20
+
+### Admin login — Google sign-in disamakan dengan pola AuthGate
+
+Audit cross-portal menemukan hanya dua layar yang punya login Google:
+`components/AuthGate.tsx` (customer + agent) dan
+`components/admin/AdminLogin.tsx`. B2B pakai email/password; operator
+masuk via admin; insurer pakai bearer token (bukan Supabase Auth).
+
+AuthGate adalah yang lebih baik di enam dimensi. Admin diselaraskan ke
+pola yang sama:
+
+- **Logo Google resmi 4-warna** (SVG inline) menggantikan huruf "G" yang
+  melanggar pedoman identitas Google — teks substitusi tidak boleh
+  dipakai untuk tombol OAuth Google yang menghadap pengguna.
+- **Tinggi tombol tetap `h-12`** (48px) untuk target sentuh yang
+  konsisten dan selaras dengan tombol submit utama.
+- **Sudut `rounded-2xl`** (kontinu) menggantikan `rounded-xl` — selaras
+  dengan tombol submit utama yang juga di-bump ke `rounded-2xl`.
+- **Umpan balik tekan `active:scale-[0.98]`** menggantikan tanpa umpan
+  balik apa-apa — sama dengan pola AuthGate.
+- **Transisi border saat hover** ke `emerald-500/30` — juga pola AuthGate.
+- **Label separator diperjelas** dari "ATAU" generik menjadi
+  "ATAU LANJUTKAN DENGAN" — orientasi bagi pengguna admin.
+
+Tombol primary submit dibump `py-3.5` → `h-12` + `rounded-xl` →
+`rounded-2xl` agar kedua tombol satu bentuk visual. Warna gradient
+hijau→oranye admin dipertahankan — itu identitas CMS admin.
+
+**Blast radius**: hanya `components/admin/AdminLogin.tsx`. Tidak ada
+perubahan handler Google OAuth itu sendiri — `handleGoogleLogin`,
+`signInWithGoogleIdToken`, dan jalur validasi role tetap sama persis.
+Hanya styling tombol yang berubah.
 
 ## v2.9.25 - 2026-11-20
 
