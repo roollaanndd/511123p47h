@@ -1,5 +1,39 @@
 # SurePath - Changelog
 
+## v2.9.29 - 2026-11-21
+
+### Audit keamanan 27-item + file upload guard
+
+Audit lengkap 27-item (SECURITY-PROMPT.md) selesai; laporan penuh ada di
+`docs/SECURITY.md`. Ringkasan: **20 dari 27 item sudah terpenuhi**
+sebelum audit ini (data-gateway + deny-all RLS + trust gates + CSP + HSTS
++ parameterized queries + server-side price recompute). Lima gap ditutup
+atau didokumentasikan di PR ini.
+
+**Fix konkret — upload guard** (`#18 Upload limits`)
+- Modul baru `services/uploadGuard.ts` dengan `validateUpload(file, rule)`
+  dan preset `UPLOAD_RULES` (`avatar` 2 MB, `ktp` 5 MB, `claimPhoto` 8 MB,
+  `siteLogo` 1 MB, `policyDocument` 10 MB, `bulkImportExcel` 15 MB).
+- Dipakai di `components/agent/AgentProfile.tsx` untuk `handleAvatarChange`
+  + `handleKtpChange`. `components/ClaimManager.tsx` sudah punya guard
+  12 MB inline — dibiarkan.
+- Mencegah unggahan 50 MB (default Supabase Storage) membanjiri bucket
+  dari path yang `accept="image/*"` tidak proteksi.
+
+**Dokumentasi — `docs/SECURITY.md`**
+- Tabel 27 item dengan citation file:line untuk setiap klaim.
+- Catatan jujur: `'unsafe-inline'` + `'unsafe-eval'` pada CSP script-src
+  menurunkan XSS defense; migrasi ke nonce-based CSP adalah PR terpisah.
+- Catatan jujur: `npm audit` punya 3 moderate advisory di transitif
+  `workbox-build → glob@9` (`GHSA-3g3m-2fjr-6pw4`); fix memerlukan
+  breaking upgrade `vite-plugin-pwa` — bukan scope PR ini.
+
+### Tindakan user yang tidak bisa dari PR
+
+- Repo masih publik (`.memory/CONTEXT.md` backlog). Keputusan owner.
+- Rotasi kunci Supabase/Xendit/Resend (hygiene tahunan). Audit `Vault`.
+- `npm audit fix --force` untuk upgrade `vite-plugin-pwa` yang breaking.
+
 ## v2.9.28 - 2026-11-21
 
 ### Google sign-in — alur disederhanakan (Proposal #1 + #2)
