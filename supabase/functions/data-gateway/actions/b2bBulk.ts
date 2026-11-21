@@ -464,14 +464,29 @@ export async function handleB2BBulkAction(action: string, ctx: GatewayContext): 
       // ISSUED batch, sehingga layar Dokumen bisa langsung memberi link unduh
       // tanpa satu panggilan tambahan per baris. Default perilaku lama (tidak
       // menandatangani) dipertahankan untuk pemanggil yang hanya butuh ID.
+      //
+      // v2.9.27 (audit-fix #2): fan-out ke Storage dibatasi 25 paralel.
+      // Sebelumnya `Promise.all((data).map(async …))` meledakkan semua call
+      // bersamaan. Klien dengan ratusan batch ISSUED akan membuka ratusan
+      // koneksi Storage dari satu request edge function — budget koneksi fungsi
+      // habis dan request lain diblokir. Menyerial dalam gelombang 25 menjaga
+      // latensi (25 panggilan paralel ~ latensi satu panggilan Storage) tanpa
+      // menguras pool koneksi.
       if (params.include_master_policy_url === true && data && data.length > 0) {
-        const withUrls = await Promise.all((data as any[]).map(async (b: any) => {
-          if (!b.master_policy_document_url || b.master_policy_document_url.startsWith('http')) {
-            return { ...b, master_policy_signed_url: null };
-          }
-          const { data: signed } = await db.storage.from('b2b-documents').createSignedUrl(b.master_policy_document_url, 300);
-          return { ...b, master_policy_signed_url: signed?.signedUrl ?? null };
-        }));
+        const SIGN_CONCURRENCY = 25;
+        const rows = data as any[];
+        const withUrls: any[] = [];
+        for (let i = 0; i < rows.length; i += SIGN_CONCURRENCY) {
+          const wave = rows.slice(i, i + SIGN_CONCURRENCY);
+          const signedWave = await Promise.all(wave.map(async (b: any) => {
+            if (!b.master_policy_document_url || b.master_policy_document_url.startsWith('http')) {
+              return { ...b, master_policy_signed_url: null };
+            }
+            const { data: signed } = await db.storage.from('b2b-documents').createSignedUrl(b.master_policy_document_url, 300);
+            return { ...b, master_policy_signed_url: signed?.signedUrl ?? null };
+          }));
+          withUrls.push(...signedWave);
+        }
         return ok(withUrls);
       }
 
@@ -927,25 +942,48 @@ export async function handleB2BBulkAction(action: string, ctx: GatewayContext): 
     // polis individual (via sp_policy_orders.client_id). Tidak menduplikasi
     // get_my_payments — aksi itu hanya covers order-based; aksi ini juga
     // batch-based, yang merupakan mayoritas use case B2B.
+    //
+    // v2.9.27 (audit-fix #1 + #3):
+    //   (#1) Paginasi eksplisit: `limit` dijepit [1..200], `offset` ≥ 0.
+    //        Sebelumnya hard-coded .limit(500) tanpa offset — klien dengan
+    //        >500 pembayaran kehilangan baris lama secara diam-diam.
+    //        Klien mendeteksi halaman terakhir dengan `payments.length < limit`.
+    //   (#3) IN-list dibatasi ke 500 batch + 500 order terbaru per klien.
+    //        PostgREST URL untuk `.or('batch_id.in.(uuid,uuid,...)')` bisa
+    //        melewati ~8 KB jika klien punya ribuan batch, menghasilkan 414
+    //        atau respon terpotong secara diam-diam. UUID aman secara
+    //        injeksi (hanya hex + dash) tetapi panjang total URL tidak.
+    //        Jika klien benar-benar punya >500 batch aktif, aksi ini hanya
+    //        menampilkan pembayaran dari 500 batch terbaru — untuk riwayat
+    //        lebih dalam, pakai tab Batch Massal yang terpaginasi sendiri.
     case 'b2b_my_payments': {
       if (!caller.spUser) return err('No profile', 403);
       if (caller.spUser.role !== 'B2B_CLIENT') return err('Forbidden: B2B only', 403);
 
-      // Kumpulkan id batch milik caller
+      const limit = Math.min(Math.max(Number(params.limit) || 100, 1), 200);
+      const offset = Math.max(Number(params.offset) || 0, 0);
+      const OWNER_LOOKUP_CAP = 500;
+
+      // Kumpulkan id batch milik caller — dibatasi ke 500 terbaru (ORDER BY
+      // created_at DESC) agar IN-filter di bawah tetap dalam batas panjang URL.
       const { data: myBatches, error: bErr } = await db
         .from('sp_b2b_batches')
         .select('id, batch_number, company_name, total_amount, status, item_count')
-        .eq('client_id', caller.spUser.id);
+        .eq('client_id', caller.spUser.id)
+        .order('created_at', { ascending: false })
+        .limit(OWNER_LOOKUP_CAP);
       if (bErr) return err(bErr.message, 400);
       const batchIds = (myBatches ?? []).map((b: any) => String(b.id));
       const batchMeta: Record<string, any> = {};
       for (const b of (myBatches ?? [])) batchMeta[String(b.id)] = b;
 
-      // Kumpulkan id order milik caller
+      // Kumpulkan id order milik caller — dibatasi ke 500 terbaru, alasan sama.
       const { data: myOrders, error: oErr } = await db
         .from('sp_policy_orders')
-        .select('id, product_name, premium_amount, status')
-        .eq('client_id', caller.spUser.id);
+        .select('id, product_name, premium_amount, status, created_at')
+        .eq('client_id', caller.spUser.id)
+        .order('created_at', { ascending: false })
+        .limit(OWNER_LOOKUP_CAP);
       if (oErr) return err(oErr.message, 400);
       const orderIds = (myOrders ?? []).map((o: any) => String(o.id));
       const orderMeta: Record<string, any> = {};
@@ -953,7 +991,7 @@ export async function handleB2BBulkAction(action: string, ctx: GatewayContext): 
 
       if (batchIds.length === 0 && orderIds.length === 0) return ok([]);
 
-      // Ambil payments: batch_id ATAU order_id milik caller
+      // Ambil payments: batch_id ATAU order_id milik caller, terpaginasi.
       const orFilter = [
         batchIds.length ? `batch_id.in.(${batchIds.join(',')})` : null,
         orderIds.length ? `order_id.in.(${orderIds.join(',')})` : null,
@@ -964,7 +1002,7 @@ export async function handleB2BBulkAction(action: string, ctx: GatewayContext): 
         .or(orFilter)
         .is('deleted_at', null)
         .order('created_at', { ascending: false })
-        .limit(500);
+        .range(offset, offset + limit - 1);
       if (pErr) return err(pErr.message, 400);
 
       // Enrichment ringan: tempel judul yang bisa dibaca manusia
