@@ -13,6 +13,7 @@ import AgentHandlerCard from './AgentHandlerCard';
 import AgentPartnerCard from './AgentPartnerCard';
 import SuperAppBackdrop, { dayPartOf } from '../shared/superapp/SuperAppBackdrop';
 import { getMyAgreement, type SpAgentAgreement } from '../../services/agreements';
+import { validateUpload, UPLOAD_RULES } from '../../services/uploadGuard';
 import { generateAgreementPDF } from '../../services/agreementPdf';
 import { useTierDefinitions, getTierByCode } from '../../hooks/useTierDefinitions';
 import ChangePasswordModal from '../shared/ChangePasswordModal';
@@ -137,6 +138,15 @@ const AgentProfile: React.FC<Props> = ({ agent, agentId, lang, onLogout, onNavig
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    // v2.9.29 (security audit #18): tolak file terlalu besar atau MIME salah
+    // SEBELUM mengalokasikan FileReader buffer + mengirim ke Supabase Storage.
+    const check = validateUpload(file, UPLOAD_RULES.avatar);
+    if (!check.ok) {
+      // eslint-disable-next-line no-alert
+      alert(check.reason);
+      e.target.value = '';
+      return;
+    }
     setAvatarUploading(true);
     const url = await new Promise<string>(res => {
       const reader = new FileReader();
@@ -164,6 +174,14 @@ const AgentProfile: React.FC<Props> = ({ agent, agentId, lang, onLogout, onNavig
   const handleKtpChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    // v2.9.29 (security audit #18): batas 5 MB (lihat UPLOAD_RULES.ktp).
+    const check = validateUpload(file, UPLOAD_RULES.ktp);
+    if (!check.ok) {
+      // eslint-disable-next-line no-alert
+      alert(check.reason);
+      e.target.value = '';
+      return;
+    }
     setKtpUploading(true);
     const url = await uploadAgentKtp(agentId, file);
     if (url) setProfile(p => p ? { ...p, ktp_document_url: url } as any : p);
