@@ -10,6 +10,7 @@
 
 import type { GatewayContext, ActionResult } from './types.ts';
 
+import { safeError } from '../../_shared/errorMap.ts';
 const json = (body: unknown, status = 200): ActionResult => ({ status, body });
 
 // Payload fields safe to expose on the public e-quotation page. The stored
@@ -81,7 +82,7 @@ export async function handleQuotationsAction(action: string, ctx: GatewayContext
         .upsert(row, { onConflict: 'code' })
         .select('id, code')
         .single();
-      if (error) return json({ error: error.message }, 500);
+      if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
       return json({ data });
     }
 
@@ -95,7 +96,7 @@ export async function handleQuotationsAction(action: string, ctx: GatewayContext
         .select('code, quotation_number, product_type, product_name, status, payload, customer_name, insurer_name, agent_name, agent_phone, total_premium, valid_until, link_expires_at, confirmed_at, created_at')
         .eq('code', code)
         .maybeSingle();
-      if (error) return json({ error: error.message }, 500);
+      if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
       if (!q) return json({ error: 'Quotation not found' }, 404);
 
       // First open marks it viewed (best-effort, non-blocking)
@@ -145,7 +146,7 @@ export async function handleQuotationsAction(action: string, ctx: GatewayContext
         .select('id, code, quotation_number, status, customer_name, agent_name, total_premium, valid_until, link_expires_at')
         .eq('code', code)
         .maybeSingle();
-      if (error) return json({ error: error.message }, 500);
+      if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
       if (!q) return json({ error: 'Quotation not found' }, 404);
       if (q.status === 'PAID') return json({ error: 'Quotation sudah dibayar' }, 409);
       if (
@@ -165,7 +166,7 @@ export async function handleQuotationsAction(action: string, ctx: GatewayContext
           updated_at: new Date().toISOString(),
         })
         .eq('code', code);
-      if (updErr) return json({ error: updErr.message }, 500);
+      if (updErr) { const _err = safeError(updErr); return json(_err.body, _err.status); }
 
       ctx.sendTelegram(
         `✅ <b>E-Quotation dikonfirmasi</b>\n` +

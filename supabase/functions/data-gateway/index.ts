@@ -313,6 +313,6 @@ Deno.serve(async (req) => {
     // internal lain. Detail lengkap tetap dicatat di log dengan request id yang
     // sama, jadi dukungan teknis masih bisa melacaknya.
     console.error(`[${requestId}] unhandled error`, e);
-    return json({ error: 'Internal error', request_id: requestId }, 500);
+    return json({ error: 'Internal error', code: 'INTERNAL_ERROR', request_id: requestId }, 500);
   }
 });

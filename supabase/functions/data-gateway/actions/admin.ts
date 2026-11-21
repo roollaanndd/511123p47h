@@ -3,6 +3,7 @@
 import type { GatewayContext, ActionResult } from './types.ts';
 
 // json() helper — returns ActionResult (main index.ts converts to Response)
+import { safeError } from '../../_shared/errorMap.ts';
 const json = (body: unknown, status = 200): ActionResult => ({ status, body });
 
 export async function handleAdminAction(action: string, ctx: GatewayContext): Promise<ActionResult | null> {
@@ -26,7 +27,7 @@ export async function handleAdminAction(action: string, ctx: GatewayContext): Pr
         if (params.role) q = q.eq('actor_role', String(params.role));
         if (params.since) q = q.gte('created_at', String(params.since));
         const { data, error } = await q;
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         return json({ data });
       }
 
@@ -43,7 +44,7 @@ export async function handleAdminAction(action: string, ctx: GatewayContext): Pr
           .gte('created_at', sinceIso)
           .order('created_at', { ascending: false })
           .limit(5000);
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
 
         const byUser = new Map<string, {
           actor_id: string | null; actor_email: string | null; actor_role: string | null;
@@ -80,7 +81,7 @@ export async function handleAdminAction(action: string, ctx: GatewayContext): Pr
           .limit(Number(params.limit ?? 200));
         if (params.role) q = q.eq('role', params.role);
         const { data, error } = await q;
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
 
         // Join each agent's latest signed agreement into the admin agent list.
         const agentIds = (data ?? []).filter((u: any) => u.role === 'AGENT').map((u: any) => u.id);
@@ -107,7 +108,7 @@ export async function handleAdminAction(action: string, ctx: GatewayContext): Pr
         if (!caller.isAdmin) return json({ error: 'Forbidden: admin only' }, 403);
         if (!params.user_id) return json({ error: 'user_id required' }, 400);
         const { data, error } = await db.from('sp_users').select('*').eq('id', String(params.user_id)).maybeSingle();
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         return json({ data });
       }
 
@@ -121,7 +122,7 @@ export async function handleAdminAction(action: string, ctx: GatewayContext): Pr
           role: 'AGENT', agent_code: agentCode, commission_rate: 0.1,
           monthly_target: 50000000, trust_score: 80, verified: false,
         }).select().single();
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         return json({ data });
       }
 
@@ -133,7 +134,7 @@ export async function handleAdminAction(action: string, ctx: GatewayContext): Pr
         const { data: inv, error: invErr } = await db.auth.admin.inviteUserByEmail(String(params.email), {
           redirectTo: 'https://myinsurepath.com/admin',
         });
-        if (invErr) return json({ error: invErr.message }, 400);
+        if (invErr) { const _err = safeError(invErr); return json(_err.body, _err.status); }
         if (inv.user?.id) {
           await db.from('sp_users').upsert({
             id: inv.user.id,
@@ -204,7 +205,7 @@ export async function handleAdminAction(action: string, ctx: GatewayContext): Pr
         }
         if (Object.keys(updates).length === 1) return json({ error: 'No valid fields to update' }, 400);
         const { data, error } = await db.from('sp_users').update(updates).eq('id', params.user_id).select().maybeSingle();
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         return json({ data });
       }
 
@@ -228,7 +229,7 @@ export async function handleAdminAction(action: string, ctx: GatewayContext): Pr
           .select('id, name, email, role')
           .eq('id', params.user_id)
           .maybeSingle();
-        if (fetchErr) return json({ error: fetchErr.message }, 400);
+        if (fetchErr) { const _err = safeError(fetchErr); return json(_err.body, _err.status); }
         if (!target) return json({ error: 'Pengguna tidak ditemukan' }, 404);
         if (target.role === 'MASTER_ADMIN' && caller.role !== 'MASTER_ADMIN') {
           return json({ error: 'Hanya MASTER_ADMIN yang bisa menghapus MASTER_ADMIN' }, 403);
@@ -237,7 +238,7 @@ export async function handleAdminAction(action: string, ctx: GatewayContext): Pr
         // Jika ada pre-ensure_profile legacy (sp_users.id ≠ auth.id), hapus sp_users saja —
         // auth record mungkin tidak ketemu; biarkan silently fail.
         const { error: delProfileErr } = await db.from('sp_users').delete().eq('id', params.user_id);
-        if (delProfileErr) return json({ error: delProfileErr.message }, 400);
+        if (delProfileErr) { const _err = safeError(delProfileErr); return json(_err.body, _err.status); }
         await db.auth.admin.deleteUser(String(target.id)).catch(() => {});
         logActivity(null, null, 'admin_delete_user', { target_id: target.id, email: target.email, role: target.role });
         return json({ data: { id: target.id, email: target.email, name: target.name } });
@@ -302,7 +303,7 @@ export async function handleAdminAction(action: string, ctx: GatewayContext): Pr
           .select('*, sp_users!agent_id(name)')
           .order('created_at', { ascending: false })
           .limit(Number(params.limit ?? 1000));
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         return json({ data });
       }
 
@@ -315,7 +316,7 @@ export async function handleAdminAction(action: string, ctx: GatewayContext): Pr
         const updates: Record<string, unknown> = { status: params.status, updated_at: new Date().toISOString() };
         if (params.status === 'PAID') updates.paid_at = new Date().toISOString();
         const { data, error } = await db.from('sp_commissions').update(updates).eq('id', params.commission_id).select().maybeSingle();
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
 
         // FIX: when admin marks commission as PAID, also credit the agent wallet (previously skipped)
         if (params.status === 'PAID' && data) {
@@ -362,7 +363,7 @@ export async function handleAdminAction(action: string, ctx: GatewayContext): Pr
         if (params.status === 'PAID') insertRow.paid_at = new Date().toISOString();
 
         const { data, error } = await db.from('sp_commissions').insert(insertRow).select().maybeSingle();
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
 
         // If status PAID, credit the wallet
         if (params.status === 'PAID' && data) {
@@ -443,7 +444,7 @@ export async function handleAdminAction(action: string, ctx: GatewayContext): Pr
         if (!caller.isAdmin) return json({ error: 'Forbidden: admin only' }, 403);
         const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
         const { data, error } = await db.from('sp_page_views').select('page, ts').gte('ts', since).order('ts', { ascending: true });
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         return json({ data: data ?? [] });
       }
 

@@ -11,6 +11,7 @@ import { renderEmail, tokenBlock, paragraphBlock } from '../../_shared/emailLayo
 import {
   isValidPin, makePinRecord, newOtp, verifyPin, hashPin, newPinSalt,
 } from '../../_shared/pin.ts';
+import { safeError } from '../../_shared/errorMap.ts';
 
 const json = (body: unknown, status = 200): ActionResult => ({ status, body });
 
@@ -64,7 +65,7 @@ export async function handleAgentPinAction(
         pin_failed_attempts: 0,
         pin_locked_until: null,
       }).eq('id', ownerId);
-      if (error) return json({ error: error.message }, 400);
+      if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
       return json({ data: { pin_configured: true } });
     }
 
@@ -98,7 +99,7 @@ export async function handleAgentPinAction(
           pin_failed_attempts: locked ? MAX_PIN_ATTEMPTS : attempts,
           pin_locked_until: locked ? new Date(now + LOCKOUT_MS).toISOString() : null,
         }).eq('id', ownerId);
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         return json({
           error: locked
             ? 'PIN terkunci 15 menit. Gunakan reset lewat email.'
@@ -111,7 +112,7 @@ export async function handleAgentPinAction(
         pin_failed_attempts: 0,
         pin_locked_until: null,
       }).eq('id', ownerId);
-      if (error) return json({ error: error.message }, 400);
+      if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
       return json({ data: { verified: true, pin_configured: true } });
     }
 
@@ -134,7 +135,7 @@ export async function handleAgentPinAction(
         attempts: 0,
         created_by_ip: reqIp ?? null,
       }).select('id').single();
-      if (insertError) return json({ error: insertError.message }, 400);
+      if (insertError) { const _err = safeError(insertError); return json(_err.body, _err.status); }
 
       const html = renderEmail({
         title: 'Reset PIN SurePath',
@@ -203,7 +204,7 @@ export async function handleAgentPinAction(
         pin_failed_attempts: 0,
         pin_locked_until: null,
       }).eq('id', ownerId);
-      if (pinError) return json({ error: pinError.message }, 400);
+      if (pinError) { const _err = safeError(pinError); return json(_err.body, _err.status); }
       await db.from('sp_pin_resets').update({ used_at: nowIso() }).eq('id', reset.id);
       return json({ data: { pin_configured: true, verified: true } });
     }

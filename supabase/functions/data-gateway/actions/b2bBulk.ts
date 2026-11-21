@@ -17,6 +17,7 @@ import {
   type VehicleClass, type Zone, type BulkPremiumResult, type FleetCoverage,
   type FleetAddOns,
 } from '../../_shared/b2bFleetRating.ts';
+import { safeError } from '../../_shared/errorMap.ts';
 import { loadActiveBulkRateConfig } from './b2bSettings.ts';
 import { logB2BActivity } from '../../_shared/b2bActivityLog.ts';
 
@@ -354,7 +355,7 @@ export async function handleB2BBulkAction(action: string, ctx: GatewayContext): 
         status: 'SUBMITTED',
         notes: preferredInsurerNote,
       }).select().single();
-      if (batchErr) return err(batchErr.message, 400);
+      if (batchErr) { const _err = safeError(batchErr); return err(_err.body.error, _err.status); }
 
       const itemRows = rated.map(r => ({
         batch_id: batch.id,
@@ -409,7 +410,7 @@ export async function handleB2BBulkAction(action: string, ctx: GatewayContext): 
       if (itemsErr) {
         // Roll back the header so a failed import doesn't leave an orphan batch.
         await db.from('sp_b2b_batches').delete().eq('id', batch.id);
-        return err(itemsErr.message, 400);
+        { const _err = safeError(itemsErr); return err(_err.body.error, _err.status); }
       }
 
       await db.from('sp_admin_notifications').insert({
@@ -458,7 +459,7 @@ export async function handleB2BBulkAction(action: string, ctx: GatewayContext): 
         q = q.eq('client_id', clientId);
       }
       const { data, error } = await q;
-      if (error) return err(error.message, 400);
+      if (error) { const _err = safeError(error); return err(_err.body.error, _err.status); }
 
       // v2.9.25 — opt-in: ikut tandatangani master_policy_document_url utk
       // ISSUED batch, sehingga layar Dokumen bisa langsung memberi link unduh
@@ -498,12 +499,12 @@ export async function handleB2BBulkAction(action: string, ctx: GatewayContext): 
       const batchId = String(params.batch_id ?? '');
       if (!batchId) return err('batch_id required', 400);
       const { data: batch, error: batchErr } = await db.from('sp_b2b_batches').select('*').eq('id', batchId).maybeSingle();
-      if (batchErr) return err(batchErr.message, 400);
+      if (batchErr) { const _err = safeError(batchErr); return err(_err.body.error, _err.status); }
       if (!batch) return err('Batch not found', 404);
       if (!caller.isAdmin && batch.client_id !== caller.spUser?.id) return err('Forbidden', 403);
 
       const { data: items, error: itemsErr } = await db.from('sp_b2b_batch_items').select('*').eq('batch_id', batchId).order('row_no');
-      if (itemsErr) return err(itemsErr.message, 400);
+      if (itemsErr) { const _err = safeError(itemsErr); return err(_err.body.error, _err.status); }
 
       const { data: payment } = await db.from('sp_payments')
         .select('invoice_url, status, created_at')
@@ -576,7 +577,7 @@ export async function handleB2BBulkAction(action: string, ctx: GatewayContext): 
       const { data: quote, error: qErr } = await db.from('sp_b2b_quotes')
         .select('id, submission_id, client_id, insurer_name, premium_amount, status')
         .eq('id', quoteId).maybeSingle();
-      if (qErr) return err(qErr.message, 400);
+      if (qErr) { const _err = safeError(qErr); return err(_err.body.error, _err.status); }
       if (!quote) return err('Penawaran tidak ditemukan', 404);
       if (quote.client_id !== clientId) return err('Forbidden: bukan penawaran Anda', 403);
       if (quote.status !== 'PENDING') return err(`Penawaran sudah diputuskan sebelumnya (status: ${quote.status})`, 409);
@@ -586,7 +587,7 @@ export async function handleB2BBulkAction(action: string, ctx: GatewayContext): 
         .update({ status: decision, updated_at: ts })
         .eq('id', quoteId).eq('status', 'PENDING')
         .select().maybeSingle();
-      if (updErr) return err(updErr.message, 400);
+      if (updErr) { const _err = safeError(updErr); return err(_err.body.error, _err.status); }
       if (!updatedQuote) return err('Penawaran sudah diputuskan sebelumnya', 409);
 
       // Sinkronkan pipeline pengajuan induk — tanpa ini pengajuan selamanya
@@ -652,7 +653,7 @@ export async function handleB2BBulkAction(action: string, ctx: GatewayContext): 
       }
 
       const { data: batch, error: batchErr } = await db.from('sp_b2b_batches').select('id, status').eq('id', batchId).maybeSingle();
-      if (batchErr) return err(batchErr.message, 400);
+      if (batchErr) { const _err = safeError(batchErr); return err(_err.body.error, _err.status); }
       if (!batch) return err('Batch not found', 404);
       if (batch.status !== 'PAID' && batch.status !== 'ISSUED') {
         return err(`Batch belum dibayar (status: ${batch.status}). Polis hanya dapat diterbitkan untuk batch PAID.`, 409);
@@ -668,7 +669,7 @@ export async function handleB2BBulkAction(action: string, ctx: GatewayContext): 
         issued_at: ts,
         updated_at: ts,
       }).eq('id', batchId).select().maybeSingle();
-      if (updErr) return err(updErr.message, 400);
+      if (updErr) { const _err = safeError(updErr); return err(_err.body.error, _err.status); }
 
       await db.from('sp_b2b_batch_items').update({ status: 'ISSUED', policy_number: policyNumber, updated_at: ts }).eq('batch_id', batchId);
 
@@ -707,7 +708,7 @@ export async function handleB2BBulkAction(action: string, ctx: GatewayContext): 
       const { data, error } = await db.from('sp_b2b_batches').update({
         insurer_id: insurerId, insurer_name: insurer.name, updated_at: new Date().toISOString(),
       }).eq('id', batchId).select().maybeSingle();
-      if (error) return err(error.message, 400);
+      if (error) { const _err = safeError(error); return err(_err.body.error, _err.status); }
       if (!data) return err('Batch not found', 404);
 
       // v2.9.12 — audit penetapan insurer.
@@ -737,14 +738,14 @@ export async function handleB2BBulkAction(action: string, ctx: GatewayContext): 
       if (!token) return err('token required', 400);
       const { data: authToken, error: authErr } = await db.from('sp_insurer_auth_tokens')
         .select('id, insurer_id, expires_at').eq('token', token).maybeSingle();
-      if (authErr) return err(authErr.message, 400);
+      if (authErr) { const _err = safeError(authErr); return err(_err.body.error, _err.status); }
       if (!authToken) return err('Invalid token', 404);
       if (new Date(authToken.expires_at) < new Date()) return err('Token expired', 410);
 
       const { data: batches, error: batchesErr } = await db.from('sp_b2b_batches')
         .select('*').eq('insurer_id', authToken.insurer_id).in('status', ['PAID', 'ISSUED'])
         .order('created_at', { ascending: false });
-      if (batchesErr) return err(batchesErr.message, 400);
+      if (batchesErr) { const _err = safeError(batchesErr); return err(_err.body.error, _err.status); }
 
       // Sign whichever ISSUED batches already have a master policy path, so
       // the dashboard can offer a working download link without a second
@@ -772,7 +773,7 @@ export async function handleB2BBulkAction(action: string, ctx: GatewayContext): 
       if (!token || !batchId) return err('token, batch_id required', 400);
       const { data: authToken, error: authErr } = await db.from('sp_insurer_auth_tokens')
         .select('id, insurer_id, expires_at').eq('token', token).maybeSingle();
-      if (authErr) return err(authErr.message, 400);
+      if (authErr) { const _err = safeError(authErr); return err(_err.body.error, _err.status); }
       if (!authToken) return err('Invalid token', 404);
       if (new Date(authToken.expires_at) < new Date()) return err('Token expired', 410);
 
@@ -798,13 +799,13 @@ export async function handleB2BBulkAction(action: string, ctx: GatewayContext): 
 
       const { data: authToken, error: authErr } = await db.from('sp_insurer_auth_tokens')
         .select('id, insurer_id, expires_at').eq('token', token).maybeSingle();
-      if (authErr) return err(authErr.message, 400);
+      if (authErr) { const _err = safeError(authErr); return err(_err.body.error, _err.status); }
       if (!authToken) return err('Invalid token', 404);
       if (new Date(authToken.expires_at) < new Date()) return err('Token expired', 410);
 
       const { data: batch, error: batchErr } = await db.from('sp_b2b_batches')
         .select('id, status, insurer_id, client_id, company_name, batch_number').eq('id', batchId).maybeSingle();
-      if (batchErr) return err(batchErr.message, 400);
+      if (batchErr) { const _err = safeError(batchErr); return err(_err.body.error, _err.status); }
       if (!batch || batch.insurer_id !== authToken.insurer_id) return err('Batch not found or not assigned to your insurer', 404);
       if (batch.status !== 'PAID') return err(`Batch belum berstatus PAID (status: ${batch.status})`, 409);
 
@@ -816,7 +817,7 @@ export async function handleB2BBulkAction(action: string, ctx: GatewayContext): 
         issued_at: ts,
         updated_at: ts,
       }).eq('id', batchId).select().maybeSingle();
-      if (updErr) return err(updErr.message, 400);
+      if (updErr) { const _err = safeError(updErr); return err(_err.body.error, _err.status); }
 
       await db.from('sp_b2b_batch_items').update({ status: 'ISSUED', policy_number: policyNumber || null, updated_at: ts }).eq('batch_id', batchId);
 
@@ -849,7 +850,7 @@ export async function handleB2BBulkAction(action: string, ctx: GatewayContext): 
     case 'admin_b2b_bulk_list_batches': {
       if (!caller.isAdmin) return err('Forbidden: admin only', 403);
       const { data, error } = await db.from('sp_b2b_batches').select('*').order('created_at', { ascending: false });
-      if (error) return err(error.message, 400);
+      if (error) { const _err = safeError(error); return err(_err.body.error, _err.status); }
       return ok(data ?? []);
     }
 
@@ -866,7 +867,7 @@ export async function handleB2BBulkAction(action: string, ctx: GatewayContext): 
       const { data: batch, error: batchErr } = await db.from('sp_b2b_batches')
         .select('id, batch_number, company_name, client_id, source_file_name, source_file_path, source_file_size, source_file_mime')
         .eq('id', batchId).maybeSingle();
-      if (batchErr) return err(batchErr.message, 400);
+      if (batchErr) { const _err = safeError(batchErr); return err(_err.body.error, _err.status); }
       if (!batch) return err('Batch not found', 404);
       if (!batch.source_file_path) {
         return err('File sumber tidak tercatat untuk batch ini (diimpor sebelum v2.9.12 atau tanpa file).', 404);
@@ -913,7 +914,7 @@ export async function handleB2BBulkAction(action: string, ctx: GatewayContext): 
       if (params.client_id) q = q.eq('client_id', String(params.client_id));
       if (params.batch_id) q = q.eq('batch_id', String(params.batch_id));
       const { data, error } = await q;
-      if (error) return err(error.message, 400);
+      if (error) { const _err = safeError(error); return err(_err.body.error, _err.status); }
       return ok(data ?? []);
     }
 
@@ -932,7 +933,7 @@ export async function handleB2BBulkAction(action: string, ctx: GatewayContext): 
         .eq('client_id', caller.spUser.id)
         .order('created_at', { ascending: false })
         .range(offset, offset + limit - 1);
-      if (error) return err(error.message, 400);
+      if (error) { const _err = safeError(error); return err(_err.body.error, _err.status); }
       return ok(data ?? []);
     }
 
@@ -972,7 +973,7 @@ export async function handleB2BBulkAction(action: string, ctx: GatewayContext): 
         .eq('client_id', caller.spUser.id)
         .order('created_at', { ascending: false })
         .limit(OWNER_LOOKUP_CAP);
-      if (bErr) return err(bErr.message, 400);
+      if (bErr) { const _err = safeError(bErr); return err(_err.body.error, _err.status); }
       const batchIds = (myBatches ?? []).map((b: any) => String(b.id));
       const batchMeta: Record<string, any> = {};
       for (const b of (myBatches ?? [])) batchMeta[String(b.id)] = b;
@@ -984,7 +985,7 @@ export async function handleB2BBulkAction(action: string, ctx: GatewayContext): 
         .eq('client_id', caller.spUser.id)
         .order('created_at', { ascending: false })
         .limit(OWNER_LOOKUP_CAP);
-      if (oErr) return err(oErr.message, 400);
+      if (oErr) { const _err = safeError(oErr); return err(_err.body.error, _err.status); }
       const orderIds = (myOrders ?? []).map((o: any) => String(o.id));
       const orderMeta: Record<string, any> = {};
       for (const o of (myOrders ?? [])) orderMeta[String(o.id)] = o;
@@ -1003,7 +1004,7 @@ export async function handleB2BBulkAction(action: string, ctx: GatewayContext): 
         .is('deleted_at', null)
         .order('created_at', { ascending: false })
         .range(offset, offset + limit - 1);
-      if (pErr) return err(pErr.message, 400);
+      if (pErr) { const _err = safeError(pErr); return err(_err.body.error, _err.status); }
 
       // Enrichment ringan: tempel judul yang bisa dibaca manusia
       const enriched = (payments ?? []).map((p: any) => ({

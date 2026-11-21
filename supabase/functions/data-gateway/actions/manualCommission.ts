@@ -22,6 +22,7 @@
 //                                        beda dari requested_by.
 import type { GatewayContext, ActionResult } from './types.ts';
 
+import { safeError } from '../../_shared/errorMap.ts';
 const json = (body: unknown, status = 200): ActionResult => ({ status, body });
 
 const CAN_REQUEST = ['MASTER_ADMIN', 'ADMIN', 'FINANCE', 'FINANCE_MANAGER', 'FINANCE_DIRECTOR'];
@@ -76,7 +77,7 @@ export async function handleManualCommissionAction(
         .select('id, name, email, role, verified')
         .eq('id', agentId)
         .maybeSingle();
-      if (agentErr) return json({ error: agentErr.message }, 400);
+      if (agentErr) { const _err = safeError(agentErr); return json(_err.body, _err.status); }
       if (!agent) return json({ error: 'Mitra tidak ditemukan' }, 404);
       if (agent.role !== 'AGENT') {
         return json({ error: `Hanya untuk mitra (AGENT). Target ini: ${agent.role}` }, 400);
@@ -95,7 +96,7 @@ export async function handleManualCommissionAction(
         })
         .select('*')
         .single();
-      if (insErr) return json({ error: insErr.message }, 400);
+      if (insErr) { const _err = safeError(insErr); return json(_err.body, _err.status); }
 
       // Notifikasi admin — muncul di lonceng CMS. MASTER_ADMIN melihat
       // antrean approval di menu khusus (credit_approvals).
@@ -154,7 +155,7 @@ export async function handleManualCommissionAction(
       }
 
       const { data, error } = await q;
-      if (error) return json({ error: error.message }, 400);
+      if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
       return json({ data });
     }
 
@@ -179,7 +180,7 @@ export async function handleManualCommissionAction(
         .select('*, agent:sp_users!agent_id(id,name,email,agent_code)')
         .eq('id', requestId)
         .maybeSingle();
-      if (readErr) return json({ error: readErr.message }, 400);
+      if (readErr) { const _err = safeError(readErr); return json(_err.body, _err.status); }
       if (!req) return json({ error: 'Permintaan tidak ditemukan' }, 404);
       if (req.status !== 'PENDING') {
         return json({ error: `Permintaan sudah berstatus ${req.status}, tidak bisa diputuskan ulang` }, 409);
@@ -203,7 +204,7 @@ export async function handleManualCommissionAction(
           .eq('id', requestId)
           .select('*')
           .single();
-        if (updErr) return json({ error: updErr.message }, 400);
+        if (updErr) { const _err = safeError(updErr); return json(_err.body, _err.status); }
 
         db.from('sp_admin_notifications').insert({
           type: 'MANUAL_CREDIT_DECIDED',

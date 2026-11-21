@@ -1,6 +1,7 @@
 // tiers.ts — Agent tier definitions, assignment, and approval workflow.
 import type { GatewayContext, ActionResult } from './types.ts';
 
+import { safeError } from '../../_shared/errorMap.ts';
 const json = (body: unknown, status = 200): ActionResult => ({ status, body });
 
 const TIER_ASSIGNERS = ['MASTER_ADMIN', 'ADMIN', 'FINANCE_MANAGER'];
@@ -70,7 +71,7 @@ export async function handleTiersAction(action: string, ctx: GatewayContext): Pr
     case 'get_tier_definitions': {
         if (!caller.spUser) return json({ error: 'Unauthorized' }, 401);
         const { data, error } = await db.from('sp_agent_tiers').select('*').eq('is_active', true).order('rank', { ascending: true });
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         return json({ data });
       }
 
@@ -90,7 +91,7 @@ export async function handleTiersAction(action: string, ctx: GatewayContext): Pr
     case 'admin_list_tiers': {
         if (!caller.isAdmin) return json({ error: 'Forbidden: admin only' }, 403);
         const { data, error } = await db.from('sp_agent_tiers').select('*').order('rank', { ascending: true });
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         return json({ data });
       }
 
@@ -115,7 +116,7 @@ export async function handleTiersAction(action: string, ctx: GatewayContext): Pr
           updated_by: actorId || null,
         };
         const { data, error } = await db.from('sp_agent_tiers').insert(insertRow).select().maybeSingle();
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         return json({ data });
       }
 
@@ -132,7 +133,7 @@ export async function handleTiersAction(action: string, ctx: GatewayContext): Pr
           await db.from('sp_agent_tiers').update({ is_default: false }).neq('code', params.code);
         }
         const { data, error } = await db.from('sp_agent_tiers').update(updates).eq('code', params.code).select().maybeSingle();
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         return json({ data });
       }
 
@@ -142,7 +143,7 @@ export async function handleTiersAction(action: string, ctx: GatewayContext): Pr
         const { count } = await db.from('sp_users').select('id', { count: 'exact', head: true }).eq('tier', params.code);
         if ((count ?? 0) > 0) return json({ error: `Tidak bisa dihapus: ${count} agen masih memiliki tier ini. Pindahkan mereka dahulu.` }, 400);
         const { error } = await db.from('sp_agent_tiers').update({ is_active: false }).eq('code', params.code);
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         return json({ data: { success: true } });
       }
 
@@ -181,7 +182,7 @@ export async function handleTiersAction(action: string, ctx: GatewayContext): Pr
         let q = db.from('sp_tier_change_requests').select('*, sp_users!agent_id(name, email, agent_code)').order('requested_at', { ascending: false }).limit(Number(params.limit ?? 200));
         if (params.status) q = q.eq('status', String(params.status));
         const { data, error } = await q;
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         return json({ data });
       }
 
@@ -207,7 +208,7 @@ export async function handleTiersAction(action: string, ctx: GatewayContext): Pr
           source: reqRow.source === 'AUTO_ELIGIBLE' ? 'AUTO' : 'MANUAL', assigned_by: actorId, note: 'Disetujui via antrean persetujuan',
         });
         const { data, error } = await db.from('sp_tier_change_requests').update({ status: 'APPROVED', approved_by: actorId, approved_at: ts, updated_at: ts }).eq('id', params.request_id).select().maybeSingle();
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         return json({ data });
       }
 
@@ -219,7 +220,7 @@ export async function handleTiersAction(action: string, ctx: GatewayContext): Pr
           status: 'REJECTED', rejected_by: actorId, rejected_at: ts,
           rejection_reason: params.reason ? String(params.reason) : null, updated_at: ts,
         }).eq('id', params.request_id).eq('status', 'PENDING').select().maybeSingle();
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         if (!data) return json({ error: 'Request not found or already processed' }, 404);
         return json({ data });
       }

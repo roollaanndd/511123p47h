@@ -10,6 +10,7 @@
 
 import type { GatewayContext, ActionResult } from './types.ts';
 
+import { safeError } from '../../_shared/errorMap.ts';
 const json = (body: unknown, status = 200): ActionResult => ({ status, body });
 
 // Bucket yang boleh ditandatangani lewat gateway. order-documents adalah
@@ -116,7 +117,7 @@ export async function handleDocumentsAction(action: string, ctx: GatewayContext)
           .select('id, order_number, agent_id, client_id, vehicle_details, vehicle_image_url')
           .eq('order_number', orderNumber)
           .maybeSingle();
-        if (ordErr) return json({ error: ordErr.message }, 400);
+        if (ordErr) { const _err = safeError(ordErr); return json(_err.body, _err.status); }
         if (!order) return json({ error: 'Order not found' }, 404);
 
         const isOwner = caller.ownerIds.includes(String(order.agent_id))
@@ -154,7 +155,7 @@ export async function handleDocumentsAction(action: string, ctx: GatewayContext)
         }));
         const { error: regErr } = await db.from('sp_documents')
           .upsert(registryRows, { onConflict: 'bucket,path' });
-        if (regErr) return json({ error: regErr.message }, 400);
+        if (regErr) { const _err = safeError(regErr); return json(_err.body, _err.status); }
 
         // 2) Tulis URL ke vehicle_details agar 5 portal pembaca lama langsung
         //    menampilkan dokumen tanpa perubahan apa pun di sisi mereka.
@@ -205,7 +206,7 @@ export async function handleDocumentsAction(action: string, ctx: GatewayContext)
         const { error: updErr } = await db.from('sp_policy_orders')
           .update(update)
           .eq('id', order.id);
-        if (updErr) return json({ error: updErr.message }, 400);
+        if (updErr) { const _err = safeError(updErr); return json(_err.body, _err.status); }
 
         return json({
           data: {
@@ -294,7 +295,7 @@ export async function handleDocumentsAction(action: string, ctx: GatewayContext)
         if (entityId)  q = q.eq('entity_id', entityId);
         if (docType)   q = q.eq('doc_type', docType);
         const { data, error } = await q;
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         return json({ data });
       }
 
@@ -322,7 +323,7 @@ export async function handleDocumentsAction(action: string, ctx: GatewayContext)
         const { error: updErr } = await db.from('sp_agent_agreements')
           .update({ pdf_bucket: bucket, pdf_path: path, pdf_url: url })
           .eq('id', agreementId);
-        if (updErr) return json({ error: updErr.message }, 400);
+        if (updErr) { const _err = safeError(updErr); return json(_err.body, _err.status); }
 
         const { error: regErr } = await db.from('sp_documents').upsert({
           entity_type: 'agreement',
@@ -336,7 +337,7 @@ export async function handleDocumentsAction(action: string, ctx: GatewayContext)
           uploaded_by_role: caller.role,
           meta: { source: 'acceptance_gate' },
         }, { onConflict: 'bucket,path' });
-        if (regErr) return json({ error: regErr.message }, 400);
+        if (regErr) { const _err = safeError(regErr); return json(_err.body, _err.status); }
 
         return json({ data: { success: true } });
       }

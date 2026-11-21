@@ -18,6 +18,7 @@ import type { GatewayContext, ActionResult } from './types.ts';
 import { setActiveBulkRateConfig, type BulkRateConfig } from '../../_shared/b2bFleetRating.ts';
 import { clayPatch } from './clayFields.ts';
 
+import { safeError } from '../../_shared/errorMap.ts';
 const json = (body: unknown, status = 200): ActionResult => ({ status, body });
 const CAN_EDIT_RATES = ['MASTER_ADMIN', 'ADMIN', 'FINANCE_MANAGER'];
 const CAN_EDIT_TNC = ['MASTER_ADMIN', 'ADMIN'];
@@ -63,7 +64,7 @@ export async function handleB2BSettingsAction(action: string, ctx: GatewayContex
     case 'admin_list_b2b_fleet_rate_sets': {
       if (!caller.isAdmin) return json({ error: 'Forbidden: admin only' }, 403);
       const { data, error } = await db.from('sp_b2b_fleet_rate_sets').select('*').order('created_at', { ascending: false });
-      if (error) return json({ error: error.message }, 400);
+      if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
       return json({ data: data ?? [] });
     }
 
@@ -82,11 +83,11 @@ export async function handleB2BSettingsAction(action: string, ctx: GatewayContex
       if (!payload.version) return json({ error: 'version wajib diisi' }, 400);
       if (params.id) {
         const { data, error } = await db.from('sp_b2b_fleet_rate_sets').update(payload).eq('id', String(params.id)).select().maybeSingle();
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         return json({ data });
       }
       const { data, error } = await db.from('sp_b2b_fleet_rate_sets').insert({ ...payload, is_active: false }).select().single();
-      if (error) return json({ error: error.message }, 400);
+      if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
       return json({ data });
     }
 
@@ -96,7 +97,7 @@ export async function handleB2BSettingsAction(action: string, ctx: GatewayContex
       if (!id) return json({ error: 'id required' }, 400);
       await db.from('sp_b2b_fleet_rate_sets').update({ is_active: false }).eq('is_active', true);
       const { data, error } = await db.from('sp_b2b_fleet_rate_sets').update({ is_active: true, updated_at: new Date().toISOString() }).eq('id', id).select().maybeSingle();
-      if (error) return json({ error: error.message }, 400);
+      if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
       return json({ data });
     }
 
@@ -107,7 +108,7 @@ export async function handleB2BSettingsAction(action: string, ctx: GatewayContex
       const { data: row } = await db.from('sp_b2b_fleet_rate_sets').select('is_active').eq('id', id).maybeSingle();
       if (row?.is_active) return json({ error: 'Tidak bisa menghapus versi yang sedang aktif' }, 400);
       const { error } = await db.from('sp_b2b_fleet_rate_sets').delete().eq('id', id);
-      if (error) return json({ error: error.message }, 400);
+      if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
       return json({ data: { success: true } });
     }
 
@@ -116,14 +117,14 @@ export async function handleB2BSettingsAction(action: string, ctx: GatewayContex
     case 'list_active_b2b_plans': {
       if (!caller.spUser && !caller.isAdmin) return json({ error: 'No profile' }, 403);
       const { data, error } = await db.from('sp_b2b_plans').select('id, code, name, description, loading_rate, benefits, pros, cons, sort_order, accent_color, icon, featured').eq('is_active', true).order('sort_order', { ascending: true });
-      if (error) return json({ error: error.message }, 400);
+      if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
       return json({ data: data ?? [] });
     }
 
     case 'admin_list_b2b_plans': {
       if (!caller.isAdmin) return json({ error: 'Forbidden: admin only' }, 403);
       const { data, error } = await db.from('sp_b2b_plans').select('*').order('sort_order', { ascending: true }).order('created_at', { ascending: false });
-      if (error) return json({ error: error.message }, 400);
+      if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
       return json({ data: data ?? [] });
     }
 
@@ -160,11 +161,11 @@ export async function handleB2BSettingsAction(action: string, ctx: GatewayContex
       };
       if (params.id) {
         const { data, error } = await db.from('sp_b2b_plans').update(payload).eq('id', String(params.id)).select().maybeSingle();
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         return json({ data });
       }
       const { data, error } = await db.from('sp_b2b_plans').insert({ ...payload, created_by: caller.spUser?.id ?? null }).select().single();
-      if (error) return json({ error: error.message }, 400);
+      if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
       return json({ data });
     }
 
@@ -179,7 +180,7 @@ export async function handleB2BSettingsAction(action: string, ctx: GatewayContex
         return json({ data: { success: true, deactivated: true } });
       }
       const { error } = await db.from('sp_b2b_plans').delete().eq('id', id);
-      if (error) return json({ error: error.message }, 400);
+      if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
       return json({ data: { success: true } });
     }
 
@@ -193,7 +194,7 @@ export async function handleB2BSettingsAction(action: string, ctx: GatewayContex
     case 'admin_list_tnc_documents': {
       if (!caller.isAdmin) return json({ error: 'Forbidden: admin only' }, 403);
       const { data, error } = await db.from('sp_tnc_documents').select('*').order('created_at', { ascending: false });
-      if (error) return json({ error: error.message }, 400);
+      if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
       return json({ data: data ?? [] });
     }
 
@@ -209,11 +210,11 @@ export async function handleB2BSettingsAction(action: string, ctx: GatewayContex
       };
       if (params.id) {
         const { data, error } = await db.from('sp_tnc_documents').update(payload).eq('id', String(params.id)).select().maybeSingle();
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         return json({ data });
       }
       const { data, error } = await db.from('sp_tnc_documents').insert({ ...payload, is_active: false }).select().single();
-      if (error) return json({ error: error.message }, 400);
+      if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
       return json({ data });
     }
 
@@ -230,7 +231,7 @@ export async function handleB2BSettingsAction(action: string, ctx: GatewayContex
       const { data, error } = await db.from('sp_tnc_documents').update({
         is_active: true, published_at: ts, published_by: caller.spUser?.id ?? null, updated_at: ts,
       }).eq('id', id).select().maybeSingle();
-      if (error) return json({ error: error.message }, 400);
+      if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
       return json({ data });
     }
 
@@ -241,7 +242,7 @@ export async function handleB2BSettingsAction(action: string, ctx: GatewayContex
       const { data: row } = await db.from('sp_tnc_documents').select('is_active').eq('id', id).maybeSingle();
       if (row?.is_active) return json({ error: 'Tidak bisa menghapus versi yang sedang aktif' }, 400);
       const { error } = await db.from('sp_tnc_documents').delete().eq('id', id);
-      if (error) return json({ error: error.message }, 400);
+      if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
       return json({ data: { success: true } });
     }
 

@@ -12,6 +12,7 @@
 // `ip`/`user_agent`/`status` diisi server, tidak pernah dari parameter klien.
 import type { GatewayContext, ActionResult } from './types.ts';
 
+import { safeError } from '../../_shared/errorMap.ts';
 const json = (body: unknown, status = 200): ActionResult => ({ status, body });
 
 /** Status yang boleh diset operator. Teks bebas dari klien ditolak. */
@@ -79,7 +80,7 @@ export async function handleContactLeadsAction(
         .select('id')
         .maybeSingle();
 
-      if (error) return json({ error: error.message }, 500);
+      if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
 
       // Email dan WhatsApp belum aktif sebagai tujuan prospek (31 Okt 2026),
       // jadi Telegram adalah satu-satunya pemberitahuan langsung yang hidup.
@@ -117,7 +118,7 @@ export async function handleContactLeadsAction(
       }
 
       const { data, error } = await q;
-      if (error) return json({ error: error.message }, 500);
+      if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
       return json({ leads: data ?? [] });
     }
 
@@ -144,7 +145,7 @@ export async function handleContactLeadsAction(
       }
 
       const { error } = await db.from('sp_contact_leads').update(patch).eq('id', id);
-      if (error) return json({ error: error.message }, 500);
+      if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
       return json({ ok: true });
     }
 

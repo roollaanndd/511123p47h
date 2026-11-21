@@ -3,6 +3,7 @@
 import type { GatewayContext, ActionResult } from './types.ts';
 
 // json() helper — returns ActionResult (main index.ts converts to Response)
+import { safeError } from '../../_shared/errorMap.ts';
 const json = (body: unknown, status = 200): ActionResult => ({ status, body });
 
 export async function handleClaimsAction(action: string, ctx: GatewayContext): Promise<ActionResult | null> {
@@ -22,7 +23,7 @@ export async function handleClaimsAction(action: string, ctx: GatewayContext): P
           .is('deleted_at', null)
           .order('created_at', { ascending: false })
           .limit(100);
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         return json({ data });
       }
 
@@ -158,7 +159,7 @@ export async function handleClaimsAction(action: string, ctx: GatewayContext): P
           .insert(insertRow)
           .select()
           .single();
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
 
         // Link the claim to its insurer. Deliberately after the insert and
         // deliberately not awaited for success: see linkedInsurerId above. A
@@ -224,7 +225,7 @@ export async function handleClaimsAction(action: string, ctx: GatewayContext): P
         let q = db.from('sp_claims').select('*').is('deleted_at', null).order('created_at', { ascending: false }).limit(Number(params.limit ?? 200));
         if (params.status) q = q.eq('status', params.status);
         const { data, error } = await q;
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         return json({ data });
       }
 
@@ -243,7 +244,7 @@ export async function handleClaimsAction(action: string, ctx: GatewayContext): P
           .maybeSingle();
 
         const { data, error } = await db.from('sp_claims').update(updates).eq('id', params.claim_id).select().maybeSingle();
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
 
         // NEW: Notify the customer (and agent) about the claim status change
         const statusLabels: Record<string, string> = {

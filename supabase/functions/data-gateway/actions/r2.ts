@@ -28,6 +28,7 @@
 import type { GatewayContext, ActionResult } from './types.ts';
 import { presignR2Url, r2ConfigFromEnv } from '../../_shared/r2.ts';
 
+import { safeError } from '../../_shared/errorMap.ts';
 const json = (body: unknown, status = 200): ActionResult => ({ status, body });
 
 const UPLOAD_TTL_SECONDS = 900;   // 15 menit
@@ -224,7 +225,7 @@ export async function handleR2Action(action: string, ctx: GatewayContext): Promi
         uploaded_by_role: caller.role,
         meta: { provider: 'r2', purpose },
       }, { onConflict: 'bucket,path' });
-      if (error) return json({ error: error.message }, 400);
+      if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
 
       // Jejak tanpa isi berkas: hanya kunci, jenis, dan aktor.
       logActivity(null, null, 'document.upload', {

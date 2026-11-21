@@ -13,6 +13,7 @@
 // lewat tanggal.
 import type { GatewayContext, ActionResult } from './types.ts';
 
+import { safeError } from '../../_shared/errorMap.ts';
 const json = (body: unknown, status = 200): ActionResult => ({ status, body });
 
 const MARKETING = 'MARKETING';
@@ -77,7 +78,7 @@ export async function handleMarketingAction(
       else if (params.handler_id) q = q.eq('handler_id', String(params.handler_id));
 
       const { data: agents, error } = await q;
-      if (error) return json({ error: error.message }, 400);
+      if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
 
       const ids = (agents ?? []).map((a: any) => a.id);
       // Satu kueri untuk semua agen, bukan N+1.
@@ -130,7 +131,7 @@ export async function handleMarketingAction(
         .eq('role', 'AGENT');
       if (s.handlerIds) q = q.in('handler_id', s.handlerIds);
       const { data: agents, error } = await q;
-      if (error) return json({ error: error.message }, 400);
+      if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
 
       const ids = (agents ?? []).map((a: any) => a.id);
       const { data: orders } = ids.length
@@ -190,7 +191,7 @@ export async function handleMarketingAction(
         .eq('id', agentId)
         .eq('role', 'AGENT')
         .maybeSingle();
-      if (error) return json({ error: error.message }, 400);
+      if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
       if (!agent) return json({ error: 'Agent not found' }, 404);
       // Batas kepemilikan ditegakkan SETELAH baris dibaca, dari handler_id
       // baris itu sendiri — bukan dari params.
@@ -257,7 +258,7 @@ export async function handleMarketingAction(
         })
         .select()
         .single();
-      if (error) return json({ error: error.message }, 400);
+      if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
       return json({ data });
     }
 
@@ -277,7 +278,7 @@ export async function handleMarketingAction(
         q = q.not('next_action_at', 'is', null).lt('next_action_at', new Date().toISOString());
       }
       const { data, error } = await q;
-      if (error) return json({ error: error.message }, 400);
+      if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
       return json({ data });
     }
 
@@ -292,7 +293,7 @@ export async function handleMarketingAction(
         .is('handler_id', null)
         .order('created_at', { ascending: false })
         .limit(200);
-      if (error) return json({ error: error.message }, 400);
+      if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
       return json({ data: (data ?? []).map((a: any) => ({ ...a, umur_hari: hariSejak(a.created_at) })) });
     }
 
@@ -331,7 +332,7 @@ export async function handleMarketingAction(
         .eq('id', agentId)
         .select('id, name, handler_id, handler_assigned_at')
         .maybeSingle();
-      if (error) return json({ error: error.message }, 400);
+      if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
       return json({ data });
     }
 
@@ -348,7 +349,7 @@ export async function handleMarketingAction(
         .select('id, name, phone, profile_photo_url')
         .eq('id', handlerId)
         .maybeSingle();
-      if (error) return json({ error: error.message }, 400);
+      if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
       return json({ data: data ?? null });
     }
 
@@ -361,7 +362,7 @@ export async function handleMarketingAction(
         .select('id, name, email, monthly_target, marketing_parent_id, created_at')
         .eq('role', MARKETING)
         .order('name');
-      if (error) return json({ error: error.message }, 400);
+      if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
 
       const { data: agents } = await db
         .from('sp_users')

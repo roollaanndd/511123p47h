@@ -4,6 +4,7 @@ import type { GatewayContext, ActionResult } from './types.ts';
 import { wrapUserContent, UNTRUSTED_INPUT_NOTICE } from '../../_shared/promptSafety.ts';
 
 // json() helper — returns ActionResult (main index.ts converts to Response)
+import { safeError } from '../../_shared/errorMap.ts';
 const json = (body: unknown, status = 200): ActionResult => ({ status, body });
 
 export async function handleMiscAction(action: string, ctx: GatewayContext): Promise<ActionResult | null> {
@@ -76,7 +77,7 @@ ${UNTRUSTED_INPUT_NOTICE}`;
         const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
         for (const k of ALLOWED) { if (k in params) updates[k] = params[k]; }
         const { data, error } = await db.from('sp_b2b_submissions').update(updates).eq('id', subId).select().maybeSingle();
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         return json({ data });
       }
 
@@ -95,7 +96,7 @@ ${UNTRUSTED_INPUT_NOTICE}`;
         if (!submissionId) return json({ error: 'submission_id required' }, 400);
         const { data: submission, error: subErr } = await db.from('sp_b2b_submissions')
           .select('id, client_id, company_name').eq('id', submissionId).maybeSingle();
-        if (subErr) return json({ error: subErr.message }, 400);
+        if (subErr) { const _err = safeError(subErr); return json(_err.body, _err.status); }
         if (!submission) return json({ error: 'Submission not found' }, 404);
 
         const insurerName = String(params.insurer_name ?? params.insurer_id ?? '').trim();
@@ -148,7 +149,7 @@ ${UNTRUSTED_INPUT_NOTICE}`;
         if (params.notes !== undefined) updates.insurer_notes = params.notes;
         if (params.policy_number !== undefined) updates.policy_number = params.policy_number;
         const { data, error } = await db.from('sp_life_applications').update(updates).eq('id', appId).select().maybeSingle();
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         return json({ data });
       }
 
@@ -169,7 +170,7 @@ ${UNTRUSTED_INPUT_NOTICE}`;
           premium_estimate: Number(params.premium_estimate ?? 0),
           quote_data: params.quote_data ?? params.details ?? {},
         }).select().single();
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         return json({ data });
       }
 
