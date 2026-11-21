@@ -39,15 +39,22 @@ const B2BPayments: React.FC<Props> = ({ lang }) => {
   const [rows, setRows] = useState<B2BPaymentEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FilterKey>('ALL');
+  // v2.9.27 — paginasi (gateway sekarang mengekspos limit/offset [1..200]).
+  const [offset, setOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const PAGE_SIZE = 100;
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (reset: boolean) => {
     setLoading(true);
-    const data = await getMyB2BPayments();
-    setRows(data);
+    const nextOffset = reset ? 0 : offset;
+    const batch = await getMyB2BPayments({ limit: PAGE_SIZE, offset: nextOffset });
+    setRows(prev => reset ? batch : [...prev, ...batch]);
+    setHasMore(batch.length === PAGE_SIZE);
+    setOffset(nextOffset + batch.length);
     setLoading(false);
-  }, []);
+  }, [offset]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { void load(true); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
   const { totalPaid, totalPending, paidCount, pendingCount } = useMemo(() => {
     let paid = 0, pending = 0, pc = 0, pdc = 0;
@@ -115,7 +122,7 @@ const B2BPayments: React.FC<Props> = ({ lang }) => {
           action={
             <button
               type="button"
-              onClick={() => load()}
+              onClick={() => load(true)}
               disabled={loading}
               aria-label={t('Reload', 'Muat ulang')}
               className="inline-flex items-center gap-1.5 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 disabled:opacity-50"
@@ -225,6 +232,19 @@ const B2BPayments: React.FC<Props> = ({ lang }) => {
               );
             })}
           </ol>
+        )}
+
+        {hasMore && rows.length > 0 && (
+          <div className="pt-4 flex justify-center">
+            <button
+              type="button"
+              onClick={() => load(false)}
+              disabled={loading}
+              className="text-xs font-bold text-indigo-600 hover:text-indigo-800 disabled:opacity-50"
+            >
+              {loading ? t('Loading…', 'Memuat…') : t('Load older', 'Muat lebih lama')}
+            </button>
+          </div>
         )}
       </B2BGlass>
 

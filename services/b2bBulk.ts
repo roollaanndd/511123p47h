@@ -433,8 +433,15 @@ export interface B2BPaymentEntry {
   _subtitle: string;
 }
 
-export async function getMyB2BPayments(): Promise<B2BPaymentEntry[]> {
-  const { data, error } = await callGateway('b2b_my_payments', {});
+// v2.9.27 — paginasi diekspos: batas default 100, maks 200 per halaman.
+// `has_more` dideteksi di pemanggil via `rows.length === limit` (pola yang
+// sama dengan b2b_my_activity_log) — server tidak mengirim metadata terpisah
+// agar respons tetap flat array yang backward-compatible dengan pemanggil lama.
+export async function getMyB2BPayments(opts: { limit?: number; offset?: number } = {}): Promise<B2BPaymentEntry[]> {
+  const { data, error } = await callGateway('b2b_my_payments', {
+    limit: opts.limit,
+    offset: opts.offset,
+  });
   if (error) { console.error('getMyB2BPayments:', error); return []; }
   return (data ?? []) as B2BPaymentEntry[];
 }

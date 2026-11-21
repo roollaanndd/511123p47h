@@ -1,5 +1,67 @@
 # SurePath - Changelog
 
+## v2.9.27 - 2026-11-21
+
+### Gateway B2B — perbaikan dari audit production-readiness
+
+Audit backend-design pada tiga aksi gateway baru/perubahan di PR #407
+menemukan tiga risiko sebelum deploy. Semua diperbaiki di aksi yang sama:
+
+**Fix #1 — `b2b_my_payments` paginasi eksplisit**
+- Sebelumnya `.limit(500)` keras tanpa `offset`. Klien dengan >500
+  pembayaran kehilangan baris lama secara diam-diam.
+- Sekarang `limit` dijepit `[1..200]` (default 100), `offset ≥ 0`. Klien
+  mendeteksi halaman terakhir via `rows.length < limit` (pola yang sama
+  dengan `b2b_my_activity_log`).
+- Service wrapper `getMyB2BPayments({ limit, offset })` di
+  `services/b2bBulk.ts` diekspos dengan optional args; signature lama
+  masih kompatibel karena kedua param optional.
+- UI `B2BPayments.tsx` menambahkan tombol "Muat lebih lama" di akhir daftar,
+  default fetch 100 baris per halaman, tombol muat ulang reset ke halaman 0.
+
+**Fix #2 — chunk Promise.all signed-URL ≤ 25 paralel**
+- `b2b_bulk_list_batches` dengan `include_master_policy_url=true`
+  sebelumnya memicu satu panggilan Supabase Storage `createSignedUrl` per
+  batch dalam satu `Promise.all` — fan-out tak terbatas.
+- Klien dengan ratusan batch ISSUED membuka ratusan koneksi Storage dari
+  satu request edge function, menguras budget koneksi fungsi.
+- Sekarang dieksekusi dalam gelombang 25 paralel: ratusan baris tetap
+  cepat (latensi ~ latensi satu panggilan), tetapi tidak meledakkan pool.
+
+**Fix #3 — cap IN-list di `b2b_my_payments` ke 500 terbaru**
+- `.or('batch_id.in.(uuid,uuid,…)')` pada klien dengan ribuan batch bisa
+  melewati batas panjang URL PostgREST (~8 KB), menghasilkan HTTP 414
+  atau respon terpotong secara diam-diam.
+- UUID aman secara injeksi (hanya hex + dash), tetapi panjang total URL
+  tidak. Owner-lookup sekarang `ORDER BY created_at DESC LIMIT 500` baik
+  untuk `sp_b2b_batches` maupun `sp_policy_orders`.
+- Indeks yang dipakai: `idx_sp_b2b_batches_client` (`client_id`,
+  `created_at DESC`) sudah ada; `idx_sp_policy_orders_client` ada untuk
+  WHERE, ORDER BY melakukan sort di memory pada max 500 baris — biaya
+  dapat diabaikan.
+
+### Blast radius
+
+- `supabase/functions/data-gateway/actions/b2bBulk.ts` — fix #1, #2, #3.
+- `services/b2bBulk.ts` — ekspos `limit`/`offset` pada `getMyB2BPayments`.
+- `components/b2b/B2BPayments.tsx` — paginasi UI.
+- **Tidak ada perubahan skema.** Backward-compatible: pemanggil `b2b_my_payments`
+  tanpa `limit` masih mendapat default 100 (bukan 500 — penurunan silent,
+  tapi menghindari truncation diam adalah tujuan utama).
+
+### ⚠️ Butuh deploy edge function
+
+Perubahan di `supabase/functions/` tidak otomatis masuk produksi:
+```
+supabase functions deploy data-gateway --project-ref uyjgeteelnswphyzkjwi
+```
+
+Catatan versi: v2.9.26 adalah polish tombol Google admin login (PR #408,
+belum di-merge). Nomor 2.9.27 di PR ini dipilih agar tidak bertabrakan
+dengan penomoran PR tersebut. Setelah kedua PR merge, versi final di
+`main` akan 2.9.27 (karena 2.9.27 > 2.9.26 dan `src/version.ts` pakai
+nilai paling akhir).
+
 ## v2.9.25 - 2026-11-20
 
 ### Portal B2B — fitur baru dari roadmap (#5 & #2)
