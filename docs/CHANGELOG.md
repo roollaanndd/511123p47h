@@ -1,5 +1,66 @@
 # SurePath - Changelog
 
+## v2.9.30 - 2026-11-21
+
+### Stop leaking `error.message` to the browser — 201 call sites
+
+Backlog item dari audit keamanan: 111+ tempat di data-gateway yang
+mengembalikan `error.message` mentah dari Supabase/PostgREST/thrown
+Error ke klien. Pesan Postgres membocorkan nama tabel ("relation
+'sp_policy_orders' does not exist"), nama constraint ("duplicate key
+value violates unique constraint 'uq_sp_users_email'"), nama kolom,
+dan potongan SQL — berguna untuk penyerang yang memetakan skema, tak
+berguna bagi pengguna sah.
+
+**Modul baru** `supabase/functions/_shared/errorMap.ts`:
+- `safeError(err, defaultStatus?)` — map any thrown value / Supabase
+  error → `{ body: { error, code }, status }`.
+- Postgres SQLSTATE mapping: `23505` → `CONFLICT`+409,
+  `23503/23502/23514` → `VALIDATION_FAILED`+400, `42xxx` →
+  `INTERNAL_ERROR`+500 (syntax/permission adalah bug kita),
+  `PGRST116` → `NOT_FOUND`+404, `53xxx` → `UPSTREAM_ERROR`+502.
+- `scrub()` menghapus pola Postgres paling umum: nama `sp_*`, string
+  "relation X does not exist", "duplicate key value", "null value in
+  column X", "violates foreign key constraint", "violates check
+  constraint".
+- Pesan > 220 char otomatis diganti "Terjadi kesalahan pada server."
+  (biasanya SQL lengkap + hint + detail — tidak ada manusia yang mau
+  membacanya).
+
+**Response shape baru** di setiap action:
+```json
+{ "error": "<pesan aman pendek>", "code": "VALIDATION_FAILED" }
+```
+
+Field `code` adalah mesin-readable stabil. Klien UI bisa `switch`
+di-atasnya untuk memutuskan tone (destructive vs recoverable) tanpa
+mem-parse pesan `error` yang bisa berubah.
+
+**Migrasi** via `scripts/apply-error-codes.mjs`:
+- 20 file action tersentuh
+- 178 call site pola `return json({ error: error.message }, N)` diganti
+- 23 call site pola `return err(error.message, N)` diganti
+- 20 import `safeError` ditambahkan
+- Script idempoten; aman dijalankan ulang
+
+**Backward compatibility**:
+- `GatewayResponse.code?: string` ditambah di `services/db.ts` (optional)
+- Klien existing yang hanya baca `response.error` tetap bekerja
+- Field baru hanya menambah, tidak mengubah struktur yang ada
+
+**Server-side logs** tetap mencatat raw `err.message` via
+`recordActivity` di `index.ts` dengan `request_id` — dukungan teknis
+dapat menelusuri penyebab asli dari error chip pengguna.
+
+### Butuh deploy edge function
+
+```
+supabase functions deploy data-gateway --project-ref uyjgeteelnswphyzkjwi
+```
+
+Atau: workflow `.github/workflows/deploy-edge-functions.yml` otomatis
+deploy setelah merge ke main (secrets sudah ter-set per v2.9.29 run).
+
 ## v2.9.29 - 2026-11-21
 
 ### Audit keamanan 27-item + file upload guard

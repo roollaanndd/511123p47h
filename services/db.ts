@@ -23,6 +23,14 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 export interface GatewayResponse {
   data?: any;
   error?: string;
+  /**
+   * Stable machine-readable error code (v2.9.30+). Values:
+   * 'VALIDATION_FAILED' | 'UNAUTHORIZED' | 'FORBIDDEN' | 'NOT_FOUND' |
+   * 'CONFLICT' | 'RATE_LIMITED' | 'INTERNAL_ERROR' | 'UPSTREAM_ERROR'.
+   * Client UIs can switch on this to decide tone (destructive vs
+   * recoverable) without parsing the human-readable `error` message.
+   */
+  code?: string;
   status?: number;
   existed?: boolean;
   [key: string]: unknown;

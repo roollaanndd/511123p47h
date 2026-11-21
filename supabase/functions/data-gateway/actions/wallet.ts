@@ -3,6 +3,7 @@
 import type { GatewayContext, ActionResult } from './types.ts';
 
 // json() helper — returns ActionResult (main index.ts converts to Response)
+import { safeError } from '../../_shared/errorMap.ts';
 const json = (body: unknown, status = 200): ActionResult => ({ status, body });
 
 export async function handleWalletAction(action: string, ctx: GatewayContext): Promise<ActionResult | null> {
@@ -28,7 +29,7 @@ export async function handleWalletAction(action: string, ctx: GatewayContext): P
           .limit(Number(params.limit ?? 200));
         if (params.status) q = q.eq('status', params.status);
         const { data, error } = await q;
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         return json({ data });
       }
 
@@ -99,7 +100,7 @@ export async function handleWalletAction(action: string, ctx: GatewayContext): P
           .eq('status', wd.status)
           .select()
           .maybeSingle();
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         if (!data) return json({ error: 'Withdrawal state changed, please retry' }, 409);
         return json({ data });
       }
@@ -135,7 +136,7 @@ export async function handleWalletAction(action: string, ctx: GatewayContext): P
           .in('status', PENDING_STATES)
           .select('id')
           .maybeSingle();
-        if (updErr) return json({ error: updErr.message }, 400);
+        if (updErr) { const _err = safeError(updErr); return json(_err.body, _err.status); }
         if (!claimed) return json({ error: 'Withdrawal state changed, please retry' }, 409);
         await db.rpc('reverse_withdrawal', {
           p_withdrawal_id: params.withdrawal_id, p_agent_id: wd.agent_id,
@@ -158,7 +159,7 @@ export async function handleWalletAction(action: string, ctx: GatewayContext): P
           order_id: params.order_id,
           description: params.description ?? 'Komisi polis',
         });
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         await db.rpc('increment_coins_balance', { p_agent_id: params.agent_id, p_delta: coins });
         return json({ data: { success: true } });
       }
@@ -181,7 +182,7 @@ export async function handleWalletAction(action: string, ctx: GatewayContext): P
           rp_value: -(coins * 1000),
           description: params.description ?? 'Pencairan koin',
         });
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         await db.rpc('increment_coins_balance', { p_agent_id: caller.spUser.id, p_delta: -coins });
         return json({ data: { success: true } });
       }
@@ -194,7 +195,7 @@ export async function handleWalletAction(action: string, ctx: GatewayContext): P
           .select('agent_id, commission_amount')
           .eq('status', 'PAID')
           .gte('created_at', startOfMonth);
-        if (commErr) return json({ error: commErr.message }, 400);
+        if (commErr) { const _err = safeError(commErr); return json(_err.body, _err.status); }
         const map: Record<string, number> = {};
         (commData ?? []).forEach((r: any) => { map[r.agent_id] = (map[r.agent_id] ?? 0) + (r.commission_amount ?? 0); });
         const agentIds = Object.keys(map);
@@ -277,7 +278,7 @@ export async function handleWalletAction(action: string, ctx: GatewayContext): P
         if (deductErr) {
           // Rollback withdrawal insert
           await db.from('sp_withdrawals').update({ status: 'CANCELLED' }).eq('id', wd.id);
-          return json({ error: deductErr.message }, 400);
+          { const _err = safeError(deductErr); return json(_err.body, _err.status); }
         }
 
         return json({ data: { success: true, withdrawal_id: wd.id } });

@@ -22,6 +22,7 @@ import { isUntrustedEmail } from '../../_shared/trust.ts';
 import { sanitizeReferralCode, pickUplineMatch, generateUniqueUserCode } from '../../_shared/referral.ts';
 import { logB2BActivity } from '../../_shared/b2bActivityLog.ts';
 
+import { safeError } from '../../_shared/errorMap.ts';
 const json = (body: unknown, status = 200): ActionResult => ({ status, body });
 
 // Per-kapabilitas, bukan `caller.isAdmin`. ADMIN_ROLES di index.ts memuat
@@ -225,14 +226,14 @@ export async function handleMitraAccountsAction(
           email_confirm: true,
           user_metadata: { ...authMeta, must_change_password: true },
         });
-        if (createErr) return json({ error: createErr.message }, 400);
+        if (createErr) { const _err = safeError(createErr); return json(_err.body, _err.status); }
         authUserId = created.user?.id ?? null;
       } else {
         const { data: invited, error: inviteErr } = await db.auth.admin.inviteUserByEmail(email, {
           redirectTo: `${APP_ORIGIN}/agapps`,
           data: authMeta,
         });
-        if (inviteErr) return json({ error: inviteErr.message }, 400);
+        if (inviteErr) { const _err = safeError(inviteErr); return json(_err.body, _err.status); }
         authUserId = invited.user?.id ?? null;
       }
       if (!authUserId) return json({ error: 'Gagal membuat akun auth' }, 500);
@@ -289,7 +290,7 @@ export async function handleMitraAccountsAction(
         // profil: mitranya bisa masuk, tidak punya baris sp_users, dan
         // ensure_profile akan membuatkannya sebagai CUSTOMER.
         await db.auth.admin.deleteUser(authUserId).catch(() => {});
-        return json({ error: profileErr.message }, 400);
+        { const _err = safeError(profileErr); return json(_err.body, _err.status); }
       }
 
       db.from('sp_admin_notifications').insert({
@@ -414,14 +415,14 @@ export async function handleMitraAccountsAction(
           // permanen (kecuali require_change eksplisit, lihat di atas).
           user_metadata: { ...authMeta, ...(requireChange ? { must_change_password: true } : {}) },
         });
-        if (createErr) return json({ error: createErr.message }, 400);
+        if (createErr) { const _err = safeError(createErr); return json(_err.body, _err.status); }
         authUserId = created.user?.id ?? null;
       } else {
         const { data: invited, error: inviteErr } = await db.auth.admin.inviteUserByEmail(email, {
           redirectTo: `${APP_ORIGIN}/b2bapps`,
           data: authMeta,
         });
-        if (inviteErr) return json({ error: inviteErr.message }, 400);
+        if (inviteErr) { const _err = safeError(inviteErr); return json(_err.body, _err.status); }
         authUserId = invited.user?.id ?? null;
       }
       if (!authUserId) return json({ error: 'Gagal membuat akun auth' }, 500);
@@ -494,7 +495,7 @@ export async function handleMitraAccountsAction(
         .eq('role', 'B2B_CLIENT')
         .order('created_at', { ascending: false })
         .limit(500);
-      if (error) return json({ error: error.message }, 400);
+      if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
       // Proyeksi eksplisit — KTP/NPWP tidak ikut ke daftar. Panel edit memanggil
       // admin_get_b2b_user terpisah hanya saat admin membuka modal edit.
       const users = (data ?? []).map((u: Record<string, any>) => projectB2BProfile(u));
@@ -511,7 +512,7 @@ export async function handleMitraAccountsAction(
 
       const { data: target, error: targetErr } = await db.from('sp_users')
         .select(B2B_PROFILE_SELECT).eq('id', userId).maybeSingle();
-      if (targetErr) return json({ error: targetErr.message }, 400);
+      if (targetErr) { const _err = safeError(targetErr); return json(_err.body, _err.status); }
       if (!target || target.role !== 'B2B_CLIENT') {
         return json({ error: 'Pengguna B2B tidak ditemukan' }, 404);
       }
@@ -533,7 +534,7 @@ export async function handleMitraAccountsAction(
 
       const { data: target, error: targetErr } = await db.from('sp_users')
         .select(B2B_PROFILE_SELECT).eq('id', userId).maybeSingle();
-      if (targetErr) return json({ error: targetErr.message }, 400);
+      if (targetErr) { const _err = safeError(targetErr); return json(_err.body, _err.status); }
       if (!target || target.role !== 'B2B_CLIENT') {
         return json({ error: 'Pengguna B2B tidak ditemukan' }, 404);
       }
@@ -561,7 +562,7 @@ export async function handleMitraAccountsAction(
         .eq('b2b_profile_version', expectedVersion)
         .select(B2B_PROFILE_SELECT)
         .maybeSingle();
-      if (updateErr) return json({ error: updateErr.message }, 400);
+      if (updateErr) { const _err = safeError(updateErr); return json(_err.body, _err.status); }
       if (!updated) {
         return json({
           error: 'Data pengguna sudah berubah. Muat ulang lalu coba lagi.',
@@ -596,7 +597,7 @@ export async function handleMitraAccountsAction(
 
       const { data: target, error: targetErr } = await db.from('sp_users')
         .select(B2B_PROFILE_SELECT).eq('id', userId).maybeSingle();
-      if (targetErr) return json({ error: targetErr.message }, 400);
+      if (targetErr) { const _err = safeError(targetErr); return json(_err.body, _err.status); }
       if (!target || target.role !== 'B2B_CLIENT') {
         return json({ error: 'Pengguna B2B tidak ditemukan' }, 404);
       }
@@ -627,7 +628,7 @@ export async function handleMitraAccountsAction(
         .eq('b2b_profile_version', version)
         .select(B2B_PROFILE_SELECT)
         .maybeSingle();
-      if (updateErr) return json({ error: updateErr.message }, 400);
+      if (updateErr) { const _err = safeError(updateErr); return json(_err.body, _err.status); }
       if (!updated) {
         return json({
           error: 'Data pengguna sudah berubah. Muat ulang lalu coba lagi.',
@@ -667,7 +668,7 @@ export async function handleMitraAccountsAction(
 
       const { data: target, error: targetErr } = await db.from('sp_users')
         .select(B2B_PROFILE_SELECT).eq('id', userId).maybeSingle();
-      if (targetErr) return json({ error: targetErr.message }, 400);
+      if (targetErr) { const _err = safeError(targetErr); return json(_err.body, _err.status); }
       if (!target || target.role !== 'B2B_CLIENT') {
         return json({ error: 'Pengguna B2B tidak ditemukan' }, 404);
       }
@@ -679,7 +680,7 @@ export async function handleMitraAccountsAction(
       // saja berarti menghapus seluruh item polis + pembayaran terkait.
       const { data: batches, error: batchErr } = await db.from('sp_b2b_batches')
         .select('id, status').eq('client_id', userId);
-      if (batchErr) return json({ error: batchErr.message }, 400);
+      if (batchErr) { const _err = safeError(batchErr); return json(_err.body, _err.status); }
       if ((batches ?? []).length > 0) {
         return json({
           error: `Pengguna masih memiliki ${(batches ?? []).length} batch polis. Selesaikan atau batalkan batch terlebih dahulu.`,
@@ -706,7 +707,7 @@ export async function handleMitraAccountsAction(
       if (auditErr) return json({ error: 'Gagal menulis audit penghapusan', code: 'AUDIT_WRITE_FAILED' }, 500);
 
       const { error: delErr } = await db.from('sp_users').delete().eq('id', userId);
-      if (delErr) return json({ error: delErr.message }, 400);
+      if (delErr) { const _err = safeError(delErr); return json(_err.body, _err.status); }
       await db.auth.admin.deleteUser(String(target.id)).catch(() => {});
 
       return json({ data: { id: target.id, email: target.email } });
@@ -806,14 +807,14 @@ export async function handleMitraAccountsAction(
           email_confirm: true,
           user_metadata: { ...authMeta, must_change_password: true },
         });
-        if (createErr) return json({ error: createErr.message }, 400);
+        if (createErr) { const _err = safeError(createErr); return json(_err.body, _err.status); }
         authUserId = created.user?.id ?? null;
       } else {
         const { data: invited, error: inviteErr } = await db.auth.admin.inviteUserByEmail(email, {
           redirectTo: `${APP_ORIGIN}/admin`,
           data: authMeta,
         });
-        if (inviteErr) return json({ error: inviteErr.message }, 400);
+        if (inviteErr) { const _err = safeError(inviteErr); return json(_err.body, _err.status); }
         authUserId = invited.user?.id ?? null;
       }
       if (!authUserId) return json({ error: 'Gagal membuat akun auth' }, 500);
@@ -833,7 +834,7 @@ export async function handleMitraAccountsAction(
         // Hindari akun auth yatim — ensure_profile akan membuatnya sebagai
         // CUSTOMER kalau ditinggal, dan itu lebih buruk daripada gagal total.
         await db.auth.admin.deleteUser(authUserId).catch(() => {});
-        return json({ error: profileErr.message }, 400);
+        { const _err = safeError(profileErr); return json(_err.body, _err.status); }
       }
 
       db.from('sp_admin_notifications').insert({
@@ -867,7 +868,7 @@ export async function handleMitraAccountsAction(
 
       const { data: target, error: targetErr } = await db.from('sp_users')
         .select('id, email, name, role').eq('id', String(params.user_id)).maybeSingle();
-      if (targetErr) return json({ error: targetErr.message }, 400);
+      if (targetErr) { const _err = safeError(targetErr); return json(_err.body, _err.status); }
       if (!target) return json({ error: 'Mitra tidak ditemukan' }, 404);
       // Aksi ini hidup di layar Manajemen Mitra; membiarkannya menyentuh
       // MASTER_ADMIN atau ADMIN lain menjadikannya alat pengambilalihan akun.
@@ -929,7 +930,7 @@ export async function handleMitraAccountsAction(
 
       const { data: target, error: targetErr } = await db.from('sp_users')
         .select('id, email, name, role').eq('id', String(params.user_id)).maybeSingle();
-      if (targetErr) return json({ error: targetErr.message }, 400);
+      if (targetErr) { const _err = safeError(targetErr); return json(_err.body, _err.status); }
       if (!target) return json({ error: 'Mitra tidak ditemukan' }, 404);
       // v2.8.8 — klien korporat ikut didukung: MASTER_ADMIN bisa menyetel
       // ulang kata sandi B2B_CLIENT secara manual, dan sandi itu berlaku
@@ -987,7 +988,7 @@ export async function handleMitraAccountsAction(
           temp_password_set_by: caller.email,
         },
       });
-      if (updErr) return json({ error: updErr.message }, 400);
+      if (updErr) { const _err = safeError(updErr); return json(_err.body, _err.status); }
 
       // Penyetelan kredensial oleh orang lain harus terlihat tanpa harus
       // menggali log. sp_activity_log sudah mencatatnya otomatis di dispatcher;
@@ -1138,7 +1139,7 @@ export async function handleMitraAccountsAction(
       const { data: signed, error } = await db.storage
         .from('kyc-documents')
         .createSignedUrl(entry.path, 300); // 5 menit
-      if (error) return json({ error: error.message }, 500);
+      if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
       return json({ data: { signed_url: signed?.signedUrl, path: entry.path } });
     }
 

@@ -4,6 +4,7 @@ import type { GatewayContext, ActionResult } from './types.ts';
 import { clayPatch, parseHighlightBullets } from './clayFields.ts';
 
 // json() helper — returns ActionResult (main index.ts converts to Response)
+import { safeError } from '../../_shared/errorMap.ts';
 const json = (body: unknown, status = 200): ActionResult => ({ status, body });
 
 // FIX v2.7.56 (audit): token disimpan sebagai hash SHA-256, bukan plaintext.
@@ -48,7 +49,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
           .eq('is_active', true)
           .order('sort_order', { ascending: true })
           .order('name', { ascending: true });
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         return json({ data: data ?? [] });
       }
 
@@ -58,7 +59,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
           .select('id, insurer_id, token, email, expires_at, used_at, created_at')
           .order('created_at', { ascending: false })
           .limit(Number(params.limit ?? 200));
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         // Enrich with insurer name
         const insurerIds = [...new Set((data ?? []).map((t: any) => t.insurer_id))];
         const { data: insurers } = await db.from('sp_insurers')
@@ -75,7 +76,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
         const tokenId = String(params.token_id ?? '');
         if (!tokenId) return json({ error: 'token_id required' }, 400);
         const { error } = await db.from('sp_insurer_auth_tokens').delete().eq('id', tokenId);
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         // Audit notification
         db.from('sp_admin_notifications').insert({
           type: 'INSURER_TOKEN_REVOKED',
@@ -96,7 +97,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
           .select('id, name, pic_email, admin_email')
           .eq('id', insurerId)
           .maybeSingle();
-        if (insErr) return json({ error: insErr.message }, 400);
+        if (insErr) { const _err = safeError(insErr); return json(_err.body, _err.status); }
         if (!ins) return json({ error: 'Insurer not found' }, 404);
         const email = ins.pic_email || ins.admin_email;
         if (!email) return json({ error: 'Insurer has no email configured (pic_email or admin_email)' }, 400);
@@ -124,7 +125,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
           });
           tkErr = retry.error;
         }
-        if (tkErr) return json({ error: tkErr.message }, 400);
+        if (tkErr) { const _err = safeError(tkErr); return json(_err.body, _err.status); }
         const magicLink = `https://myinsurepath.com/insurerapp?token=${newToken}`;
         // Audit notification
         db.from('sp_admin_notifications').insert({
@@ -145,7 +146,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
           .select('id, token, order_id, expires_at, insurer_action, insurer_notes, actioned_at, accessed_count, last_accessed_at, created_at, review_url')
           .order('created_at', { ascending: false })
           .limit(Number(params.limit ?? 200));
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         // Enrich with order info
         const orderIds = [...new Set((data ?? []).map((t: any) => t.order_id))];
         const { data: orders } = await db.from('sp_policy_orders')
@@ -173,7 +174,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
         if (params.insurer_id) q = q.eq('insurer_id', params.insurer_id);
         if (params.action) q = q.eq('action', params.action);
         const { data, error } = await q;
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         // Enrich with insurer name + order number
         const insurerIds = [...new Set((data ?? []).map((l: any) => l.insurer_id).filter(Boolean))];
         const orderIds = [...new Set((data ?? []).map((l: any) => l.order_id).filter(Boolean))];
@@ -202,7 +203,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
           .select('*')
           .eq('insurer_id', insurerId)
           .maybeSingle();
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         return json({ data });
       }
 
@@ -226,7 +227,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
           highlight_bullets: bullets.value,
           featured: clay.patch.featured === true,
         }).select().single();
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         logActivity(null, null, 'INSURER_CREATED', { insurer_id: (data as any)?.id, name: params.name });
         return json({ data });
       }
@@ -254,7 +255,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
           updates.highlight_bullets = bullets.value;
         }
         const { data, error } = await db.from('sp_insurers').update(updates).eq('id', insurerId).select().maybeSingle();
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         return json({ data });
       }
 
@@ -263,7 +264,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
         const insurerId = String(params.insurer_id ?? '');
         if (!insurerId) return json({ error: 'insurer_id required' }, 400);
         const { error } = await db.from('sp_insurers').delete().eq('id', insurerId);
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         logActivity(insurerId, null, 'INSURER_DELETED', { insurer_id: insurerId });
         return json({ data: { success: true } });
       }
@@ -288,11 +289,11 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
         if (params.max_vehicle_age_years) payload.max_vehicle_age_years = Number(params.max_vehicle_age_years);
         if (params.id) {
           const { data, error } = await db.from('sp_insurer_products').update(payload).eq('id', params.id).select().maybeSingle();
-          if (error) return json({ error: error.message }, 400);
+          if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
           return json({ data });
         } else {
           const { data, error } = await db.from('sp_insurer_products').insert(payload).select().single();
-          if (error) return json({ error: error.message }, 400);
+          if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
           return json({ data });
         }
       }
@@ -302,7 +303,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
         const productId = String(params.product_id ?? '');
         if (!productId) return json({ error: 'product_id required' }, 400);
         const { error } = await db.from('sp_insurer_products').delete().eq('id', productId);
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         return json({ data: { success: true } });
       }
 
@@ -315,7 +316,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
           is_active: false,
           rates: params.rates ?? {},
         }).select().single();
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         return json({ data });
       }
 
@@ -325,7 +326,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
         if (!rateSetId) return json({ error: 'rate_set_id required' }, 400);
         await db.from('sp_ojk_rate_sets').update({ is_active: false }).eq('is_active', true);
         const { data, error } = await db.from('sp_ojk_rate_sets').update({ is_active: true, updated_at: new Date().toISOString() }).eq('id', rateSetId).select().maybeSingle();
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         return json({ data });
       }
 
@@ -334,7 +335,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
         const rateSetId = String(params.rate_set_id ?? '');
         if (!rateSetId) return json({ error: 'rate_set_id required' }, 400);
         const { error } = await db.from('sp_ojk_rate_sets').delete().eq('id', rateSetId);
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         return json({ data: { success: true } });
       }
 
@@ -360,7 +361,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
           }, { onConflict: 'insurer_id' })
           .select()
           .maybeSingle();
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         logActivity(insurerId, null, 'API_CONFIG_SAVED', { endpoint_url: endpointUrl, is_active: isActive });
         return json({ data });
       }
@@ -373,7 +374,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
           .select('id, token, order_id, expires_at, insurer_action, insurer_notes, actioned_at, accessed_count, reminder_count')
           .eq('token', token)
           .maybeSingle();
-        if (rtErr) return json({ error: rtErr.message }, 400);
+        if (rtErr) { const _err = safeError(rtErr); return json(_err.body, _err.status); }
         if (!rt) return json({ error: 'Invalid token' }, 404);
         if (new Date(rt.expires_at) < new Date()) return json({ error: 'Token expired' }, 410);
         // Increment accessed_count (non-blocking)
@@ -384,7 +385,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
           .select('*')
           .eq('id', rt.order_id)
           .maybeSingle();
-        if (ordErr) return json({ error: ordErr.message }, 400);
+        if (ordErr) { const _err = safeError(ordErr); return json(_err.body, _err.status); }
         if (!order) return json({ error: 'Order not found' }, 404);
         // Load insurer info
         let insurer: any = null;
@@ -416,7 +417,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
           .select('id, order_id, expires_at, insurer_action')
           .eq('token', token)
           .maybeSingle();
-        if (rtErr) return json({ error: rtErr.message }, 400);
+        if (rtErr) { const _err = safeError(rtErr); return json(_err.body, _err.status); }
         if (!rt) return json({ error: 'Invalid token' }, 404);
         if (new Date(rt.expires_at) < new Date()) return json({ error: 'Token expired' }, 410);
         if (rt.insurer_action) return json({ error: 'Token already acted on', existing_action: rt.insurer_action }, 409);
@@ -427,7 +428,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
           .select('id, status')
           .eq('id', rt.order_id)
           .maybeSingle();
-        if (curErr) return json({ error: curErr.message }, 400);
+        if (curErr) { const _err = safeError(curErr); return json(_err.body, _err.status); }
         if (!currentOrder) return json({ error: 'Order not found' }, 404);
         if (currentOrder.status !== 'SUBMITTED' && currentOrder.status !== 'UNDER_REVIEW') {
           return json({ error: `Order tidak dapat diputuskan pada status ${currentOrder.status}.` }, 409);
@@ -439,7 +440,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
           insurer_notes: notes,
           actioned_at: ts,
         }).eq('id', rt.id);
-        if (updTokenErr) return json({ error: updTokenErr.message }, 400);
+        if (updTokenErr) { const _err = safeError(updTokenErr); return json(_err.body, _err.status); }
         // Map insurer action → order status
         const orderStatus = action === 'APPROVED' ? 'APPROVED'
           : action === 'REQUEST_INFO' ? 'UNDER_REVIEW'
@@ -455,7 +456,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
           reviewed_at: ts,
           updated_at: ts,
         }).eq('id', rt.order_id).select('id, order_number, client_name, agent_id, client_id, product_name, insurer_id').maybeSingle();
-        if (ordErr) return json({ error: ordErr.message }, 400);
+        if (ordErr) { const _err = safeError(ordErr); return json(_err.body, _err.status); }
         // Insert admin notification
         const decisionLabel = action === 'APPROVED' ? 'menyetujui' : action === 'REQUEST_INFO' ? 'meminta info tambahan untuk' : 'menolak';
         db.from('sp_admin_notifications').insert({
@@ -512,7 +513,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
         if (!token) return json({ error: 'token required' }, 400);
         // FIX v2.7.56 (audit): validasi hash-first (fallback plaintext lama).
         const { data: authToken, error: authErr } = await findInsurerAuthToken(db, token);
-        if (authErr) return json({ error: authErr.message }, 400);
+        if (authErr) { const _err = safeError(authErr); return json(_err.body, _err.status); }
         if (!authToken) return json({ error: 'Invalid token' }, 404);
         if (new Date(authToken.expires_at) < new Date()) return json({ error: 'Token expired' }, 410);
         // ── Rate limit per insurer (200 req/hour) ───────────────────────────
@@ -525,7 +526,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
           .select('id, name, logo_url, admin_name, admin_email, pic_name, pic_email, pic_phone')
           .eq('id', authToken.insurer_id)
           .maybeSingle();
-        if (insErr) return json({ error: insErr.message }, 400);
+        if (insErr) { const _err = safeError(insErr); return json(_err.body, _err.status); }
         if (!insurer) return json({ error: 'Insurer not found' }, 404);
         // ── Log activity ────────────────────────────────────────────────────
         logActivity(authToken.insurer_id, null, 'DASHBOARD_VIEWED', { email: authToken.email });
@@ -535,7 +536,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
           .eq('insurer_id', insurer.id)
           .order('created_at', { ascending: false })
           .limit(200);
-        if (ordErr) return json({ error: ordErr.message }, 400);
+        if (ordErr) { const _err = safeError(ordErr); return json(_err.body, _err.status); }
         // KPI counts
         const kpi = {
           total: orders?.length ?? 0,
@@ -593,7 +594,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
           .select('id, insurer_id, expires_at')
           .eq('token', token)
           .maybeSingle();
-        if (authErr) return json({ error: authErr.message }, 400);
+        if (authErr) { const _err = safeError(authErr); return json(_err.body, _err.status); }
         if (!authToken) return json({ error: 'Invalid token' }, 404);
         if (new Date(authToken.expires_at) < new Date()) return json({ error: 'Token expired' }, 410);
         // Verify order belongs to this insurer
@@ -602,7 +603,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
           .eq('id', orderId)
           .eq('insurer_id', authToken.insurer_id)
           .maybeSingle();
-        if (ordErr) return json({ error: ordErr.message }, 400);
+        if (ordErr) { const _err = safeError(ordErr); return json(_err.body, _err.status); }
         if (!order) return json({ error: 'Order not found or not assigned to your insurer' }, 404);
         // A decision can only be made while the application is live. Issued,
         // rejected and cancelled orders are terminal.
@@ -628,7 +629,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
           reviewed_at: ts,
           updated_at: ts,
         }).eq('id', orderId);
-        if (updErr) return json({ error: updErr.message }, 400);
+        if (updErr) { const _err = safeError(updErr); return json(_err.body, _err.status); }
         // Notifications
         const decisionLabel = action === 'APPROVED' ? 'menyetujui' : action === 'REQUEST_INFO' ? 'meminta info tambahan untuk' : 'menolak';
         db.from('sp_admin_notifications').insert({
@@ -672,7 +673,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
           .select('id, insurer_id, expires_at')
           .eq('token', token)
           .maybeSingle();
-        if (authErr) return json({ error: authErr.message }, 400);
+        if (authErr) { const _err = safeError(authErr); return json(_err.body, _err.status); }
         if (!authToken) return json({ error: 'Invalid token' }, 404);
         if (new Date(authToken.expires_at) < new Date()) return json({ error: 'Token expired' }, 410);
         // Get all order IDs for this insurer
@@ -687,7 +688,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
           .in('order_id', orderIds)
           .order('created_at', { ascending: false })
           .limit(200);
-        if (payErr) return json({ error: payErr.message }, 400);
+        if (payErr) { const _err = safeError(payErr); return json(_err.body, _err.status); }
         // Map order_id → order info for easy lookup
         const orderMap: Record<string, any> = {};
         for (const o of (orders ?? [])) orderMap[o.id] = o;
@@ -715,7 +716,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
           .select('id, insurer_id, expires_at')
           .eq('token', token)
           .maybeSingle();
-        if (authErr) return json({ error: authErr.message }, 400);
+        if (authErr) { const _err = safeError(authErr); return json(_err.body, _err.status); }
         if (!authToken) return json({ error: 'Invalid token' }, 404);
         if (new Date(authToken.expires_at) < new Date()) return json({ error: 'Token expired' }, 410);
         // Order wajib milik insurer ini
@@ -724,7 +725,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
           .eq('order_number', orderNumber)
           .eq('insurer_id', authToken.insurer_id)
           .maybeSingle();
-        if (ordErr) return json({ error: ordErr.message }, 400);
+        if (ordErr) { const _err = safeError(ordErr); return json(_err.body, _err.status); }
         if (!order) return json({ error: 'Order not found or not assigned to your insurer' }, 404);
 
         const { data: docs, error: docErr } = await db.from('sp_documents')
@@ -732,7 +733,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
           .eq('entity_type', 'policy_order')
           .eq('entity_id', String(order.order_number ?? orderNumber))
           .order('created_at', { ascending: true });
-        if (docErr) return json({ error: docErr.message }, 400);
+        if (docErr) { const _err = safeError(docErr); return json(_err.body, _err.status); }
 
         // Tandatangani setiap objek privat server-side (TTL 300 detik).
         const withUrls = await Promise.all((docs ?? []).map(async (d: any) => {
@@ -758,7 +759,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
           .select('id, insurer_id, expires_at')
           .eq('token', token)
           .maybeSingle();
-        if (authErr) return json({ error: authErr.message }, 400);
+        if (authErr) { const _err = safeError(authErr); return json(_err.body, _err.status); }
         if (!authToken) return json({ error: 'Invalid token' }, 404);
         if (new Date(authToken.expires_at) < new Date()) return json({ error: 'Token expired' }, 410);
         // Verify order belongs to this insurer
@@ -767,7 +768,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
           .eq('id', orderId)
           .eq('insurer_id', authToken.insurer_id)
           .maybeSingle();
-        if (ordErr) return json({ error: ordErr.message }, 400);
+        if (ordErr) { const _err = safeError(ordErr); return json(_err.body, _err.status); }
         if (!order) return json({ error: 'Order not found or not assigned to your insurer' }, 404);
         // The UI only offers issuance once an order is approved, but the gateway
         // must enforce it: without this, an insurer could issue a policy for an
@@ -797,7 +798,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
           issued_at: ts,
           updated_at: ts,
         }).eq('id', orderId).select().maybeSingle();
-        if (updErr) return json({ error: updErr.message }, 400);
+        if (updErr) { const _err = safeError(updErr); return json(_err.body, _err.status); }
         // Notifications
         db.from('sp_admin_notifications').insert({
           type: 'POLICY_ISSUED',

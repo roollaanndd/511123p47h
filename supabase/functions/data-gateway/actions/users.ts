@@ -8,6 +8,7 @@ import { sanitizeReferralCode, pickUplineMatch } from '../../_shared/referral.ts
 import { generateUniqueUserCode } from '../../_shared/referral.ts';
 
 // json() helper — returns ActionResult (main index.ts converts to Response)
+import { safeError } from '../../_shared/errorMap.ts';
 const json = (body: unknown, status = 200): ActionResult => ({ status, body });
 
 export async function handleUsersAction(action: string, ctx: GatewayContext): Promise<ActionResult | null> {
@@ -78,7 +79,7 @@ export async function handleUsersAction(action: string, ctx: GatewayContext): Pr
           .single();
         if (agErr) {
           console.error('accept_agreement error:', agErr);
-          return json({ error: agErr.message }, 400);
+          { const _err = safeError(agErr); return json(_err.body, _err.status); }
         }
         return json({ data: agreement });
       }
@@ -242,7 +243,7 @@ export async function handleUsersAction(action: string, ctx: GatewayContext): Pr
           }
         }
         const { data, error } = await db.from('sp_users').insert(insertRow).select().single();
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
 
         // ── Polis yang sudah dijual sebelum nasabahnya punya akun ──────────
         //
@@ -298,14 +299,14 @@ export async function handleUsersAction(action: string, ctx: GatewayContext): Pr
           .neq('id', caller.spUser.id)
           .order('created_at', { ascending: true })
           .limit(5);
-        if (lookupErr) return json({ error: lookupErr.message }, 400);
+        if (lookupErr) { const _err = safeError(lookupErr); return json(_err.body, _err.status); }
         const upline = pickUplineMatch(uplineCandidates, code);
         if (!upline) return json({ error: 'Invalid referral code' }, 404);
         const { error } = await db
           .from('sp_users')
           .update({ upline_id: upline.id, updated_at: new Date().toISOString() })
           .eq('id', caller.spUser.id);
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         return json({ data: { upline_id: upline.id } });
       }
 
@@ -313,7 +314,7 @@ export async function handleUsersAction(action: string, ctx: GatewayContext): Pr
         if (!caller.spUser) return json({ error: 'No profile' }, 403);
         const agentId = caller.isAdmin && params.agent_id ? params.agent_id : caller.spUser.id;
         const { data, error } = await db.from('sp_clients').select('*').eq('agent_id', agentId);
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         return json({ data });
       }
 
@@ -325,7 +326,7 @@ export async function handleUsersAction(action: string, ctx: GatewayContext): Pr
           .from('sp_users')
           .update({ fcm_token: token, updated_at: new Date().toISOString() })
           .eq('id', caller.spUser.id);
-        if (updErr) return json({ error: updErr.message }, 400);
+        if (updErr) { const _err = safeError(updErr); return json(_err.body, _err.status); }
         return json({ data: { ok: true } });
       }
 
@@ -345,7 +346,7 @@ export async function handleUsersAction(action: string, ctx: GatewayContext): Pr
           if (k in params) updates[k] = params[k];
         }
         const { data, error } = await db.from('sp_users').update(updates).eq('id', caller.spUser.id).select().maybeSingle();
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         return json({ data });
       }
 
@@ -357,7 +358,7 @@ export async function handleUsersAction(action: string, ctx: GatewayContext): Pr
         // dapat menampilkan data yang tersimpan; kolom sensitif (PIN, token)
         // tetap diabaikan.
         const { data, error } = await db.from('sp_users').select('id, email, name, phone, address, role, agent_code, tier, verified, commission_rate, company_name, company_reg_no, company_industry, profile_photo_url, created_at').eq('id', targetId).maybeSingle();
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         return json({ data });
       }
 
@@ -371,7 +372,7 @@ export async function handleUsersAction(action: string, ctx: GatewayContext): Pr
           tnc_version: tncVersion,
           accepted_at: new Date().toISOString(),
         });
-        if (tcErr) return json({ error: tcErr.message }, 400);
+        if (tcErr) { const _err = safeError(tcErr); return json(_err.body, _err.status); }
         // Update sp_users tc_accepted fields
         await db.from('sp_users').update({
           tc_accepted: true,

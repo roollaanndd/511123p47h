@@ -3,6 +3,7 @@
 import type { GatewayContext, ActionResult } from './types.ts';
 
 // json() helper — returns ActionResult (main index.ts converts to Response)
+import { safeError } from '../../_shared/errorMap.ts';
 const json = (body: unknown, status = 200): ActionResult => ({ status, body });
 
 export async function handleAgentsAction(action: string, ctx: GatewayContext): Promise<ActionResult | null> {
@@ -17,7 +18,7 @@ export async function handleAgentsAction(action: string, ctx: GatewayContext): P
           .eq('verified', false)
           .order('created_at', { ascending: false })
           .limit(Number(params.limit ?? 100));
-        if (agErr) return json({ error: agErr.message }, 400);
+        if (agErr) { const _err = safeError(agErr); return json(_err.body, _err.status); }
         // Fetch agreements for these agent ids (parallel)
         const agentIds = (agents ?? []).map((a: any) => a.id);
         let agreements: any[] = [];
@@ -47,7 +48,7 @@ export async function handleAgentsAction(action: string, ctx: GatewayContext): P
           .select('*')
           .eq('id', String(params.agent_id))
           .maybeSingle();
-        if (agErr) return json({ error: agErr.message }, 400);
+        if (agErr) { const _err = safeError(agErr); return json(_err.body, _err.status); }
         if (!agent) return json({ error: 'Agent not found' }, 404);
         // Fetch all agreements for this agent (history)
         const { data: agrHistory } = await db.from('sp_agent_agreements')
@@ -103,7 +104,7 @@ export async function handleAgentsAction(action: string, ctx: GatewayContext): P
           .eq('id', String(params.agent_id))
           .select('id, name, email, verified, trust_score, role, allowed_apps')
           .maybeSingle();
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         // Insert admin notification about the decision
         db.from('sp_admin_notifications').insert({
           type: approve ? 'AGENT_VERIFIED' : 'AGENT_REJECTED',
@@ -136,7 +137,7 @@ export async function handleAgentsAction(action: string, ctx: GatewayContext): P
           q = q.eq('agent_id', caller.spUser.id);
         }
         const { data, error } = await q;
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         return json({ data });
       }
 
@@ -146,7 +147,7 @@ export async function handleAgentsAction(action: string, ctx: GatewayContext): P
         if (params.agent_id) q = q.eq('agent_id', params.agent_id);
         if (params.status)   q = q.eq('status', params.status);
         const { data, error } = await q;
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         return json({ data });
       }
 
@@ -165,7 +166,7 @@ export async function handleAgentsAction(action: string, ctx: GatewayContext): P
         else if (status === 'VERIFIED')  q = q.eq('verified', true);
         // ALL → no verified filter
         const { data: agents, error: agErr } = await q;
-        if (agErr) return json({ error: agErr.message }, 400);
+        if (agErr) { const _err = safeError(agErr); return json(_err.body, _err.status); }
 
         // Attach latest agreement (mirror admin_list_pending_agents behaviour)
         const agentIds = (agents ?? []).map((a: any) => a.id);

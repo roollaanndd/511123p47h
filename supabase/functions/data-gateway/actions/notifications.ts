@@ -3,6 +3,7 @@
 import type { GatewayContext, ActionResult } from './types.ts';
 
 // json() helper — returns ActionResult (main index.ts converts to Response)
+import { safeError } from '../../_shared/errorMap.ts';
 const json = (body: unknown, status = 200): ActionResult => ({ status, body });
 
 export async function handleNotificationsAction(action: string, ctx: GatewayContext): Promise<ActionResult | null> {
@@ -19,7 +20,7 @@ export async function handleNotificationsAction(action: string, ctx: GatewayCont
           .in('agent_id', caller.ownerIds)
           .order('created_at', { ascending: false })
           .limit(50);
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         return json({ data });
       }
 
@@ -29,7 +30,7 @@ export async function handleNotificationsAction(action: string, ctx: GatewayCont
         if (!notifId) return json({ error: 'notification_id required' }, 400);
         const { error } = await db.from('sp_notifications')
           .update({ read: true }).eq('id', notifId).in('agent_id', caller.ownerIds);
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         return json({ data: { success: true } });
       }
 
@@ -37,7 +38,7 @@ export async function handleNotificationsAction(action: string, ctx: GatewayCont
         if (!caller.spUser) return json({ error: 'No profile' }, 403);
         const { error } = await db.from('sp_notifications')
           .update({ read: true }).in('agent_id', caller.ownerIds).eq('read', false);
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         return json({ data: { success: true } });
       }
 
@@ -59,7 +60,7 @@ export async function handleNotificationsAction(action: string, ctx: GatewayCont
           metadata: params.metadata ?? null,
           order_id: params.order_id ?? null,
         }).select().maybeSingle();
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         return json({ data });
       }
 
@@ -77,7 +78,7 @@ export async function handleNotificationsAction(action: string, ctx: GatewayCont
           metadata: params.metadata ?? null,
           order_id: params.order_id ?? null,
         }).select().maybeSingle();
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         return json({ data });
       }
 
@@ -86,7 +87,7 @@ export async function handleNotificationsAction(action: string, ctx: GatewayCont
         let q = db.from('sp_admin_notifications').select('*').order('created_at', { ascending: false }).limit(Number(params.limit ?? 50));
         if (params.unread_only) q = q.eq('read', false);
         const { data, error } = await q;
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         return json({ data });
       }
 
@@ -108,14 +109,14 @@ export async function handleNotificationsAction(action: string, ctx: GatewayCont
           read: false,
           metadata: params.metadata ?? null,
         }).select().maybeSingle();
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         return json({ data });
       }
 
     case 'admin_mark_all_notifications_read': {
         if (!caller.isAdmin) return json({ error: 'Forbidden: admin only' }, 403);
         const { error: updErr } = await db.from('sp_admin_notifications').update({ read: true }).eq('read', false);
-        if (updErr) return json({ error: updErr.message }, 400);
+        if (updErr) { const _err = safeError(updErr); return json(_err.body, _err.status); }
         return json({ data: { success: true } });
       }
 

@@ -7,6 +7,7 @@ import { sendEmailSafe, emailConfigFor } from '../../_shared/email.ts';
 import { renderEmail, dataTableBlock, buttonBlock } from '../../_shared/emailLayout.ts';
 
 // json() helper — returns ActionResult (main index.ts converts to Response)
+import { safeError } from '../../_shared/errorMap.ts';
 const json = (body: unknown, status = 200): ActionResult => ({ status, body });
 
 // Audit v2.7.14 (P1-A): FILTER INJECTION GUARD untuk nilai yang diinterpolasi
@@ -51,7 +52,7 @@ export async function handleOrdersAction(action: string, ctx: GatewayContext): P
           .is('deleted_at', null)
           .order('created_at', { ascending: false })
           .limit(100);
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         return json({ data });
       }
 
@@ -68,7 +69,7 @@ export async function handleOrdersAction(action: string, ctx: GatewayContext): P
           .in('status', ['SUBMITTED', 'UNDER_REVIEW'])
           .select()
           .maybeSingle();
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         if (!data) return json({ error: 'Order not found or cannot be cancelled' }, 404);
         return json({ data });
       }
@@ -83,7 +84,7 @@ export async function handleOrdersAction(action: string, ctx: GatewayContext): P
           .select('id, order_number, client_name, product_name, total_premium, insurer_id, insurer_name, status')
           .eq('id', orderId)
           .maybeSingle();
-        if (ordErr) return json({ error: ordErr.message }, 400);
+        if (ordErr) { const _err = safeError(ordErr); return json(_err.body, _err.status); }
         if (!order) return json({ error: 'Order not found' }, 404);
         if (!order.insurer_id) return json({ error: 'Order has no insurer assigned' }, 400);
 
@@ -92,7 +93,7 @@ export async function handleOrdersAction(action: string, ctx: GatewayContext): P
           .select('id, name, admin_email, pic_email, pic_name')
           .eq('id', order.insurer_id)
           .maybeSingle();
-        if (insErr) return json({ error: insErr.message }, 400);
+        if (insErr) { const _err = safeError(insErr); return json(_err.body, _err.status); }
         const insurerEmail = ins?.pic_email || ins?.admin_email;
         if (!insurerEmail) return json({ error: 'Insurer has no email configured' }, 400);
 
@@ -120,7 +121,7 @@ export async function handleOrdersAction(action: string, ctx: GatewayContext): P
             expires_at: expiresAt,
             accessed_count: 0,
           });
-          if (tkErr) return json({ error: tkErr.message }, 400);
+          if (tkErr) { const _err = safeError(tkErr); return json(_err.body, _err.status); }
         }
 
         const appOrigin = 'https://myinsurepath.com';
@@ -228,7 +229,7 @@ export async function handleOrdersAction(action: string, ctx: GatewayContext): P
         let q = db.from('sp_policy_orders').select('*').is('deleted_at', null).order('created_at', { ascending: false }).limit(Number(params.limit ?? 500));
         if (params.status) q = q.eq('status', String(params.status));
         const { data, error } = await q;
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         return json({ data });
       }
 
@@ -236,7 +237,7 @@ export async function handleOrdersAction(action: string, ctx: GatewayContext): P
         if (!caller.isAdmin) return json({ error: 'Forbidden: admin only' }, 403);
         if (!params.order_id) return json({ error: 'order_id required' }, 400);
         const { data, error } = await db.from('sp_policy_orders').select('*').eq('id', String(params.order_id)).maybeSingle();
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         if (!data) return json({ error: 'Order not found' }, 404);
         return json({ data });
       }
@@ -262,7 +263,7 @@ export async function handleOrdersAction(action: string, ctx: GatewayContext): P
           .maybeSingle();
 
         const { data, error } = await db.from('sp_policy_orders').update(updates).eq('id', params.order_id).select().maybeSingle();
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
 
         // FIX: send notifications on status changes (previously silent — customer/agent never told about approval/rejection)
         const cur = current as any;
@@ -310,7 +311,7 @@ export async function handleOrdersAction(action: string, ctx: GatewayContext): P
           .is('deleted_at', null)
           .order('created_at', { ascending: false })
           .limit(Number(params.limit ?? 200));
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         return json({ data });
       }
 
@@ -603,7 +604,7 @@ export async function handleOrdersAction(action: string, ctx: GatewayContext): P
         insertRow.net_premium = serverTotal;
 
         const { data, error } = await db.from('sp_policy_orders').insert(insertRow).select().single();
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
 
         // FIX v1.44.0 (pentest C3): Atomically increment promo code used_count.
         // Previously: used_count was checked but never incremented → unlimited redemptions.
@@ -671,7 +672,7 @@ export async function handleOrdersAction(action: string, ctx: GatewayContext): P
             .from('sp_policy_orders')
             .select('id')
             .or(ownerFilter);
-          if (ordErr) return json({ error: ordErr.message }, 400);
+          if (ordErr) { const _err = safeError(ordErr); return json(_err.body, _err.status); }
           orderIds = (myOrders ?? []).map((o: any) => String(o.id));
           if (requestedIds) orderIds = orderIds.filter((id) => requestedIds.includes(id));
         }
@@ -682,7 +683,7 @@ export async function handleOrdersAction(action: string, ctx: GatewayContext): P
           .in('order_id', orderIds)
           .is('deleted_at', null)
           .order('created_at', { ascending: false });
-        if (error) return json({ error: error.message }, 400);
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         return json({ data });
       }
 
