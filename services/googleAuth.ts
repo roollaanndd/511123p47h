@@ -215,13 +215,19 @@ export function googleAuthErrorMessage(error: unknown): string {
 // API tetap membebaskan pemanggil untuk menampilkan error di tempatnya sendiri —
 // tidak ada modal atau alert global dari sini.
 
-export interface GoogleButtonOptions {
+// Nama berbeda dengan `GoogleButtonOptions` private di atas yang mendeklarasi
+// bentuk GIS API — TS tidak mengizinkan deklarasi private + export bercampur
+// pada nama yang sama. Nama ini khusus untuk API publik `initializeGoogleButton`.
+export interface GoogleButtonRenderOptions {
   /** Text locale key — defaults to 'id' */
   locale?: string;
   /** Visual size — 'large' = 40px tall (default), 'medium' = 32px */
   size?: 'large' | 'medium';
-  /** 'signin_with' | 'signup_with' | 'continue_with' (default) */
-  text?: 'signin_with' | 'signup_with' | 'continue_with';
+  /**
+   * Button text. GIS mendukung: 'signin' | 'signup' | 'continue_with' | 'signin_with'.
+   * Default 'continue_with' — netral untuk login maupun daftar.
+   */
+  text?: 'signin' | 'signup' | 'continue_with' | 'signin_with';
   /** Container width in px — defaults to its parent's offsetWidth */
   width?: number;
 }
@@ -240,7 +246,7 @@ export interface GoogleButtonHandlers {
 export function initializeGoogleButton(
   container: HTMLElement,
   handlers: GoogleButtonHandlers,
-  options: GoogleButtonOptions = {},
+  options: GoogleButtonRenderOptions = {},
 ): () => void {
   let cancelled = false;
   const clientId = String(import.meta.env.VITE_GOOGLE_CLIENT_ID ?? '').trim();

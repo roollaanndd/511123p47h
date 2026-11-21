@@ -97,7 +97,7 @@ const AuthGate: React.FC<AuthGateProps> = ({
         setError(err.message || t('Google login failed. Please try again.', 'Login Google gagal. Coba lagi.'));
       },
     }, {
-      text: mode === 'REGISTER' ? 'signup_with' : 'continue_with',
+      text: mode === 'REGISTER' ? 'signup' : 'continue_with',
     });
     return cleanup;
     // eslint-disable-next-line react-hooks/exhaustive-deps
