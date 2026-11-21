@@ -191,6 +191,126 @@ export function googleAuthErrorMessage(error: unknown): string {
   return message || GENERIC_START_ERROR;
 }
 
+// ─── Inline Google button (v2.9.28 — flow simplification) ────────────────────
+//
+// Pengganti `signInWithGoogleIdToken()` untuk layar login web. Alih-alih:
+//   SVG kita → click → prompt() → (sering skip) → modal fallback → renderButton
+// kita langsung render tombol Google resmi inline di halaman. Pengguna
+// mengkliknya SATU KALI dan GIS menangani popup pemilih akun sendiri.
+//
+// Alasan penggantian:
+//   - `prompt()` One Tap punya cooldown setelah ditutup pengguna — klik berikutnya
+//     di-skip diam-diam. UX "tombol mati" yang mahal.
+//   - Overlay fallback sudah merender tombol resmi — kita cuma menghindari popup.
+//     Jika kita selalu memakai renderButton, overlay bisa dihapus.
+//   - Tombol resmi Google sudah brand-compliant, accessible, lokalisasi otomatis,
+//     dan bebas kami harus memelihara SVG + hover state replika.
+//
+// Pola pemakaian:
+//   const cleanup = initializeGoogleButton(ref.current, {
+//     onCredential: async ({ data, error }) => { ... },
+//   });
+//   return () => cleanup();
+//
+// API tetap membebaskan pemanggil untuk menampilkan error di tempatnya sendiri —
+// tidak ada modal atau alert global dari sini.
+
+// Nama berbeda dengan `GoogleButtonOptions` private di atas yang mendeklarasi
+// bentuk GIS API — TS tidak mengizinkan deklarasi private + export bercampur
+// pada nama yang sama. Nama ini khusus untuk API publik `initializeGoogleButton`.
+export interface GoogleButtonRenderOptions {
+  /** Text locale key — defaults to 'id' */
+  locale?: string;
+  /** Visual size — 'large' = 40px tall (default), 'medium' = 32px */
+  size?: 'large' | 'medium';
+  /**
+   * Button text. GIS mendukung: 'signin' | 'signup' | 'continue_with' | 'signin_with'.
+   * Default 'continue_with' — netral untuk login maupun daftar.
+   */
+  text?: 'signin' | 'signup' | 'continue_with' | 'signin_with';
+  /** Container width in px — defaults to its parent's offsetWidth */
+  width?: number;
+}
+
+export interface GoogleButtonHandlers {
+  onCredential: (result: Awaited<ReturnType<typeof supabase.auth.signInWithIdToken>>) => void | Promise<void>;
+  onError?: (error: Error) => void;
+}
+
+/**
+ * Mount an official Google sign-in button into `container`. The button handles
+ * the popup directly; our callback receives the Supabase session result.
+ * Returns a cleanup function that cancels any pending prompt (no-op if the
+ * script is still loading).
+ */
+export function initializeGoogleButton(
+  container: HTMLElement,
+  handlers: GoogleButtonHandlers,
+  options: GoogleButtonRenderOptions = {},
+): () => void {
+  let cancelled = false;
+  const clientId = String(import.meta.env.VITE_GOOGLE_CLIENT_ID ?? '').trim();
+  if (!clientId) {
+    handlers.onError?.(new Error('Google login belum dikonfigurasi. Tambahkan VITE_GOOGLE_CLIENT_ID.'));
+    return () => { cancelled = true; };
+  }
+
+  const nonce = createNonce();
+  loadGoogleIdentityServices()
+    .then(async (google) => {
+      if (cancelled) return;
+      const hashedNonce = await nonce.hashedPromise;
+      if (cancelled) return;
+
+      google.accounts.id.initialize({
+        client_id: clientId,
+        nonce: hashedNonce,
+        use_fedcm_for_prompt: false, // not using prompt() — this disables FedCM teasers
+        callback: async (response) => {
+          try {
+            const result = await supabase.auth.signInWithIdToken({
+              provider: 'google',
+              token: response.credential,
+              nonce: nonce.raw,
+            });
+            if (cancelled) return;
+            await handlers.onCredential(result);
+          } catch (error) {
+            if (cancelled) return;
+            handlers.onError?.(error instanceof Error ? error : new Error(googleAuthErrorMessage(error)));
+          }
+        },
+      });
+
+      if (typeof google.accounts.id.renderButton !== 'function') {
+        handlers.onError?.(new Error('Google login tidak dapat dibuka di peramban ini.'));
+        return;
+      }
+
+      // Width must fit the parent. GIS rejects 0 — fall back to 300 if unset.
+      const width = Math.max(200, Math.min(400, options.width ?? container.offsetWidth ?? 300));
+      google.accounts.id.renderButton(container, {
+        type: 'standard',
+        theme: 'outline',
+        size: options.size ?? 'large',
+        shape: 'pill',
+        text: options.text ?? 'continue_with',
+        logo_alignment: 'left',
+        locale: options.locale ?? 'id',
+        width,
+      });
+    })
+    .catch((error: unknown) => {
+      if (cancelled) return;
+      handlers.onError?.(error instanceof Error ? error : new Error(googleAuthErrorMessage(error)));
+    });
+
+  return () => {
+    cancelled = true;
+    try { window.google?.accounts?.id?.cancel?.(); } catch { /* best effort */ }
+  };
+}
+
 export async function signInWithGoogleIdToken(): Promise<NonNullable<Awaited<ReturnType<typeof supabase.auth.signInWithIdToken>>['data']>> {
   const clientId = String(import.meta.env.VITE_GOOGLE_CLIENT_ID ?? '').trim();
   if (!clientId) throw new Error('Google login belum dikonfigurasi. Tambahkan VITE_GOOGLE_CLIENT_ID.');

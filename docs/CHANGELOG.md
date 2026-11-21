@@ -1,5 +1,66 @@
 # SurePath - Changelog
 
+## v2.9.28 - 2026-11-21
+
+### Google sign-in — alur disederhanakan (Proposal #1 + #2)
+
+Audit alur login/daftar Google sebelumnya menemukan dua gesekan utama:
+pop-up One Tap yang bisa cooldown diam-diam, dan form role+HP pasca-OAuth
+yang memutus janji "sekali klik masuk". Dua perbaikan di PR ini.
+
+**Proposal #2 — hapus One Tap, pakai tombol Google resmi inline**
+- `services/googleAuth.ts` mendapat API baru `initializeGoogleButton(container, handlers, options)`:
+  loads GIS script → inisialisasi dengan nonce → `google.accounts.id.renderButton`
+  langsung di container kita. Tanpa `prompt()`, tanpa overlay fallback.
+- `components/AuthGate.tsx` dan `components/admin/AdminLogin.tsx` sekarang
+  merender tombol Google resmi via `<div ref>` + `useEffect`. Replika SVG
+  4-warna + handler onClick + handler `handleGoogleSignIn` yang memanggil
+  `signInWithGoogleIdToken()` semuanya dihapus.
+- Hasil UX: pengguna klik tombol **langsung** → GIS membuka pemilih akun
+  Google → callback → Supabase session. Tidak ada cooldown "tombol mati"
+  pada klik kedua.
+- `signInWithGoogleIdToken()` lama dipertahankan di service untuk jalur
+  mobile Capacitor legacy yang mungkin butuh prompt. Tidak ada pemanggil
+  di kode web.
+
+**Proposal #1 — role picker lebih lembut**
+- `components/AuthGate.tsx`: `intendedRoleOf()` sekarang mempertimbangkan
+  prop `intendedRole` (berasal dari URL `/custapp`/`/agapps`) sebagai
+  fallback saat `user.user_metadata.role` kosong. Dulu pengguna Google
+  yang masuk via `/custapp` selalu diminta memilih role pasca-OAuth
+  karena Google tidak membawa `role` di user_metadata — sekarang URL
+  dihormati dan role picker dilewati.
+- `components/RoleSelectionScreen.tsx`: nomor HP sekarang **opsional**.
+  Google OAuth sudah memverifikasi email, dan layar klaim/beli polis
+  yang benar-benar butuh HP akan memintanya saat itu juga. Label field
+  diperjelas: "Nomor HP (opsional — bisa ditambahkan nanti)". Field
+  perusahaan untuk B2B tetap wajib.
+
+### Blast radius
+
+- `services/googleAuth.ts` — tambah `initializeGoogleButton`, pertahankan
+  `signInWithGoogleIdToken` untuk kompatibilitas. +97 LOC.
+- `components/AuthGate.tsx` — ganti SVG onClick ke `<div ref>` + effect;
+  `intendedRoleOf` + URL fallback; hapus handler mati. Net ~-10 LOC.
+- `components/admin/AdminLogin.tsx` — pola sama. Net ~-20 LOC.
+- `components/RoleSelectionScreen.tsx` — HP opsional, 1 label berubah.
+
+**Tidak butuh deploy edge function.** Pure client; handler OAuth Supabase
+tidak disentuh.
+
+### Catatan trade-off yang jujur
+
+- Tombol resmi Google adalah iframe GIS — kita kehilangan kontrol penuh
+  hover/press state yang sebelumnya dikendalikan via Tailwind. Lebarnya
+  dibatasi [200..400]px dan tinggi "large" ≈ 40px. Container kita
+  memberinya `h-12` + flex center sehingga sejajar dengan tombol submit.
+- Branding: tombol resmi mengikuti pedoman Google secara ketat (bebas
+  review audit). Trade-off visual harmony vs reliability — kami pilih
+  reliability.
+- One Tap kebagusan "magic login" untuk returning Google users hilang.
+  Mitigasi: Supabase session cookie tetap persist, jadi returning user
+  sudah signed-in dan tidak melihat halaman login sama sekali.
+
 ## v2.9.27 - 2026-11-21
 
 ### Gateway B2B — perbaikan dari audit production-readiness
