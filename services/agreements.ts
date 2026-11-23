@@ -26,9 +26,44 @@ export interface SpAgentAgreement {
 
 // Returns the current agent's signed agreement for the active doc version, or null.
 export async function getMyAgreement(): Promise<SpAgentAgreement | null> {
-  const { data, error } = await callGateway('get_my_agreement');
-  if (error) { console.error('getMyAgreement:', error); return null; }
-  return (data as SpAgentAgreement) ?? null;
+  const status = await getMyAgreementStatus();
+  return status.agreement;
+}
+
+export interface MyAgreementStatus {
+  /** Rekaman untuk versi dokumen yang aktif, atau null bila belum/tidak berlaku. */
+  agreement: SpAgentAgreement | null;
+  /** false = perjanjian kemitraan tidak berlaku untuk peran ini (admin/operator). */
+  required: boolean;
+  activeVersion: string | null;
+  /** Terisi hanya bila pengecekan GAGAL — bukan bila memang belum menandatangani. */
+  error: string | null;
+}
+
+/**
+ * Status perjanjian dengan tiga keadaan yang dulu tercampur jadi satu:
+ *   • required=false            → tidak berlaku (admin membuka app mitra)
+ *   • required=true, error=null → berlaku; `agreement` menentukan sudah/belum
+ *   • error terisi              → tidak tahu; pemanggil JANGAN menyimpulkan
+ *                                 "belum menandatangani"
+ * Sebelum ini semua kegagalan menjadi `null` dan gerbang menahan mitra yang
+ * sudah tanda tangan — keluhan "sudah sign tapi ditanya lagi".
+ */
+export async function getMyAgreementStatus(): Promise<MyAgreementStatus> {
+  const res = await callGateway('get_my_agreement');
+  if (res.error) {
+    console.error('getMyAgreementStatus:', res.error);
+    // required=true adalah nilai aman: pemanggil yang lebih tua tetap fail-closed,
+    // tetapi AgentPortal memperlakukan error sebagai "tidak tahu", bukan "belum".
+    return { agreement: null, required: true, activeVersion: null, error: String(res.error) };
+  }
+  return {
+    agreement: (res.data ?? null) as SpAgentAgreement | null,
+    // Server lama tidak mengirim `required`; anggap berlaku (fail-closed).
+    required: res.required !== false,
+    activeVersion: typeof res.active_version === 'string' ? res.active_version : null,
+    error: null,
+  };
 }
 
 // Records the agent's acceptance. Routed through the data-gateway

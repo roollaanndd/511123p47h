@@ -1,5 +1,27 @@
 # SurePath Session Context
-**Updated:** 2026-11-23 (diagnosa error Pathy + log kegagalan ke DB)
+**Updated:** 2026-11-23 (gerbang Perjanjian Mitra: hanya untuk AGENT, tidak diulang bila sudah setuju)
+
+## 23 Nov 2026 — Perjanjian Mitra muncul di admin & diulang setelah ditandatangani
+
+Dua keluhan owner, satu akar: `get_my_agreement` hanya bisa menjawab "ada" /
+"tidak ada". Admin (yang memang tidak punya rekaman) dan mitra yang
+pengecekannya gagal sama-sama menerima `data: null`, lalu `AgentPortal`
+menampilkan gerbang Perjanjian Kemitraan kepada keduanya.
+
+- **Cakupan peran**: `get_my_agreement` (actions/users.ts) kini mengembalikan
+  `required`. Untuk peran selain `AGENT` → `{ data: null, required: false }`,
+  jadi admin/operator yang membuka app mitra (mode pantau) tidak diminta
+  menandatangani kontrak mitra.
+- **Tidak diulang**: jawaban membawa `active_version` (dari `sp_tnc_documents`)
+  dan error sungguhan bila query gagal. `getMyAgreementStatus()` di
+  `services/agreements.ts` memisahkan tiga keadaan: tidak berlaku, sudah/belum
+  menandatangani, dan gagal-mengetahui. AgentPortal hanya menahan aplikasi bila
+  server **memastikan** belum ada rekaman untuk versi aktif; error jaringan
+  tidak lagi disamakan dengan "belum tanda tangan".
+- Versi tetap dihitung dari dokumen T&C aktif (`getActiveTncVersion`), jadi
+  menerbitkan versi baru memang mewajibkan tanda tangan ulang — sesuai
+  permintaan "kecuali ada pembaruan".
+- Tes: `services/__tests__/agreementGate.test.ts` (8 tes).
 
 ## 23 Nov 2026 — Pathy error AUTH: akar & jejak yang akhirnya tercatat
 

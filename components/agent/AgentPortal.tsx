@@ -13,7 +13,7 @@ import {
   getAgentClients,
   getAgentStats,
   getNotifications,
-  getMyAgreement,
+  getMyAgreementStatus,
   getMyAccountTrust,
   getMyWallet,
   type SpCommission,
@@ -144,12 +144,32 @@ const AgentPortal: React.FC<Props> = ({ agent, onLogout, lang }) => {
   const [dataLoadError, setDataLoadError] = useState(false);
 
   // Check whether this agent has signed the current agreement version.
-  // FIX v1.42.0: fail-closed — if the fetch errors, treat as NOT signed.
-  // Previously this was fail-open (let agents bypass the legal gate on network blip).
+  //
+  // 2026-11-23 — gerbang ini dulu menyamakan "pengecekan gagal" dengan "belum
+  // menandatangani" (fail-closed sejak v1.42.0), sehingga mitra yang sudah
+  // setuju tetap ditanya setiap kali gateway/ jaringan bermasalah. Sekarang
+  // tiga keadaan dibedakan:
+  //   • required=false            → perjanjian tidak berlaku (admin/operator
+  //                                 membuka app mitra dalam mode pantau)
+  //   • required=true + rekaman   → sudah setuju, jangan tanya lagi
+  //   • required=true, tanpa rekaman → memang belum setuju untuk versi aktif
+  //   • error                     → tidak tahu; jangan tahan aplikasi dengan
+  //                                 tuduhan "belum tanda tangan"
   useEffect(() => {
-    getMyAgreement()
-      .then(rec => setAgreementOk(!!rec))
-      .catch(() => setAgreementOk(false)); // fail-closed: require explicit acceptance
+    let cancelled = false;
+    getMyAgreementStatus()
+      .then(status => {
+        if (cancelled) return;
+        if (!status.required) { setAgreementOk(true); return; }
+        if (status.error) {
+          console.warn('getMyAgreementStatus: pengecekan gagal, gerbang dilewati', status.error);
+          setAgreementOk(true);
+          return;
+        }
+        setAgreementOk(!!status.agreement);
+      })
+      .catch(() => { if (!cancelled) setAgreementOk(true); });
+    return () => { cancelled = true; };
   }, []);
 
   // Tier kepercayaan datang dari server (`get_my_profile` → `trust_tier`), jadi

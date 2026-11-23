@@ -85,15 +85,27 @@ export async function handleUsersAction(action: string, ctx: GatewayContext): Pr
       }
 
     case 'get_my_agreement': {
-        if (!caller.spUser) return json({ data: null });
+        // 2026-11-23 — dua bug yang dilaporkan owner:
+        //   1. Admin yang membuka app mitra (mode pantau) diminta menandatangani
+        //      Perjanjian Kemitraan, padahal kontrak itu hanya untuk mitra.
+        //   2. Kegagalan query disamakan dengan "belum menandatangani", sehingga
+        //      mitra yang sudah setuju ditanya lagi setiap kali pengecekan gagal.
+        // Karena itu jawabannya kini eksplisit: `required` (apakah perjanjian
+        // berlaku untuk peran ini), `data` (rekaman versi aktif), dan error
+        // sungguhan bila query gagal — bukan data:null palsu.
+        if (!caller.spUser) return json({ data: null, required: false, active_version: null });
+        const role = String(caller.spUser.role ?? '').toUpperCase();
+        if (role !== 'AGENT') return json({ data: null, required: false, active_version: null });
+
         const docVersion = await getActiveTncVersion(db);
-        const { data: ag } = await db
+        const { data: ag, error: agErr } = await db
           .from('sp_agent_agreements')
           .select('*')
           .in('agent_id', caller.ownerIds)
           .eq('doc_version', docVersion)
           .maybeSingle();
-        return json({ data: ag ?? null });
+        if (agErr) { const _err = safeError(agErr); return json(_err.body, _err.status); }
+        return json({ data: ag ?? null, required: true, active_version: docVersion });
       }
 
     case 'ensure_profile': {
