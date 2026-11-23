@@ -788,14 +788,31 @@ const ProductTable: React.FC<ProductTableProps> = ({ insurerId, insurerName, onR
       cancelLabel: 'Batal',
     });
     if (!ok) return;
-    await callGateway('admin_delete_insurer_product', { product_id: id });
+    const { error } = await callGateway('admin_delete_insurer_product', { product_id: id });
+    if (error) {
+      // Dulu toast sukses tetap muncul walau gateway menolak, jadi baris yang
+      // "terhapus" muncul lagi setelah refetch.
+      toast.error(`Gagal menghapus produk: ${error}`);
+      return;
+    }
     toast.success('Produk dihapus');
     fetchProducts();
   };
 
   const handleEditSave = async (data: ProductFormData) => {
     if (!editTarget) return;
-    await callGateway('admin_save_insurer_product', { id: editTarget.id, ...data });
+    // insurer_id bukan bagian dari ProductFormData. Tanpa field ini gateway
+    // menolak 400 dan seluruh perubahan kembali ke nilai lama.
+    const { error } = await callGateway('admin_save_insurer_product', {
+      id: editTarget.id,
+      insurer_id: editTarget.insurer_id,
+      ...data,
+    });
+    if (error) {
+      toast.error(`Gagal menyimpan produk: ${error}`);
+      return;
+    }
+    toast.success('Produk disimpan');
     setEditTarget(null);
     fetchProducts();
   };
@@ -904,9 +921,16 @@ const InsurerCard: React.FC<InsurerCardProps> = ({ insurer, onEdit, onDelete, on
   const [expanded, setExpanded] = useState(false);
   const [showAddProduct, setShowAddProduct] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const toast = useToast();
 
   const handleAddProduct = async (data: ProductFormData) => {
-    await callGateway('admin_save_insurer_product', { ...data, insurer_id: insurer.id });
+    const { error } = await callGateway('admin_save_insurer_product', { ...data, insurer_id: insurer.id });
+    if (error) {
+      // Modal tetap terbuka supaya isian tidak hilang saat server menolak.
+      toast.error(`Gagal menambah produk: ${error}`);
+      return;
+    }
+    toast.success('Produk ditambahkan');
     setShowAddProduct(false);
     setRefreshKey(k => k + 1);
   };

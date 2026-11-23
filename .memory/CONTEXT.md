@@ -1,5 +1,31 @@
 # SurePath Session Context
-**Updated:** 2026-11-20 (v2.9.26 — Admin Google button aligned with AuthGate)
+**Updated:** 2026-11-23 (perbaikan admin product CRUD: produk & pilihan asuransi)
+
+## 23 Nov 2026 — produk & pilihan asuransi di admin tidak tersimpan
+
+Dua keluhan owner, dua akar berbeda, keduanya soal jalur tulis:
+
+- **Produk & Tier → Produk (Konfigurasi Produk & Komisi).** `sp_product_configs`
+  hanya punya policy SELECT untuk anon/authenticated
+  (`20260603_tighten_tier3_rls`). UI menulis langsung ke tabel, jadi UPDATE
+  mengenai 0 baris TANPA error — kartu menampilkan "Tersimpan" lalu nilai kembali
+  ke default — dan INSERT ditolak RLS (pesan lama "Kode mungkin sudah
+  digunakan" menyesatkan). Perbaikan: aksi gateway baru
+  `admin_save_product_config` (guard `isCoreAdmin`, service_role) dan UI memakai
+  `callGateway`, memakai baris balikan server, serta menampilkan error.
+- **Asuransi & Rate → Perusahaan Asuransi → Lihat Produk.** `ProductFormData`
+  tidak memuat `insurer_id`, sehingga `admin_save_insurer_product` selalu 400
+  "insurer_id required" saat Edit; UI mengabaikan error, menutup modal, lalu
+  memuat ulang data lama. Tambah/Hapus juga menelan error gateway dan tetap
+  memberi toast sukses. Perbaikan: UI mengirim `insurer_id`, gateway menurunkannya
+  dari baris yang diedit bila tidak dikirim, `notes` ikut disimpan,
+  `max_vehicle_age_years = 0` (tanpa batas) tidak lagi dibuang, dan toast sukses
+  hanya muncul saat gateway tidak mengembalikan error. Error DB tetap lewat
+  `safeError()` sesuai konvensi v2.9.30.
+- Tes: `services/__tests__/adminProductCrud.test.ts` (8 tes, pola sumber seperti
+  `gatewayRbac.test.ts`).
+- Deploy: edge function ikut auto-deploy saat merge ke `main`; UI menyusul lewat
+  Vercel. Health data-gateway dinaikkan ke 1.33.1 sebagai penanda deploy.
 
 ## Terakhir dikerjakan (20 Nov 2026) — v2.9.26
 

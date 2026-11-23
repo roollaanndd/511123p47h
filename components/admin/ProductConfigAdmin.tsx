@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Plus, RefreshCw, X, Save, Car, Bike, ShieldCheck, ShieldHalf, Coins, Percent, ToggleLeft, ToggleRight } from 'lucide-react';
-import { supabase } from '../../services/supabaseService';
+import { supabase, callGateway } from '../../services/supabaseService';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -36,29 +36,22 @@ async function getProductConfigs(): Promise<SpProductConfig[]> {
   return (data ?? []) as SpProductConfig[];
 }
 
-async function updateProductConfig(id: string, updates: Partial<SpProductConfig>): Promise<boolean> {
-  const { error } = await supabase
-    .from('sp_product_configs')
-    .update({ ...updates, updated_at: new Date().toISOString() })
-    .eq('id', id);
+// Penulisan ke sp_product_configs HARUS lewat data-gateway: RLS tabel itu
+// hanya punya policy SELECT untuk anon/authenticated (migrasi
+// 20260603_tighten_tier3_rls). UPDATE langsung mengenai 0 baris tanpa error —
+// kartu menampilkan "Tersimpan" lalu nilainya kembali seperti semula — dan
+// INSERT langsung ditolak RLS.
+async function saveProductConfig(
+  updates: Partial<SpProductConfig> & { id?: string },
+): Promise<{ data: SpProductConfig | null; error?: string }> {
+  const { data, error } = await callGateway('admin_save_product_config', updates);
   if (error) {
-    console.error('updateProductConfig error:', error);
-    return false;
+    console.error('saveProductConfig error:', error);
+    return { data: null, error };
   }
-  return true;
-}
-
-async function createProductConfig(data: NewProductConfig): Promise<SpProductConfig | null> {
-  const { data: result, error } = await supabase
-    .from('sp_product_configs')
-    .insert(data)
-    .select()
-    .single();
-  if (error) {
-    console.error('createProductConfig error:', error);
-    return null;
-  }
-  return result as SpProductConfig;
+  const row = (data ?? null) as SpProductConfig | null;
+  if (!row) return { data: null, error: 'Server tidak mengembalikan data produk.' };
+  return { data: row };
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -152,6 +145,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ config, onSaved }) => {
   const [draft, setDraft] = useState<SpProductConfig>(config);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Keep draft in sync when parent refreshes
   useEffect(() => { setDraft(config); }, [config]);
@@ -178,7 +172,9 @@ const ProductCard: React.FC<ProductCardProps> = ({ config, onSaved }) => {
   const handleSave = async () => {
     if (companyMargin < 0.05) return; // enforce profit floor
     setSaving(true);
-    const ok = await updateProductConfig(draft.id, {
+    setSaveError(null);
+    const { data, error } = await saveProductConfig({
+      id: draft.id,
       base_commission_rate: draft.base_commission_rate,
       max_discount_rate: draft.max_discount_rate,
       coin_rate: draft.coin_rate,
@@ -187,11 +183,16 @@ const ProductCard: React.FC<ProductCardProps> = ({ config, onSaved }) => {
       notes: draft.notes,
     });
     setSaving(false);
-    if (ok) {
-      setSaved(true);
-      onSaved(draft);
-      setTimeout(() => setSaved(false), 2000);
+    if (error || !data) {
+      setSaveError(error ?? 'Gagal menyimpan konfigurasi.');
+      return;
     }
+    // Pakai baris yang dikembalikan server, bukan draft lokal: kalau server
+    // menjepit nilai, layar harus menunjukkan angka yang benar-benar tersimpan.
+    setDraft(data);
+    setSaved(true);
+    onSaved(data);
+    setTimeout(() => setSaved(false), 2000);
   };
 
   const { commission, coins, coinValue } = calcPreview(draft);
@@ -375,6 +376,11 @@ const ProductCard: React.FC<ProductCardProps> = ({ config, onSaved }) => {
       </div>
 
       {/* Save button */}
+      {saveError && (
+        <p role="alert" className="text-2xs font-bold text-rose-700 dark:text-rose-300 bg-rose-500/10 rounded-xl px-3 py-2">
+          {saveError}
+        </p>
+      )}
       <button
         onClick={handleSave}
         disabled={saving || !isDirty}
@@ -437,13 +443,13 @@ const AddProductModal: React.FC<AddProductModalProps> = ({ onClose, onCreated })
     if (!form.product_name.trim()) { setError('Nama produk wajib diisi.'); return; }
     setSaving(true);
     setError('');
-    const result = await createProductConfig(form);
+    const result = await saveProductConfig(form);
     setSaving(false);
-    if (!result) {
-      setError('Gagal membuat produk. Kode mungkin sudah digunakan.');
+    if (result.error || !result.data) {
+      setError(result.error ?? 'Gagal membuat produk.');
       return;
     }
-    onCreated(result);
+    onCreated(result.data);
   };
 
   const { commission, coins, coinValue } = calcPreview(form);

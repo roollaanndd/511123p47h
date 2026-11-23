@@ -271,7 +271,21 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
 
     case 'admin_save_insurer_product': {
         if (!caller.isCoreAdmin) return json({ error: 'Forbidden: core admin only' }, 403);
-        const insurerId = String(params.insurer_id ?? '');
+        // 2026-11-23 — formulir Edit di admin tidak mengirim insurer_id (field itu
+        // memang tidak ada di ProductFormData), sehingga gateway menolak 400 dan
+        // setiap perubahan produk kembali ke nilai lama tanpa pesan apa pun.
+        // Saat id dikirim, insurer_id diambil dari baris yang sedang diedit.
+        let insurerId = String(params.insurer_id ?? '');
+        if (!insurerId && params.id) {
+          const { data: existing, error: existingErr } = await db
+            .from('sp_insurer_products')
+            .select('insurer_id')
+            .eq('id', String(params.id))
+            .maybeSingle();
+          if (existingErr) { const _err = safeError(existingErr); return json(_err.body, _err.status); }
+          if (!existing) return json({ error: 'Produk tidak ditemukan', code: 'NOT_FOUND' }, 404);
+          insurerId = String(existing.insurer_id ?? '');
+        }
         if (!insurerId) return json({ error: 'insurer_id required' }, 400);
         const payload: Record<string, unknown> = {
           insurer_id: insurerId,
@@ -286,10 +300,17 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
           authorized_garage_max_age_years: Number(params.authorized_garage_max_age_years ?? 5),
           is_active: params.is_active !== false,
         };
-        if (params.max_vehicle_age_years) payload.max_vehicle_age_years = Number(params.max_vehicle_age_years);
+        // 0 berarti "tanpa batas usia"; truthy-check lama membuang nilai itu.
+        if (params.max_vehicle_age_years !== undefined) {
+          payload.max_vehicle_age_years = Number(params.max_vehicle_age_years) || 0;
+        }
+        // Kolom notes ada di tabel tetapi tidak pernah ikut ditulis, jadi catatan
+        // admin hilang setiap produk disimpan.
+        if (params.notes !== undefined) payload.notes = String(params.notes ?? '').slice(0, 1000);
         if (params.id) {
           const { data, error } = await db.from('sp_insurer_products').update(payload).eq('id', params.id).select().maybeSingle();
           if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
+          if (!data) return json({ error: 'Produk tidak ditemukan', code: 'NOT_FOUND' }, 404);
           return json({ data });
         } else {
           const { data, error } = await db.from('sp_insurer_products').insert(payload).select().single();
@@ -305,6 +326,90 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
         const { error } = await db.from('sp_insurer_products').delete().eq('id', productId);
         if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         return json({ data: { success: true } });
+      }
+
+    // 2026-11-23 — sp_product_configs hanya punya policy SELECT untuk anon dan
+    // authenticated (migrasi 20260603_tighten_tier3_rls). UI admin menulis
+    // langsung ke tabel, jadi UPDATE mengenai 0 baris tanpa error — kartu
+    // menampilkan "Tersimpan" lalu nilainya kembali seperti semula — dan INSERT
+    // ditolak RLS. Semua tulis sekarang lewat service_role di sini.
+    case 'admin_save_product_config': {
+        if (!caller.isCoreAdmin) return json({ error: 'Forbidden: core admin only' }, 403);
+
+        const VEHICLE_TYPES = ['CAR', 'MOTORCYCLE', 'ALL'];
+        const COVERAGE_TYPES = ['COMPREHENSIVE', 'TLO', 'ALL'];
+        const RATE_BANDS = ['MIN', 'MID', 'MAX'];
+
+        // Persentase disimpan sebagai pecahan 0–1; di luar rentang itu bukan
+        // nilai yang bisa dipakai kalkulator.
+        const rate = (key: string, fallback: number): number => {
+          const raw = Number(params[key]);
+          if (!Number.isFinite(raw)) return fallback;
+          return Math.round(Math.min(1, Math.max(0, raw)) * 10000) / 10000;
+        };
+
+        const patch: Record<string, unknown> = {};
+        if ('product_code' in params) patch.product_code = String(params.product_code ?? '').trim().toUpperCase();
+        if ('product_name' in params) patch.product_name = String(params.product_name ?? '').trim();
+        if ('vehicle_type' in params) {
+          const value = String(params.vehicle_type);
+          if (!VEHICLE_TYPES.includes(value)) return json({ error: 'vehicle_type tidak valid', code: 'VALIDATION_FAILED' }, 400);
+          patch.vehicle_type = value;
+        }
+        if ('coverage_type' in params) {
+          const value = String(params.coverage_type);
+          if (!COVERAGE_TYPES.includes(value)) return json({ error: 'coverage_type tidak valid', code: 'VALIDATION_FAILED' }, 400);
+          patch.coverage_type = value;
+        }
+        if ('rate_band' in params) {
+          const value = String(params.rate_band);
+          if (!RATE_BANDS.includes(value)) return json({ error: 'rate_band tidak valid', code: 'VALIDATION_FAILED' }, 400);
+          patch.rate_band = value;
+        }
+        if ('is_active' in params) patch.is_active = params.is_active !== false;
+        if ('notes' in params) patch.notes = String(params.notes ?? '').slice(0, 1000);
+        if ('base_commission_rate' in params) patch.base_commission_rate = rate('base_commission_rate', 0.1);
+        if ('max_discount_rate' in params) patch.max_discount_rate = rate('max_discount_rate', 0);
+        if ('coin_rate' in params) patch.coin_rate = rate('coin_rate', 0);
+        // Diskon tidak boleh melebihi komisi (aturan bisnis yang sama dengan UI).
+        if (typeof patch.base_commission_rate === 'number' &&
+            typeof patch.max_discount_rate === 'number' &&
+            patch.max_discount_rate > patch.base_commission_rate) {
+          patch.max_discount_rate = patch.base_commission_rate;
+        }
+        patch.updated_at = new Date().toISOString();
+
+        const configId = params.id ? String(params.id) : '';
+        if (configId) {
+          const { data, error } = await db
+            .from('sp_product_configs')
+            .update(patch)
+            .eq('id', configId)
+            .select()
+            .maybeSingle();
+          if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
+          if (!data) return json({ error: 'Konfigurasi produk tidak ditemukan', code: 'NOT_FOUND' }, 404);
+          return json({ data });
+        }
+
+        if (!patch.product_code) return json({ error: 'Kode produk wajib diisi', code: 'VALIDATION_FAILED' }, 400);
+        if (!patch.product_name) return json({ error: 'Nama produk wajib diisi', code: 'VALIDATION_FAILED' }, 400);
+        const { data, error } = await db
+          .from('sp_product_configs')
+          .insert({
+            vehicle_type: 'CAR',
+            coverage_type: 'ALL',
+            base_commission_rate: 0.1,
+            max_discount_rate: 0,
+            coin_rate: 0,
+            rate_band: 'MID',
+            is_active: true,
+            ...patch,
+          })
+          .select()
+          .single();
+        if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
+        return json({ data });
       }
 
     case 'admin_save_ojk_rate_set': {

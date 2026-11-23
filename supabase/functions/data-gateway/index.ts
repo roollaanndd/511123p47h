@@ -85,7 +85,7 @@ Deno.serve(async (req) => {
 
   // Health check
   if (req.method === 'GET') {
-    return new Response(JSON.stringify({ status: 'ok', service: 'data-gateway', version: '1.33.0', timestamp: new Date().toISOString() }), { headers: { ...CORS, 'Content-Type': 'application/json', 'X-Request-ID': crypto.randomUUID() } });
+    return new Response(JSON.stringify({ status: 'ok', service: 'data-gateway', version: '1.33.1', timestamp: new Date().toISOString() }), { headers: { ...CORS, 'Content-Type': 'application/json', 'X-Request-ID': crypto.randomUUID() } });
   }
 
   const requestId = crypto.randomUUID();
