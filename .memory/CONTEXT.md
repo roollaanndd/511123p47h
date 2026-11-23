@@ -1,5 +1,34 @@
 # SurePath Session Context
-**Updated:** 2026-11-23 (perbaikan admin product CRUD: produk & pilihan asuransi)
+**Updated:** 2026-11-23 (diagnosa error Pathy + log kegagalan ke DB)
+
+## 23 Nov 2026 — Pathy error AUTH: akar & jejak yang akhirnya tercatat
+
+Keluhan owner: Pathy sering gagal, pesan yang muncul "Sesi kamu sudah berakhir".
+Penyebab langsung: respons 401 dari `pathy-agent-proxy`/`pathy-agent`. Yang tidak
+terlihat sebelumnya adalah **mengapa** — kegagalan hanya ditulis ke console, dan
+kalau JWT ditolak platform Supabase fungsi edge tidak pernah dijalankan sama
+sekali, sehingga tidak ada log server yang bisa dibaca.
+
+Yang dikerjakan:
+- **Klien** (`services/website.ts`): sesi kosong/tinggal <60 detik dicoba
+  `refreshSession()` sekali sebelum menyimpulkan AUTH; setiap kegagalan
+  (AUTH 401, RATE_LIMIT 429, UNAVAILABLE 5xx, TIMEOUT/NETWORK, fallback gagal)
+  dicatat ke `sp_pathy_errors` lewat **klien anon tanpa sesi** — klien ber-sesi
+  akan ditolak PGRST301 justru saat JWT kedaluwarsa, kasus yang ingin dicatat.
+- **Server**: `_shared/pathyErrors.ts` (tidak pernah melempar) dipakai
+  `pathy-agent` (RATE_LIMIT, NOT_CONFIGURED, UPSTREAM_ERROR + status OpenRouter,
+  EMPTY_REPLY, TOOL_LOOP_LIMIT, INTERNAL), `pathy-agent-proxy` (RATE_LIMIT,
+  UPSTREAM_ERROR, TIMEOUT/INTERNAL) dan `ai-proxy` (NOT_CONFIGURED,
+  UPSTREAM_ERROR, INTERNAL). Sink cadangan `sp_activity_log` (action
+  `PATHY_ERROR`) dipakai bila migrasi belum diterapkan, jadi jejak tetap ada
+  semenjak deploy.
+- **Migrasi** `20261123100000_pathy_error_log.sql` — tabel `sp_pathy_errors`:
+  INSERT anon hanya `source='client'`, SELECT hanya `is_admin()`, tanpa isi
+  percakapan (hanya kode/status/detail galat ≤ 500 karakter). **Harus
+  diterapkan manual** (repo ini tidak punya workflow `supabase db push`).
+- Cara membaca: `select created_at, source, code, http_status, detail from
+  sp_pathy_errors order by created_at desc limit 50;` — atau filter
+  `action = 'PATHY_ERROR'` di Jejak Aktivitas bila migrasi belum jalan.
 
 ## 23 Nov 2026 — produk & pilihan asuransi di admin tidak tersimpan
 

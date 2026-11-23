@@ -6,6 +6,7 @@
 // wallet/clients/orders ends up here.
 
 import { supabase, callGateway, callPublicGateway } from './db';
+import { createClient } from '@supabase/supabase-js';
 import { createAdminNotification } from './notifications';
 import { recordPathyTurn } from './pathyLog';
 import type {
@@ -490,6 +491,44 @@ export interface PathyReply {
 // than the 15s data-gateway timeout.
 const PATHY_TIMEOUT_MS = 45_000;
 
+// ── Beacon diagnosa Pathy (2026-11-23) ───────────────────────────────────────
+// Ditulis dengan klien anon TANPA sesi. Kalau memakai klien ber-sesi dan JWT
+// sudah kedaluwarsa, PostgREST menolak lebih dulu (PGRST301) — justru kasus
+// yang ingin dicatat yang hilang. RLS hanya mengizinkan INSERT source='client';
+// tidak ada SELECT, jadi pengguna tidak bisa membaca jejak siapa pun.
+const pathyErrorBeacon = createClient(
+  (import.meta.env.VITE_SUPABASE_URL as string) ?? '',
+  (import.meta.env.VITE_SUPABASE_ANON_KEY as string) ?? '',
+  { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storageKey: 'sp-pathy-beacon' } },
+);
+
+interface PathyFailureContext {
+  code: string;
+  httpStatus?: number | null;
+  detail?: string | null;
+  sessionPresent?: boolean;
+  tokenExpiresAt?: number | null;
+}
+
+/** Tidak pernah melempar: diagnosa tidak boleh menggagalkan percakapan. */
+async function logPathyFailure(ctx: PathyFailureContext): Promise<void> {
+  try {
+    await pathyErrorBeacon.from('sp_pathy_errors').insert({
+      source: 'client',
+      code: String(ctx.code).slice(0, 32),
+      http_status: typeof ctx.httpStatus === 'number' ? ctx.httpStatus : null,
+      route: 'pathyChat',
+      detail: ctx.detail ? String(ctx.detail).slice(0, 500) : null,
+      session_present: ctx.sessionPresent ?? null,
+      token_expires_at: ctx.tokenExpiresAt ? new Date(ctx.tokenExpiresAt).toISOString() : null,
+      client_clock: new Date().toISOString(),
+      user_agent: (typeof navigator !== 'undefined' ? navigator.userAgent : '').slice(0, 300) || null,
+    });
+  } catch {
+    /* tabel belum ada / offline — abaikan */
+  }
+}
+
 /**
  * Pathy, dengan rekaman percakapannya.
  *
@@ -535,9 +574,27 @@ async function pathyChatInner(
   documents?: PathyDocument[],
   images?: PathyImageAttachment[],
 ): Promise<PathyReply> {
-  const { data: { session } } = await supabase.auth.getSession();
+  // Sesi kosong atau tinggal <60 detik dicoba di-refresh SEKALI sebelum
+  // menyimpulkan "sesi berakhir". getSession() mengembalikan sesi tersimpan apa
+  // adanya; di tab yang lama terbuka refresh otomatis bisa sudah gagal dan
+  // token kedaluwarsa tetap terpakai — persis yang memicu 401 berulang.
+  let { data: { session } } = await supabase.auth.getSession();
+  const initialExpiry = session?.expires_at ? session.expires_at * 1000 : 0;
+  if (!session || (initialExpiry && initialExpiry - Date.now() < 60_000)) {
+    try {
+      const refreshed = await supabase.auth.refreshSession();
+      if (refreshed?.data?.session) session = refreshed.data.session;
+    } catch {
+      /* token lama tetap dicoba di bawah */
+    }
+  }
+  const tokenExpiresAt = session?.expires_at ? session.expires_at * 1000 : 0;
   const token = session?.access_token;
   if (!token) {
+    await logPathyFailure({
+      code: 'AUTH', detail: 'Tidak ada sesi Supabase di browser',
+      sessionPresent: false, tokenExpiresAt,
+    });
     throw new PathyError('AUTH', 'Silakan login dulu supaya aku bisa melihat data polismu.');
   }
 
@@ -586,6 +643,10 @@ async function pathyChatInner(
       clearTimeout(timeoutId2);
     } catch (e2: any) {
       console.error('pathyChat: pathy-agent unreachable:', e2);
+      await logPathyFailure({
+        code: e2?.name === 'AbortError' ? 'TIMEOUT' : 'NETWORK', httpStatus: null,
+        detail: String(e2?.message ?? e2 ?? 'unknown'), sessionPresent: true, tokenExpiresAt,
+      });
       return await pathyKnowledgeFallback(message, conversationHistory);
     }
   }
@@ -609,11 +670,31 @@ async function pathyChatInner(
   const errBody = await res.json().catch(() => ({}));
   const detail = typeof errBody?.error === 'string' ? errBody.error : '';
 
-  if (res.status === 401) throw new PathyError('AUTH', detail || 'Sesi kamu sudah berakhir. Silakan login ulang.');
-  if (res.status === 429) throw new PathyError('RATE_LIMIT', detail || 'Terlalu banyak pesan. Coba lagi dalam satu jam ya.');
+  if (res.status === 401) {
+    // Detail dari platform (mis. UNAUTHORIZED_INVALID_JWT_FORMAT) dan dari
+    // fungsi (Unauthorized: invalid token) dibedakan di sini — inilah satu-
+    // satunya cara tahu apakah JWT ditolak sebelum fungsi sempat jalan.
+    await logPathyFailure({
+      code: 'AUTH', httpStatus: 401, detail,
+      sessionPresent: true, tokenExpiresAt,
+    });
+    throw new PathyError('AUTH', detail || 'Sesi kamu sudah berakhir. Silakan login ulang.');
+  }
+  if (res.status === 429) {
+    await logPathyFailure({ code: 'RATE_LIMIT', httpStatus: 429, detail, sessionPresent: true, tokenExpiresAt });
+    throw new PathyError('RATE_LIMIT', detail || 'Terlalu banyak pesan. Coba lagi dalam satu jam ya.');
+  }
   if (res.status === 404 || res.status >= 500) {
+    await logPathyFailure({
+      code: 'UNAVAILABLE', httpStatus: res.status,
+      detail: detail || 'path- agent tidak tersedia', sessionPresent: true, tokenExpiresAt,
+    });
     return await pathyKnowledgeFallback(message, conversationHistory);
   }
+  await logPathyFailure({
+    code: 'UNAVAILABLE', httpStatus: res.status,
+    detail: detail || 'Respons tak terduga', sessionPresent: true, tokenExpiresAt,
+  });
   throw new PathyError('UNAVAILABLE', detail || 'Asisten Pathy sedang bermasalah. Coba lagi.');
 }
 
@@ -632,7 +713,12 @@ async function pathyKnowledgeFallback(
     return { reply, cards: [], toolsUsed: [], degraded: true };
   } catch (e: any) {
     const msg = String(e?.message ?? '');
-    if (/not configured|belum dikonfigurasi/i.test(msg)) {
+    const notConfigured = /not configured|belum dikonfigurasi/i.test(msg);
+    await logPathyFailure({
+      code: notConfigured ? 'NOT_CONFIGURED' : 'UNAVAILABLE', httpStatus: null,
+      detail: msg || 'Fallback basis pengetahuan gagal',
+    });
+    if (notConfigured) {
       throw new PathyError('NOT_CONFIGURED', msg);
     }
     throw new PathyError('UNAVAILABLE', msg || 'Asisten Pathy sedang bermasalah. Coba lagi.');

@@ -72,7 +72,10 @@ describe('pathyChat client', () => {
     getSession.mockResolvedValue({ data: { session: null } });
     await expect(pathyChat('halo')).rejects.toBeInstanceOf(PathyError);
     await expect(pathyChat('halo')).rejects.toMatchObject({ code: 'AUTH' });
-    expect(globalThis.fetch).not.toHaveBeenCalled();
+    // Sejak 2026-11-23 kegagalan dicatat ke sp_pathy_errors lewat klien anon,
+    // jadi `fetch` boleh terpakai — yang tidak boleh adalah memanggil model.
+    const urls = (globalThis.fetch as any).mock.calls.map((c: any[]) => String(c[0]));
+    expect(urls.some((u: string) => u.includes('/functions/v1/pathy-'))).toBe(false);
   });
 
   it('raises AUTH on 401 and RATE_LIMIT on 429 — not a generic "coming soon"', async () => {

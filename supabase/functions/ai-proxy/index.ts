@@ -3,6 +3,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
 import { verifyAuth } from '../_shared/auth.ts';
 import { checkRateLimit as checkPersistentRateLimit } from '../_shared/rateLimit.ts';
+import { logPathyError } from '../_shared/pathyErrors.ts';
 
 // ─── AI Proxy ────────────────────────────────────────────────────────────────
 //
@@ -111,6 +112,10 @@ Deno.serve(async (req) => {
 
     if (!OPENROUTER_KEY) {
       console.error('OPENROUTER_KEY not configured');
+      await logPathyError(persistentClient, {
+        source: 'ai-proxy', code: 'NOT_CONFIGURED', httpStatus: 503, route: 'ai-proxy',
+        detail: 'OPENROUTER_KEY missing', userId: caller?.authId ?? null, userEmail: caller?.email ?? null,
+      });
       return new Response(JSON.stringify({ error: 'AI service not configured' }), {
         status: 503, headers: { ...CORS, 'Content-Type': 'application/json' },
       });
@@ -186,6 +191,20 @@ Deno.serve(async (req) => {
     });
 
     const responseText = await orRes.text();
+    // Jalur ini adalah fallback terakhir Pathy. Saat kredit OpenRouter habis
+    // (402) atau kena rate limit (429), status itu harus terlihat di
+    // sp_pathy_errors — dulu hanya diteruskan mentah ke browser.
+    if (!orRes.ok) {
+      let upstreamDetail = responseText.slice(0, 300);
+      try {
+        const parsed = JSON.parse(responseText);
+        upstreamDetail = String(parsed?.error?.message ?? parsed?.error ?? upstreamDetail).slice(0, 300);
+      } catch { /* biarkan potongan mentah */ }
+      await logPathyError(persistentClient, {
+        source: 'ai-proxy', code: 'UPSTREAM_ERROR', httpStatus: orRes.status, route: 'ai-proxy',
+        detail: upstreamDetail, userId: caller?.authId ?? null, userEmail: caller?.email ?? null,
+      });
+    }
     return new Response(responseText, {
       status:  orRes.status,
       headers: { ...CORS, 'Content-Type': 'application/json' },
@@ -193,6 +212,11 @@ Deno.serve(async (req) => {
 
   } catch (err) {
     console.error('ai-proxy error:', err);
+    await logPathyError(persistentClient, {
+      source: 'ai-proxy', code: 'INTERNAL', httpStatus: 500, route: 'ai-proxy',
+      detail: err instanceof Error ? err.message : String(err),
+      userId: caller?.authId ?? null, userEmail: caller?.email ?? null,
+    });
     return new Response(JSON.stringify({ error: 'Internal server error' }), {
       status: 500, headers: { ...CORS, 'Content-Type': 'application/json' },
     });

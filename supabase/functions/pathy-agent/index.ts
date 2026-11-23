@@ -31,6 +31,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
+import { logPathyError } from '../_shared/pathyErrors.ts';
 import { wrapUserContent, UNTRUSTED_INPUT_NOTICE } from '../_shared/promptSafety.ts';
 import { loadRateSet } from '../_shared/ojk.ts';
 import { runTool, toolSchemas, type PathyCaller, type PathyCard, type PathyDocument, type PathyDocumentType, type ToolContext } from './tools.ts';
@@ -299,6 +300,10 @@ Deno.serve(async (req) => {
   // ── Rate limit (persistent, per UTC hour) ─────────────────────────────────
   const allowed = await checkRateLimit(db, `user:${ownerId}`, 'pathy_agent', HOURLY_LIMIT);
   if (!allowed) {
+    await logPathyError(db, {
+      source: 'agent', code: 'RATE_LIMIT', httpStatus: 429, route: 'pathy-agent',
+      detail: 'Hourly limit reached', userId: ownerId, userEmail: email,
+    });
     return json({ error: 'Terlalu banyak pesan ke Pathy. Coba lagi dalam satu jam ya.' }, 429);
   }
 
@@ -310,6 +315,10 @@ Deno.serve(async (req) => {
   }
   if (!OPENROUTER_KEY) {
     console.error('pathy-agent: OPENROUTER_KEY not configured');
+    await logPathyError(db, {
+      source: 'agent', code: 'NOT_CONFIGURED', httpStatus: 503, route: 'pathy-agent',
+      detail: 'OPENROUTER_KEY missing', userId: ownerId, userEmail: email,
+    });
     return json({ error: 'Layanan AI belum dikonfigurasi.' }, 503);
   }
 
@@ -387,12 +396,26 @@ Deno.serve(async (req) => {
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) {
         console.error('pathy-agent: OpenRouter error', res.status, JSON.stringify(payload).slice(0, 400));
+        // Status upstream ikut dicatat: 402 (kredit habis) dan 429 (rate limit
+        // OpenRouter) sama-sama berakhir sebagai "gangguan" bagi pengguna, dan
+        // tanpa angka ini keduanya tak bisa dibedakan dari timeout.
+        await logPathyError(db, {
+          source: 'agent', code: 'UPSTREAM_ERROR', httpStatus: res.status, route: 'pathy-agent',
+          detail: (payload as any)?.error?.message ?? JSON.stringify(payload).slice(0, 300),
+          userId: ownerId, userEmail: email,
+        });
         return json({ error: 'Asisten AI sedang tidak tersedia. Coba lagi sebentar lagi.' }, 502);
       }
 
       const choice = payload?.choices?.[0];
       const msg = choice?.message;
-      if (!msg) return json({ error: 'AI tidak memberikan jawaban. Coba lagi.' }, 502);
+      if (!msg) {
+        await logPathyError(db, {
+          source: 'agent', code: 'EMPTY_REPLY', httpStatus: 502, route: 'pathy-agent',
+          detail: 'Model returned no message', userId: ownerId, userEmail: email,
+        });
+        return json({ error: 'AI tidak memberikan jawaban. Coba lagi.' }, 502);
+      }
 
       const toolCalls = Array.isArray(msg.tool_calls) ? msg.tool_calls : [];
       if (toolCalls.length === 0) {
@@ -435,9 +458,17 @@ Deno.serve(async (req) => {
       }
     }
 
+    await logPathyError(db, {
+      source: 'agent', code: 'TOOL_LOOP_LIMIT', httpStatus: 503, route: 'pathy-agent',
+      detail: `Rounds exhausted (${toolsUsed.length} tools)`, userId: ownerId, userEmail: email,
+    });
     return json({ error: 'Permintaan terlalu kompleks untuk diproses. Coba pertanyaan yang lebih spesifik.' }, 503);
   } catch (e) {
     console.error('pathy-agent error:', e);
+    await logPathyError(db, {
+      source: 'agent', code: 'INTERNAL', httpStatus: 500, route: 'pathy-agent',
+      detail: e instanceof Error ? e.message : String(e), userId: ownerId, userEmail: email,
+    });
     return json({ error: 'Terjadi gangguan pada asisten AI. Coba lagi.' }, 500);
   }
 });

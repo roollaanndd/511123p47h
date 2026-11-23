@@ -19,6 +19,7 @@ import { corsHeaders } from '../_shared/cors.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
 import { wrapUserContent } from '../_shared/promptSafety.ts';
 import { turnDisclaimer } from '../pathy-agent/disclaimers.ts';
+import { logPathyError } from '../_shared/pathyErrors.ts';
 
 const MAX_MESSAGE_CHARS = 2000;
 const HOURLY_LIMIT = 60;
@@ -70,6 +71,10 @@ Deno.serve(async (req) => {
 
   const allowed = await checkRateLimit(db, `user:${ownerId}`, 'pathy_agent_proxy', HOURLY_LIMIT);
   if (!allowed) {
+    await logPathyError(db, {
+      source: 'proxy', code: 'RATE_LIMIT', httpStatus: 429, route: 'pathy-agent-proxy',
+      detail: 'Hourly limit reached', userId: ownerId, userEmail: email,
+    });
     return json({ error: 'Terlalu banyak pesan ke Pathy. Coba lagi dalam satu jam ya.' }, 429);
   }
 
@@ -138,6 +143,12 @@ Aturan wajib:
     clearTimeout(timeoutId);
 
     if (!res.ok) {
+      // Status upstream dicatat sebelum jatuh ke fallback: kalau fallback ikut
+      // gagal, penyebab aslinya tetap terlihat di sp_pathy_errors.
+      await logPathyError(db, {
+        source: 'proxy', code: 'UPSTREAM_ERROR', httpStatus: res.status, route: 'pathy-agent-proxy',
+        detail: `OpenCode rejected the turn (HTTP ${res.status})`, userId: ownerId, userEmail: email,
+      });
       // Fallback on error
       try {
         const resp = await fetch(`${SUPABASE_URL}/functions/v1/pathy-agent`, {
@@ -183,6 +194,11 @@ Aturan wajib:
   } catch (e) {
     clearTimeout(timeoutId);
     console.error('pathy-agent-proxy error:', e);
+    await logPathyError(db, {
+      source: 'proxy', code: e instanceof Error && e.name === 'AbortError' ? 'TIMEOUT' : 'INTERNAL',
+      httpStatus: 500, route: 'pathy-agent-proxy',
+      detail: e instanceof Error ? e.message : String(e), userId: ownerId, userEmail: email,
+    });
     // Fallback
     try {
       const resp = await fetch(`${SUPABASE_URL}/functions/v1/pathy-agent`, {
