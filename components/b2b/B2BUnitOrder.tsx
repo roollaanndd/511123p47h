@@ -59,6 +59,7 @@ import {
   type B2BAttachment, type VehicleCondition,
 } from '../../services/b2bUnitOrder';
 import { normalizeAccent, normalizeBullets, normalizeIcon } from '../../services/clayTheme';
+import { B2BInvoiceButton } from './B2BInvoiceButton';
 
 // v2.9.15 — ikon kustom admin. Kuncinya identik dengan CLAY_ICON_OPTIONS dan
 // validasi gateway; fallback Building2 bila data lama belum punya ikon.
@@ -514,13 +515,13 @@ const B2BUnitOrder: React.FC<Props> = ({ clientId, client, onDone, lang }) => {
   // ke QuotationSlipData lalu memakai publishAndDownloadQuotation, jadi PDF,
   // QR e-quotation, kop, dan 4 halaman US Letter SAMA PERSIS dengan agent.
   const preferredInsurer = insurers.find(i => i.id === preferredInsurerId) ?? null;
-  const handleDownloadProposal = async () => {
+  const buildUnitOrderSlipData = () => {
     const v = validate();
-    if (v) { setError(v); return; }
+    if (v) { setError(v); return null; }
     setError('');
     const companyName = String(client?.company_name ?? client?.companyName ?? client?.name ?? 'Klien B2B').trim() || 'Klien B2B';
-    try {
-      const data = fromB2BUnitOrder({
+    
+      return fromB2BUnitOrder({
         companyName,
         nasabahName: nasabahName.trim(),
         nasabahPhone: nasabahPhone.trim() || undefined,
@@ -550,6 +551,12 @@ const B2BUnitOrder: React.FC<Props> = ({ clientId, client, onDone, lang }) => {
         line: built,
         attachments: photos,
       });
+  };
+
+  const handleDownloadProposal = async () => {
+      const data = buildUnitOrderSlipData();
+    if (!data) return;
+    try {
       await publishAndDownloadQuotation(data, {
         sourceApp: 'B2B',
         totalPremiumNumeric: built.totalPremium,
@@ -1580,6 +1587,7 @@ const B2BUnitOrder: React.FC<Props> = ({ clientId, client, onDone, lang }) => {
           >
             <Download size={14} /><span className="hidden sm:inline">{t('Quotation PDF', 'PDF Penawaran')}</span>
           </button>
+       <B2BInvoiceButton getData={buildUnitOrderSlipData} lang={lang === Language.EN ? 'en' : 'id'} className="shrink-0" />
           <button
             onClick={handleSubmit}
             disabled={submitting}
