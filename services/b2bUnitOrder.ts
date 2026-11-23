@@ -246,13 +246,13 @@ export function fromB2BUnitOrder(o: B2BUnitQuoteSource): QuotationSlipData {
     engineNumber: o.engineNo || '-',
     chassisNumber: o.chassisNo || '-',
     plateNumber: o.plateNo || 'TBA',
-    seats: '5',
+    seats: o.vehicleClass === 'MOTORCYCLE' ? '2' : o.vehicleClass === 'HEAVY_EQUIPMENT' ? '1' : '5',
     color: o.color || '-',
-    usage: 'Komersial / Pembiayaan',
+    usage: o.vehicleClass === 'HEAVY_EQUIPMENT' ? 'Komersial / Alat Berat' : o.vehicleClass === 'MOTORCYCLE' ? 'Pribadi / Operasional' : 'Komersial / Operasional Perusahaan',
 
     coverageCondition: `${coverage === 'TLO' ? 'TLO (Total Loss Only)' : 'Comprehensive'} — menjamin kerugian/kerusakan sebagian maupun total akibat tabrakan, benturan, terbalik, tergelincir, perbuatan jahat, pencurian, dan kebakaran, sesuai Polis Standar Asuransi Kendaraan Bermotor Indonesia (PSAKBI).`,
     additionalCoverage: addonLabels.length > 0 ? addonLabels.join(', ') : 'Sesuai penutupan yang disepakati',
-    deductible: 'Comprehensive: IDR 300.000,00 untuk setiap kejadian (any one accident)',
+    deductible: coverage === 'TLO' ? 'Total Loss Only (TLO): 10% dari nilai klaim yang disetujui' : o.vehicleClass === 'MOTORCYCLE' ? 'Comprehensive Roda 2: Rp150.000 per kejadian' : o.vehicleClass === 'HEAVY_EQUIPMENT' ? 'Alat Berat: sesuai ketentuan polis' : 'Comprehensive: Rp300.000 per kejadian',
     klausulList: [
       'Klausul Penggantian Suku Cadang',
       'Klausul Bengkel Authorized',
@@ -263,7 +263,7 @@ export function fromB2BUnitOrder(o: B2BUnitQuoteSource): QuotationSlipData {
       { no: '1', desc: `Casco — ${vehicleSummary}`, amount: fmtIDR(o.financingValue) },
       { no: '2', desc: 'Tanggung Jawab Hukum Pihak Ketiga (TPL)', amount: fmtIDR(o.addons?.tplLimit ?? 0) },
     ],
-    totalSumInsured: fmtIDR(o.financingValue + addonPremium),
+    totalSumInsured: fmtIDR(Math.round(o.financingValue)),
 
     premiumComponents: [
       { component: `Casco — ${coverage}`, basis: `IDR ${fmtIDR(o.financingValue)}`, rate, premium: fmtIDR(o.line.premiumGross) },
