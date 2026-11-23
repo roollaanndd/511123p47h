@@ -16,6 +16,7 @@ import {
   B2BSidePanel, B2BButton, useB2BToast,
   type B2BColumn, type B2BPillTone,
 } from './dashboard/ui';
+import { B2BInvoiceButton } from './B2BInvoiceButton';
 
 interface Props {
   clientId: string;
@@ -340,6 +341,7 @@ const B2BQuotes: React.FC<Props> = ({ clientId, lang, companyName, allClients, c
             >
               {downloading ? t('Preparing PDF…', 'Menyiapkan PDF…') : t('Download Quotation (PDF)', 'Unduh Penawaran (PDF)')}
             </B2BButton>
+       <B2BInvoiceButton data={fromB2BQuote(selected, companyByClient?.[selected.client_id] ?? companyName)} lang={lang === Language.EN ? 'en' : 'id'} className="w-full" />
           </div>
         )}
       </B2BSidePanel>
