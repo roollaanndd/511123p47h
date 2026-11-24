@@ -259,7 +259,7 @@ const B2BPortal: React.FC<Props> = ({ client, onLogout, lang }) => {
         if (isMaster) return null;
         return (
           <Suspense fallback={<B2BPageSkeleton variant="form" />}>
-            <B2BQuickQuotation client={client} lang={lang} />
+            <B2BQuickQuotation lang={lang} />
           </Suspense>
         );
       case 'new-unit':
