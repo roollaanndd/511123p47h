@@ -101,6 +101,49 @@ const B2BQuickQuotation: React.FC<Props> = ({ lang }) => {
     pdf.save(quoteNo + '-' + template + '.pdf');
   };
 
+  const exportPng = () => {
+    if (!result) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = 1200; canvas.height = 1500;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.fillStyle = '#f4f7f6'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#075f49'; ctx.fillRect(0, 0, canvas.width, 260);
+    ctx.fillStyle = '#ffffff'; ctx.font = 'bold 54px Arial'; ctx.fillText('SurePath', 76, 100);
+    ctx.font = 'bold 25px Arial'; ctx.fillText(template === 'invoice' ? 'SINGLE VEHICLE PREMIUM QUOTATION' : 'MULTI-YEAR INSURANCE PROPOSAL', 76, 158);
+    ctx.font = '22px Arial'; ctx.fillText(quoteNo + '  •  ' + fmtDate, 76, 210);
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(60, 300, 1080, 1050);
+    ctx.fillStyle = '#64748b'; ctx.font = 'bold 20px Arial'; ctx.fillText('TOTAL ESTIMASI PREMI', 100, 380);
+    ctx.fillStyle = '#075f49'; ctx.font = 'bold 56px Arial'; ctx.fillText(money(result.totalPremium), 100, 455);
+    ctx.fillStyle = '#0f172a'; ctx.font = 'bold 25px Arial'; ctx.fillText('CUSTOMER & VEHICLE', 100, 545);
+    ctx.font = '23px Arial'; ctx.fillText(customer || 'Nama klien', 100, 595);
+    ctx.fillText([make, model, year].filter(Boolean).join(' '), 100, 640);
+    ctx.fillText('Plat: ' + (plate || '—') + '  |  ' + province + '  |  Zona ' + getZone(province), 100, 685);
+    ctx.fillText(result.coverage + '  |  ' + months + ' bulan  |  Nilai: ' + money(vehicleValue), 100, 730);
+    ctx.strokeStyle = '#dbe4e1'; ctx.beginPath(); ctx.moveTo(100, 775); ctx.lineTo(1100, 775); ctx.stroke();
+    ctx.fillStyle = '#0f172a'; ctx.font = 'bold 25px Arial'; ctx.fillText('RINCIAN PREMI', 100, 825);
+    let y = 885;
+    ctx.font = '23px Arial';
+    for (const [label, value] of lines) {
+      ctx.fillStyle = label === 'Total premi' ? '#075f49' : '#475569';
+      ctx.font = label === 'Total premi' ? 'bold 26px Arial' : '23px Arial';
+      ctx.fillText(label, 100, y); ctx.textAlign = 'right'; ctx.fillText(money(value), 1100, y); ctx.textAlign = 'left'; y += 55;
+    }
+    if (template === 'proposal' && schedule.length) {
+      y += 15; ctx.fillStyle = '#0f172a'; ctx.font = 'bold 22px Arial'; ctx.fillText('JADWAL PREMI TAHUNAN', 100, y); y += 45;
+      ctx.font = '20px Arial'; ctx.fillStyle = '#475569';
+      for (const row of schedule) { ctx.fillText('Tahun ' + row.year + ' (' + row.months + ' bln)', 100, y); ctx.textAlign = 'right'; ctx.fillText(money(row.premiumGross), 1100, y); ctx.textAlign = 'left'; y += 36; }
+    }
+    ctx.fillStyle = '#64748b'; ctx.font = '18px Arial';
+    ctx.fillText('Estimasi indikatif. Premi final dan persetujuan mengikuti underwriting perusahaan asuransi.', 100, 1285);
+    if (notes) ctx.fillText(('Catatan: ' + notes).slice(0, 110), 100, 1325);
+    canvas.toBlob(blob => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob); const a = document.createElement('a');
+      a.href = url; a.download = quoteNo + '-' + template + '.png'; a.click(); URL.revokeObjectURL(url);
+    }, 'image/png');
+  };
+
   const Field = ({ label, children }: { label: string; children: React.ReactNode }) => (
     <label className="block space-y-1.5"><span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{label}</span>{children}</label>
   );
@@ -160,6 +203,7 @@ const B2BQuickQuotation: React.FC<Props> = ({ lang }) => {
             <p className="mb-3 text-xs font-black uppercase tracking-wider text-slate-500">Format dokumen</p>
             <div className="grid grid-cols-2 gap-2"><button onClick={()=>setTemplate('invoice')} className={'rounded-xl border p-3 text-left text-xs font-bold '+(template==='invoice'?'border-emerald-500 bg-emerald-50 text-emerald-800':'border-slate-200 text-slate-600')}><FileText size={16} className="mb-2"/>Single Vehicle Invoice</button><button onClick={()=>setTemplate('proposal')} className={'rounded-xl border p-3 text-left text-xs font-bold '+(template==='proposal'?'border-emerald-500 bg-emerald-50 text-emerald-800':'border-slate-200 text-slate-600')}><Printer size={16} className="mb-2"/>Multi-Year Proposal</button></div>
             <button onClick={exportPdf} disabled={!result} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 py-3 text-sm font-black text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-40"><Download size={16}/> Export PDF</button>
+            <button onClick={exportPng} disabled={!result} className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-white px-4 py-3 text-sm font-black text-emerald-800 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-40"><Download size={16}/> Export PNG</button>
             <p className="mt-2 text-[10px] leading-relaxed text-slate-400">PDF memakai angka dan detail yang sama dengan preview. Pengiriman/penyimpanan quotation belum terhubung ke server.</p>
           </div>
         </aside>
