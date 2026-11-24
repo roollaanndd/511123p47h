@@ -11,7 +11,7 @@
 
 import React, { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import {
-  LayoutDashboard, Plus, User, Sparkles, ShieldCheck, CalendarDays, History, Wrench, Banknote, ClipboardList, BarChart3, FolderOpen, Calculator,
+  LayoutDashboard, Plus, User, Sparkles, ShieldCheck, CalendarDays, History, Wrench, Banknote, ClipboardList, BarChart3, FolderOpen,
 } from 'lucide-react';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import { Language, UserRole } from '../../types';
