@@ -34,7 +34,7 @@ Add a distinct **Quick Quotation** item under the B2B portal's Create group, sep
 
 ## Output requirements
 
-The PDF and image export should follow the two supplied SurePath references:
+The PDF and image export must follow the supplied SurePath portrait quotation reference, not a generic SaaS dashboard card. The on-screen document preview is the same rendered composition used by PDF and PNG export. Required visual hierarchy: brand/header banner and vehicle visual; vehicle and policy summary strip; summary metric tiles; coverage/rate basis panels; itemized premium table; annual insured-value/premium schedule when the engine returns one; payment recap; coverage details; underwriting note; SurePath contact footer. The visual template must not invent rate values or premium breakdowns that are absent from the calculation engine. The PDF and image export should follow the two supplied SurePath references:
 - Single-unit invoice: customer, invoice metadata, vehicle, coverage, itemized premium, discount, policy fee, total payable, payment instructions, notes, and contact footer.
 - Multi-year proposal: vehicle summary, depreciation and tenor, rate basis, yearly premium schedule, TPL details, five-year/selected-tenor recap, notes, and contact footer.
 
