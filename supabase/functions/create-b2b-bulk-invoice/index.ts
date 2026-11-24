@@ -59,6 +59,34 @@ Deno.serve(async (req) => {
       return json(CORS, { error: `Batch is not in a payable state (status: ${batch.status})` }, 409);
     }
 
+    // v2.9.28 — one live invoice per batch. Previously every click on "Pay"
+    // created a fresh Xendit invoice: two tabs, a double click, or a retry
+    // after a timeout left the client with two payable bills for one batch,
+    // and paying both credited the batch twice in Xendit while only one could
+    // settle it here. A still-live invoice is returned instead of re-minted.
+    const { data: liveInvoice, error: liveErr } = await supabase
+      .from('sp_payments')
+      .select('id, invoice_url, xendit_invoice_id, external_id, status, created_at')
+      .eq('batch_id', batch.id)
+      .in('status', ['PENDING', 'INVOICED'])
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (liveErr) {
+      console.error('create-b2b-bulk-invoice: live invoice lookup error:', liveErr);
+      return json(CORS, { error: 'Could not check existing invoices' }, 500);
+    }
+    if (liveInvoice?.invoice_url) {
+      return json(CORS, {
+        invoice_url: liveInvoice.invoice_url,
+        xendit_invoice_id: liveInvoice.xendit_invoice_id,
+        external_id: liveInvoice.external_id,
+        status: liveInvoice.status,
+        reused: true,
+      }, 200);
+    }
+
     const totalAmount = Number(batch.total_amount);
     if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
       console.error(`create-b2b-bulk-invoice: batch ${batch_id} has invalid total_amount=${batch.total_amount}`);
@@ -138,10 +166,41 @@ Deno.serve(async (req) => {
     });
 
     if (dbErr) {
+      // The invoice exists at Xendit but nothing records it here. Returning a
+      // success URL would let the client pay an invoice the webhook cannot
+      // match to a batch (money in, no policy), so fail loudly and leave an
+      // admin trail with the provider id.
       console.error('create-b2b-bulk-invoice: DB insert error:', dbErr);
+      await supabase.from('sp_admin_notifications').insert({
+        type: 'B2B_INVOICE_NOT_RECORDED',
+        title: `Invoice B2B gagal dicatat — ${batch.batch_number ?? batch.id}`,
+        body: `Invoice Xendit ${xendit_invoice_id} (Rp ${totalAmount.toLocaleString('id-ID')}) dibuat tetapi gagal disimpan. Periksa dan cocokkan manual, atau kedaluwarsakan invoice tersebut.`,
+        metadata: { batch_id: batch.id, xendit_invoice_id, external_id, amount: totalAmount },
+        read: false,
+      }).then(() => {}, () => {});
+      return json(CORS, { error: 'Payment could not be recorded; please contact support' }, 502);
     }
 
-    await supabase.from('sp_b2b_batches').update({ status: 'INVOICED', updated_at: new Date().toISOString() }).eq('id', batch.id).eq('status', 'SUBMITTED');
+    // Conditional transition: if the batch was cancelled (or otherwise moved)
+    // while the Xendit call was in flight, the invoice is already live but the
+    // batch must not be reopened. Record the orphan so admin can void it.
+    const { data: invoiced, error: statusErr } = await supabase
+      .from('sp_b2b_batches')
+      .update({ status: 'INVOICED', updated_at: new Date().toISOString() })
+      .eq('id', batch.id)
+      .eq('status', 'SUBMITTED')
+      .select('id')
+      .maybeSingle();
+    if (statusErr || !invoiced) {
+      console.error('create-b2b-bulk-invoice: batch transition failed:', statusErr ?? 'no matching row');
+      await supabase.from('sp_admin_notifications').insert({
+        type: 'B2B_INVOICE_ORPHANED',
+        title: `Invoice B2B tanpa status — ${batch.batch_number ?? batch.id}`,
+        body: `Invoice ${external_id} sudah dibuat di Xendit tetapi batch tidak dapat diubah ke INVOICED. Periksa dan kedaluwarsakan bila perlu.`,
+        metadata: { batch_id: batch.id, xendit_invoice_id, external_id, amount: totalAmount },
+        read: false,
+      }).then(() => {}, () => {});
+    }
 
     // v2.9.12 — audit: invoice agregat dibuat (siapa, batch, nominal).
     logB2BActivity(supabase, {

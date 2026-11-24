@@ -5,13 +5,14 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   Loader2, ChevronLeft, ExternalLink, FileDown, CheckCircle2, Clock,
-  AlertTriangle, RefreshCw,
+  AlertTriangle, RefreshCw, XCircle,
 } from 'lucide-react';
 import { Language } from '../../types';
 import {
-  getB2BBulkBatches, getB2BBulkBatch, createB2BBulkInvoice,
+  getB2BBulkBatches, getB2BBulkBatch, createB2BBulkInvoice, cancelMyB2BBatch,
   type SpB2BBatch, type SpB2BBatchItem,
 } from '../../services/supabaseService';
+import { usePromptDialog } from '../ui';
 import { generateB2BBulkSchedulePDF } from '../../services/pdfService';
 import { downloadBulkQuoteExcel, quoteRowFromBatchItem } from '../../services/b2bBulkQuoteExcel';
 import {
@@ -41,6 +42,7 @@ const fmtDate = (s?: string | null) =>
 const B2BBulkBatches: React.FC<Props> = ({ lang, allClients }) => {
   const t = (en: string, id: string) => (lang === Language.EN ? en : id);
   const toast = useB2BToast();
+  const prompt = usePromptDialog();
 
   const [batches, setBatches] = useState<SpB2BBatch[]>([]);
   const [loading, setLoading] = useState(true);
@@ -51,6 +53,7 @@ const B2BBulkBatches: React.FC<Props> = ({ lang, allClients }) => {
   const [selected, setSelected] = useState<{ batch: SpB2BBatch; items: SpB2BBatchItem[]; payment: { invoice_url: string | null; status: string } | null } | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [invoiceLoading, setInvoiceLoading] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState('');
 
   const load = useCallback(async () => {
@@ -88,6 +91,43 @@ const B2BBulkBatches: React.FC<Props> = ({ lang, allClients }) => {
       setError(t('Failed to create invoice. Try again.', 'Gagal membuat invoice. Coba lagi.'));
       toast.error(t('Failed to create invoice. Try again.', 'Gagal membuat invoice. Coba lagi.'));
     }
+  };
+
+  // v2.9.29 — klien boleh membatalkan batch yang belum ditagih. Batch INVOICED
+  // sudah punya invoice Xendit hidup; gateway menolaknya dan UI tidak
+  // menawarkan tombol itu (admin yang membatalkan lewat CMS).
+  const handleCancel = async () => {
+    if (!selected || cancelling) return;
+    const reserve = selected.batch.batch_number;
+    const reason = await prompt({
+      title: t('Cancel this batch?', 'Batalkan batch ini?'),
+      description: t(
+        `Batch ${reserve} will be cancelled and can no longer be invoiced or issued. This cannot be undone.`,
+        `Batch ${reserve} akan dibatalkan dan tidak bisa ditagih atau diterbitkan lagi. Tindakan ini tidak bisa dibatalkan.`,
+      ),
+      confirmLabel: t('Cancel batch', 'Batalkan batch'),
+      cancelLabel: t('Keep batch', 'Simpan batch'),
+      variant: 'danger',
+      input: {
+        label: t('Reason (optional)', 'Alasan (opsional)'),
+        placeholder: t('e.g. duplicate import', 'mis. impor ganda'),
+        multiline: false,
+      },
+    });
+    if (reason === null) return;
+    setCancelling(true);
+    const ok = await cancelMyB2BBatch(selected.batch.id, reason.trim() || undefined);
+    setCancelling(false);
+    if (!ok) {
+      const msg = t('Could not cancel the batch. Refresh and try again.',
+                     'Batch gagal dibatalkan. Muat ulang lalu coba lagi.');
+      setError(msg);
+      toast.error(msg);
+      return;
+    }
+    toast.success(t('Batch cancelled.', 'Batch dibatalkan.'));
+    setSelected(null);
+    void load();
   };
 
   const handleDownloadSchedule = () => {
@@ -155,6 +195,12 @@ const B2BBulkBatches: React.FC<Props> = ({ lang, allClients }) => {
                   {t('Create Invoice', 'Buat Invoice')}
                 </B2BButton>
               )}
+              {batch.status === 'SUBMITTED' && !allClients && (
+                <B2BButton variant="ghost" icon={XCircle} onClick={handleCancel} disabled={cancelling}>
+                  {cancelling && <Loader2 size={13} className="animate-spin" />}
+                  {t('Cancel batch', 'Batalkan batch')}
+                </B2BButton>
+              )}
               {batch.status === 'INVOICED' && payment?.invoice_url && !allClients && (
                 <a
                   href={payment.invoice_url} target="_blank" rel="noopener noreferrer"
@@ -182,6 +228,14 @@ const B2BBulkBatches: React.FC<Props> = ({ lang, allClients }) => {
               )}
             </div>
           </div>
+
+          {batch.status === 'CANCELLED' && (
+            <div className="mb-4 flex items-center gap-2 rounded-xl bg-rose-50 border border-rose-200 p-3 text-xs text-rose-700">
+              <XCircle size={14} className="flex-shrink-0" />
+              {t('This batch was cancelled and cannot be invoiced or issued.',
+                 'Batch ini dibatalkan dan tidak bisa ditagih atau diterbitkan.')}
+            </div>
+          )}
 
           {batch.status === 'PAID' && (
             <div className="mb-4 flex items-center gap-2 rounded-xl bg-emerald-50 border border-emerald-200 p-3 text-xs text-emerald-800">

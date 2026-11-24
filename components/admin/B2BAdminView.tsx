@@ -18,6 +18,10 @@ import {
   adminDeleteB2BUser,
   adminGetB2BBulkSourceUrl,
   adminListB2BActivity,
+  adminCancelB2BBatch,
+  adminExpireStaleB2BBatches,
+  adminGetB2BBatchAging,
+  type B2BBatchAging,
   setMitraTempPassword,
   supabase,
   type SpB2BSubmission,
@@ -476,6 +480,8 @@ function renderPhotos(it: SpB2BBatchItem): React.ReactElement {
 }
 
 const BulkBatchCard: React.FC<{ batch: SpB2BBatch; insurers: InsurerOption[]; onUpdated: () => void; onToast: (m: string) => void }> = ({ batch, insurers, onUpdated, onToast }) => {
+  const prompt = usePromptDialog();
+  const [cancelling, setCancelling] = useState(false);
   const [showIssueForm, setShowIssueForm] = useState(false);
   const [policyNumber, setPolicyNumber] = useState(batch.master_policy_number ?? '');
   const [insurerName, setInsurerName] = useState(batch.insurer_name ?? '');
@@ -541,6 +547,30 @@ const BulkBatchCard: React.FC<{ batch: SpB2BBatch; insurers: InsurerOption[]; on
     setUploading(false);
     if (url) setDocUrl(url);
     else setErr('Gagal mengunggah dokumen polis.');
+  };
+
+  // v2.9.29 — pembatalan oleh admin. Gateway menolak PAID/ISSUED (polis sudah
+  // terbit) dan meminta alasan untuk audit; INVOICED boleh dibatalkan karena
+  // admin memang pemegang keputusan void invoice Xendit.
+  const handleCancel = async () => {
+    if (cancelling) return;
+    const reason = await prompt({
+      title: 'Batalkan batch?',
+      description: `Batch ${batch.batch_number} (${batch.company_name}) akan dibatalkan. Status CANCELLED bersifat final; pembayaran yang masuk setelahnya tidak akan menghidupkan batch ini.`,
+      confirmLabel: 'Batalkan batch',
+      cancelLabel: 'Jangan batalkan',
+      variant: 'danger',
+      input: { label: 'Alasan pembatalan (wajib)', placeholder: 'mis. klien membatalkan order', multiline: true, required: true },
+    });
+    if (reason === null) return;
+    const trimmed = reason.trim();
+    if (!trimmed) { onToast('Alasan pembatalan wajib diisi.'); return; }
+    setCancelling(true);
+    const ok = await adminCancelB2BBatch(batch.id, trimmed);
+    setCancelling(false);
+    if (!ok) { onToast('Gagal membatalkan batch — muat ulang lalu coba lagi.'); return; }
+    onToast('Batch dibatalkan.');
+    onUpdated();
   };
 
   const handleIssue = async () => {
@@ -725,6 +755,17 @@ const BulkBatchCard: React.FC<{ batch: SpB2BBatch; insurers: InsurerOption[]; on
         <div className="text-xs text-ds-green dark:text-emerald-400 font-semibold">
           Polis: {batch.master_policy_number} {batch.insurer_name ? `· ${batch.insurer_name}` : ''}
         </div>
+      )}
+
+      {(batch.status === 'SUBMITTED' || batch.status === 'INVOICED') && (
+        <button
+          onClick={() => void handleCancel()}
+          disabled={cancelling}
+          className="flex items-center gap-2 text-xs font-semibold text-rose-600 hover:underline disabled:opacity-50 dark:text-rose-300"
+        >
+          {cancelling ? <Loader2 size={14} className="animate-spin" /> : <X size={14} />}
+          {cancelling ? 'Membatalkan…' : 'Batalkan Batch'}
+        </button>
       )}
 
       {(batch.status === 'PAID' || batch.status === 'ISSUED') && (
@@ -1145,6 +1186,116 @@ const UsersSection: React.FC<{ onToast: (msg: string) => void }> = ({ onToast })
   );
 };
 
+// ─── Bulk ops: aging + stale sweep (v2.9.29) ────────────────────────────────
+//
+// Aging answers "how much money is sitting in which stage for how long", and
+// the sweep closes SUBMITTED batches nobody ever paid for. Both read/write via
+// gateway actions that are admin-only and audited; this panel only renders
+// their output. The sweep is manual on purpose — no cron is configured, and a
+// silent auto-cancel of client work should be an explicit operator decision.
+
+const BulkOpsPanel: React.FC<{ onUpdated: () => void; onToast: (m: string) => void }> = ({ onUpdated, onToast }) => {
+  const confirm = useConfirmDialog();
+  const [aging, setAging] = useState<B2BBatchAging | null>(null);
+  const [agingLoading, setAgingLoading] = useState(true);
+  const [agingError, setAgingError] = useState(false);
+  const [sweeping, setSweeping] = useState(false);
+
+  const loadAging = useCallback(async () => {
+    setAgingLoading(true);
+    setAgingError(false);
+    const res = await adminGetB2BBatchAging(180);
+    setAging(res);
+    setAgingError(res === null);
+    setAgingLoading(false);
+  }, []);
+
+  useEffect(() => { void loadAging(); }, [loadAging]);
+
+  const handleSweep = async () => {
+    if (sweeping) return;
+    const ok = await confirm({
+      title: 'Kedaluwarsakan batch SUBMITTED?',
+      description: 'Batch SUBMITTED yang lebih tua dari 7 hari akan berstatus CANCELLED agar tidak menggantung. Batch yang sudah INVOICED/PAID/ISSUED tidak tersentuh. Tindakan ini tercatat di log aktivitas.',
+      confirmLabel: 'Jalankan sweep',
+      cancelLabel: 'Batal',
+      variant: 'danger',
+    });
+    if (!ok) return;
+    setSweeping(true);
+    const res = await adminExpireStaleB2BBatches(7);
+    setSweeping(false);
+    if (!res) { onToast('Sweep gagal dijalankan.'); return; }
+    onToast(`${res.expired} batch dibatalkan dari ${res.scanned} yang diperiksa.`);
+    void loadAging();
+    onUpdated();
+  };
+
+  return (
+    <div className="rounded-2xl border border-ds-border bg-white dark:bg-ds-card2 p-4 space-y-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-black text-ds-ink dark:text-white">Batch Aging · 180 hari</p>
+          <p className="text-xs text-ds-ink3 mt-0.5">Nilai batch per umur dan per status — melihat pekerjaan yang menumpuk.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => void loadAging()}
+            disabled={agingLoading}
+            aria-label="Muat ulang aging"
+            className="p-2 rounded-xl text-ds-ink3 hover:text-ds-ink2 disabled:opacity-50"
+          >
+            <RefreshCw size={14} className={agingLoading ? 'animate-spin' : ''} />
+          </button>
+          <button
+            onClick={() => void handleSweep()}
+            disabled={sweeping}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-amber-300 px-3 py-2 text-xs font-bold text-amber-800 hover:bg-amber-50 disabled:opacity-50 dark:border-amber-700 dark:text-amber-300 dark:hover:bg-amber-900/20"
+          >
+            {sweeping ? <Loader2 size={13} className="animate-spin" /> : <Clock size={13} />}
+            {sweeping ? 'Menjalankan…' : 'Sweep SUBMITTED > 7 hari'}
+          </button>
+        </div>
+      </div>
+
+      {agingError ? (
+        <p className="flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-400">
+          <AlertTriangle size={13} /> Aging belum dapat dimuat. Angka di bawah tidak ditampilkan.
+        </p>
+      ) : agingLoading && !aging ? (
+        <div className="flex items-center gap-2 py-3 text-xs text-ds-ink3">
+          <Loader2 size={13} className="animate-spin" /> Memuat aging…
+        </div>
+      ) : aging ? (
+        <>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+            {aging.buckets.map(b => (
+              <div key={b.key} className="rounded-xl border border-ds-border bg-ds-card2 dark:bg-white/5 px-3 py-2">
+                <p className="text-2xs font-black uppercase tracking-wider text-ds-ink3">{b.label}</p>
+                <p className="text-sm font-black text-ds-ink dark:text-white tabular-nums mt-0.5">{b.batches} batch</p>
+                <p className="text-2xs text-ds-ink3 tabular-nums">{fmtIDRBulk(b.amount)}</p>
+              </div>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {Object.entries(aging.by_status).map(([status, v]) => (
+              <span key={status} className={`rounded-full px-2 py-0.5 text-2xs font-black ${BULK_STATUS_CLS[status] ?? 'bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-ds-ink3'}`}>
+                {status} · {v.batches} · {fmtIDRBulk(v.amount)}
+              </span>
+            ))}
+          </div>
+          {aging.truncated && (
+            <p className="flex items-center gap-1.5 text-2xs text-amber-700 dark:text-amber-400">
+              <AlertTriangle size={11} /> Lebih dari 1.000 baris — angka aging terpotong, bukan total penuh.
+            </p>
+          )}
+          <p className="text-2xs text-ds-ink3">Per {fmtDate(aging.as_of)} · jendela {aging.window_days} hari · {aging.row_count} batch terbaca</p>
+        </>
+      ) : null}
+    </div>
+  );
+};
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 const BULK_STATUSES = ['SUBMITTED', 'INVOICED', 'PAID', 'ISSUED', 'CANCELLED'];
@@ -1286,13 +1437,16 @@ const B2BAdminView: React.FC = () => {
             ))
           )
         ) : tab === 'bulk' ? (
-          visibleBulk.length === 0 ? (
-            <Empty />
-          ) : (
-            visibleBulk.map(batch => (
-              <BulkBatchCard key={batch.id} batch={batch} insurers={insurers} onUpdated={load} onToast={showToast} />
-            ))
-          )
+          <>
+            <BulkOpsPanel onUpdated={load} onToast={showToast} />
+            {visibleBulk.length === 0 ? (
+              <Empty />
+            ) : (
+              visibleBulk.map(batch => (
+                <BulkBatchCard key={batch.id} batch={batch} insurers={insurers} onUpdated={load} onToast={showToast} />
+              ))
+            )}
+          </>
         ) : tab === 'users' ? (
           <UsersSection onToast={showToast} />
         ) : tab === 'activity' ? (

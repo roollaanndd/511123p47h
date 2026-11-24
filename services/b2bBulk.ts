@@ -618,3 +618,60 @@ export async function adminDeleteB2BPlan(id: string): Promise<{ success: boolean
   if (error) { console.error('adminDeleteB2BPlan:', error); return { success: false }; }
   return (data ?? { success: false }) as { success: boolean; deactivated?: boolean };
 }
+
+// ─── Batch lifecycle & fleet renewal (v2.9.28) ─────────────────────────────
+// Server-side actions only for now: the portal screens that consume these are
+// a separate frontend increment (see docs/B2B_BATCH_LIFECYCLE.md).
+
+export async function cancelMyB2BBatch(batchId: string, reason?: string): Promise<boolean> {
+  const { error } = await callGateway('b2b_bulk_cancel_batch', { batch_id: batchId, reason: reason ?? null });
+  if (error) { console.error('cancelMyB2BBatch:', error); return false; }
+  return true;
+}
+
+export async function adminCancelB2BBatch(batchId: string, reason?: string): Promise<boolean> {
+  const { error } = await callGateway('admin_b2b_bulk_cancel_batch', { batch_id: batchId, reason: reason ?? null });
+  if (error) { console.error('adminCancelB2BBatch:', error); return false; }
+  return true;
+}
+
+export async function adminExpireStaleB2BBatches(olderThanDays = 7): Promise<{ scanned: number; expired: number } | null> {
+  const { data, error } = await callGateway('admin_b2b_expire_stale_batches', { older_than_days: olderThanDays });
+  if (error) { console.error('adminExpireStaleB2BBatches:', error); return null; }
+  return (data ?? null) as { scanned: number; expired: number } | null;
+}
+
+export interface B2BFleetRenewalItem {
+  id: string;
+  batch_id: string;
+  batch_number: string | null;
+  row_no: number;
+  nasabah_name: string;
+  plate_no: string | null;
+  make: string | null;
+  model: string | null;
+  coverage_end_date: string;
+  days_remaining: number;
+  urgency: 'CRITICAL' | 'SOON' | 'PLANNED';
+}
+
+export async function getMyB2BFleetRenewals(withinDays = 90): Promise<B2BFleetRenewalItem[]> {
+  const { data, error } = await callGateway('b2b_fleet_renewals', { within_days: withinDays });
+  if (error) { console.error('getMyB2BFleetRenewals:', error); return []; }
+  return ((data as { items?: B2BFleetRenewalItem[] } | null)?.items ?? []) as B2BFleetRenewalItem[];
+}
+
+export interface B2BBatchAging {
+  as_of: string;
+  window_days: number;
+  row_count: number;
+  truncated: boolean;
+  buckets: Array<{ key: string; label: string; batches: number; amount: number }>;
+  by_status: Record<string, { batches: number; amount: number }>;
+}
+
+export async function adminGetB2BBatchAging(days = 180): Promise<B2BBatchAging | null> {
+  const { data, error } = await callGateway('admin_b2b_batch_aging', { days });
+  if (error) { console.error('adminGetB2BBatchAging:', error); return null; }
+  return (data ?? null) as B2BBatchAging | null;
+}

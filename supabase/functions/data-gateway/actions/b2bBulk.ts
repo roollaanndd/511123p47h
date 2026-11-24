@@ -20,6 +20,10 @@ import {
 import { safeError } from '../../_shared/errorMap.ts';
 import { loadActiveBulkRateConfig } from './b2bSettings.ts';
 import { logB2BActivity } from '../../_shared/b2bActivityLog.ts';
+import {
+  MAX_BATCH_ROWS, buildUnitPolicyNumbers, describeExpiredPolicyCopies, expiredPolicyCopyRowIds,
+  normalizePolicyNumber, reconcileBatchTotal, type PolicyNumberRow, type UnitPolicyAssignment,
+} from '../../_shared/b2bBatchIntegrity.ts';
 
 const json = (body: unknown, status = 200): ActionResult => ({ status, body });
 const ok = (data: unknown): ActionResult => json({ data });
@@ -250,9 +254,16 @@ export async function handleB2BBulkAction(action: string, ctx: GatewayContext): 
       const clientId = caller.spUser?.id;
       if (!clientId) return err('No B2B profile', 403);
 
+      // v2.9.28 — batas laju per klien. Setiap batch memuat set tarif aktif
+      // dan menghitung ulang premi tiap baris (mahal), lalu menulis hingga
+      // MAX_BATCH_ROWS baris. Tanpa batas, satu akun bisa mengunci fungsi
+      // dengan mengulang kiriman besar.
+      const allowed = await ctx.checkRateLimit(`b2b:${clientId}`, 30);
+      if (!allowed) return err('Terlalu banyak pengajuan batch dalam satu jam. Coba lagi nanti.', 429);
+
       const rawItems: unknown[] = Array.isArray(params.items) ? params.items : [];
       if (rawItems.length === 0) return err('items tidak boleh kosong', 400);
-      if (rawItems.length > 2000) return err('Maksimum 2000 baris per batch', 400);
+      if (rawItems.length > MAX_BATCH_ROWS) return err(`Maksimum ${MAX_BATCH_ROWS} baris per batch`, 400);
 
       // Nama perusahaan diambil dari parameter, lalu fallback ke profil B2B
       // pemanggil. Order unit (satu baris) tidak punya field perusahaan di
@@ -411,6 +422,40 @@ export async function handleB2BBulkAction(action: string, ctx: GatewayContext): 
         // Roll back the header so a failed import doesn't leave an orphan batch.
         await db.from('sp_b2b_batches').delete().eq('id', batch.id);
         { const _err = safeError(itemsErr); return err(_err.body.error, _err.status); }
+      }
+
+      // v2.9.28 — rekonsiliasi header vs baris yang benar-benar tersimpan.
+      // Total di header dihitung dari hasil rating server, tetapi satu bug
+      // pemetaan kolom atau satu insert parsial akan membuat klien membayar
+      // nominal yang tidak sama dengan jumlah polisnya. Baca balik dari DB
+      // (bukan dari array di memori) dan batalkan batch bila tidak balance.
+      // PostgREST caps a single select at 1,000 rows, so a 2,000-unit batch has
+      // to be summed in pages — otherwise reconciliation compares the header
+      // against half the fleet and rejects a perfectly good import.
+      const PAGE = 1000;
+      const persistedTotals: Array<{ total_premium: unknown }> = [];
+      let totalErr: unknown = null;
+      for (let offset = 0; offset < itemRows.length; offset += PAGE) {
+        const { data: page, error } = await db
+          .from('sp_b2b_batch_items')
+          .select('total_premium')
+          .eq('batch_id', batch.id)
+          .order('row_no')
+          .range(offset, offset + PAGE - 1);
+        if (error) { totalErr = error; break; }
+        persistedTotals.push(...(page ?? []));
+        if ((page ?? []).length < PAGE) break;
+      }
+      const reconciliation = reconcileBatchTotal(
+        Number(batch.total_amount),
+        persistedTotals.map((row) => row.total_premium as number),
+      );
+      if (totalErr || !reconciliation.balanced) {
+        console.error('b2b_bulk_create_batch: total reconciliation failed', {
+          batch_id: batch.id, error: totalErr, reconciliation, item_count: itemRows.length,
+        });
+        await db.from('sp_b2b_batches').delete().eq('id', batch.id);
+        return err('Total batch tidak konsisten dengan rincian unit. Impor dibatalkan; silakan coba lagi.', 500);
       }
 
       await db.from('sp_admin_notifications').insert({
@@ -659,6 +704,13 @@ export async function handleB2BBulkAction(action: string, ctx: GatewayContext): 
         return err(`Batch belum dibayar (status: ${batch.status}). Polis hanya dapat diterbitkan untuk batch PAID.`, 409);
       }
 
+      // v2.9.28 — nomor polis per unit + peringatan copy polis kedaluwarsa
+      // (v2.9.29: peringatan, bukan penghalang — lihat resolveUnitPolicyNumbers).
+      const resolved = await resolveUnitPolicyNumbers(db, batchId, policyNumber, params.unit_policy_numbers);
+      if (resolved.error) return err(resolved.error, 409);
+      const assignments = resolved.assignments;
+      const expiredCopyWarning = describeExpiredPolicyCopies(resolved.expiredRowNos);
+
       const ts = new Date().toISOString();
       const insurerName = params.insurer_name ? String(params.insurer_name) : null;
       const { data: updated, error: updErr } = await db.from('sp_b2b_batches').update({
@@ -671,9 +723,32 @@ export async function handleB2BBulkAction(action: string, ctx: GatewayContext): 
       }).eq('id', batchId).select().maybeSingle();
       if (updErr) { const _err = safeError(updErr); return err(_err.body.error, _err.status); }
 
-      await db.from('sp_b2b_batch_items').update({ status: 'ISSUED', policy_number: policyNumber, updated_at: ts }).eq('batch_id', batchId);
+      const applied = await applyUnitPolicyNumbers(db, batchId, assignments, ts);
+      if (applied) return err(applied, 500);
+
+      // v2.9.28 — beri tahu klien in-app bahwa polisnya sudah terbit.
+      await db.from('sp_notifications').insert({
+        agent_id: updated.client_id,
+        type: 'B2B_BULK_ISSUED_CLIENT',
+        title: `Polis massal terbit — ${updated.batch_number ?? batchId}`,
+        body: `Polis induk ${policyNumber} untuk ${updated.item_count ?? assignments.length} unit telah diterbitkan. Dokumen dapat diunduh dari portal B2B.`,
+        read: false,
+        metadata: { batch_id: batchId, master_policy_number: policyNumber, unit_count: assignments.length },
+      }).then(() => {}, () => {});
 
       const { data: signed } = await db.storage.from('b2b-documents').createSignedUrl(masterPolicyPath, 300);
+
+      // v2.9.29 — copy polis kedaluwarsa dilaporkan ke admin agar bisa ditagih
+      // ulang ke klien; polis tetap terbit karena batch sudah dibayar.
+      if (expiredCopyWarning) {
+        await db.from('sp_admin_notifications').insert({
+          type: 'B2B_POLICY_COPY_EXPIRED',
+          title: `Copy polis kedaluwarsa — ${updated.batch_number ?? batchId}`,
+          body: expiredCopyWarning,
+          metadata: { batch_id: batchId, expired_policy_copy_rows: resolved.expiredRowNos },
+          read: false,
+        }).then(() => {}, () => {});
+      }
 
       // v2.9.12 — audit terbitan polis induk oleh admin.
       logB2BActivity(db, {
@@ -683,13 +758,24 @@ export async function handleB2BBulkAction(action: string, ctx: GatewayContext): 
         actorRole: caller.role ?? 'ADMIN',
         actorEmail: caller.email,
         action: 'bulk_master_policy_issued',
-        summary: `Polis induk ${policyNumber} diterbitkan untuk ${updated.batch_number}.`,
-        detail: { master_policy_number: policyNumber, master_policy_path: masterPolicyPath, insurer_name: insurerName, actor: 'admin' },
+        summary: `Polis induk ${policyNumber} diterbitkan untuk ${updated.batch_number}.${expiredCopyWarning ? ' ' + expiredCopyWarning : ''}`,
+        detail: {
+          master_policy_number: policyNumber,
+          master_policy_path: masterPolicyPath,
+          insurer_name: insurerName,
+          actor: 'admin',
+          expired_policy_copy_rows: resolved.expiredRowNos,
+        },
         ip: ctx.reqIp,
         userAgent: ctx.reqUserAgent,
       });
 
-      return ok({ ...updated, master_policy_signed_url: signed?.signedUrl ?? null });
+      return ok({
+        ...updated,
+        master_policy_signed_url: signed?.signedUrl ?? null,
+        expired_policy_copy_rows: resolved.expiredRowNos,
+        warning: expiredCopyWarning,
+      });
     }
 
     // ── Admin: assign the insurer who will issue the master policy ─────────
@@ -809,6 +895,13 @@ export async function handleB2BBulkAction(action: string, ctx: GatewayContext): 
       if (!batch || batch.insurer_id !== authToken.insurer_id) return err('Batch not found or not assigned to your insurer', 404);
       if (batch.status !== 'PAID') return err(`Batch belum berstatus PAID (status: ${batch.status})`, 409);
 
+      // v2.9.28 — nomor polis per unit + peringatan copy polis kedaluwarsa
+      // (v2.9.29: peringatan, bukan penghalang — lihat resolveUnitPolicyNumbers).
+      const resolved = await resolveUnitPolicyNumbers(db, batchId, policyNumber, params.unit_policy_numbers);
+      if (resolved.error) return err(resolved.error, 409);
+      const assignments = resolved.assignments;
+      const expiredCopyWarning = describeExpiredPolicyCopies(resolved.expiredRowNos);
+
       const ts = new Date().toISOString();
       const { data: updated, error: updErr } = await db.from('sp_b2b_batches').update({
         status: 'ISSUED',
@@ -819,13 +912,29 @@ export async function handleB2BBulkAction(action: string, ctx: GatewayContext): 
       }).eq('id', batchId).select().maybeSingle();
       if (updErr) { const _err = safeError(updErr); return err(_err.body.error, _err.status); }
 
-      await db.from('sp_b2b_batch_items').update({ status: 'ISSUED', policy_number: policyNumber || null, updated_at: ts }).eq('batch_id', batchId);
+      const applied = await applyUnitPolicyNumbers(db, batchId, assignments, ts);
+      if (applied) return err(applied, 500);
+
+      // v2.9.28 — klien menerima pemberitahuan in-app yang sama seperti
+      // jalur admin, supaya status "polis terbit" tidak hanya terlihat oleh admin.
+      await db.from('sp_notifications').insert({
+        agent_id: batch.client_id,
+        type: 'B2B_BULK_ISSUED_CLIENT',
+        title: `Polis massal terbit — ${batch.batch_number}`,
+        body: `Polis induk ${policyNumber || '(tanpa nomor)'} untuk batch ${batch.batch_number} telah diterbitkan oleh penanggung.`,
+        read: false,
+        metadata: { batch_id: batchId, master_policy_number: policyNumber || null, unit_count: assignments.length },
+      }).then(() => {}, () => {});
 
       await db.from('sp_admin_notifications').insert({
         type: 'B2B_BULK_ISSUED',
         title: `Polis Induk B2B Diterbitkan — ${batch.company_name}`,
-        body: `${batch.batch_number}: polis ${policyNumber || '(no number)'} diunggah oleh insurer.`,
-        metadata: { batch_id: batchId, policy_number: policyNumber },
+        body: `${batch.batch_number}: polis ${policyNumber || '(no number)'} diunggah oleh insurer.${expiredCopyWarning ? ' ' + expiredCopyWarning : ''}`,
+        metadata: {
+          batch_id: batchId,
+          policy_number: policyNumber,
+          expired_policy_copy_rows: resolved.expiredRowNos,
+        },
         read: false,
       }).then(() => {}, () => {});
 
@@ -837,14 +946,24 @@ export async function handleB2BBulkAction(action: string, ctx: GatewayContext): 
         actorRole: 'INSURER',
         actorEmail: null,
         action: 'bulk_insurer_uploaded_master_policy',
-        summary: `Insurer mengunggah polis induk ${policyNumber || '(no number)'} untuk ${batch.batch_number}.`,
-        detail: { master_policy_number: policyNumber || null, master_policy_path: path, insurer_id: authToken.insurer_id },
+        summary: `Insurer mengunggah polis induk ${policyNumber || '(no number)'} untuk ${batch.batch_number}.${expiredCopyWarning ? ' ' + expiredCopyWarning : ''}`,
+        detail: {
+          master_policy_number: policyNumber || null,
+          master_policy_path: path,
+          insurer_id: authToken.insurer_id,
+          expired_policy_copy_rows: resolved.expiredRowNos,
+        },
         ip: ctx.reqIp,
         userAgent: ctx.reqUserAgent,
       });
 
       const { data: signed } = await db.storage.from('b2b-documents').createSignedUrl(path, 300);
-      return ok({ ...updated, master_policy_signed_url: signed?.signedUrl ?? null });
+      return ok({
+        ...updated,
+        master_policy_signed_url: signed?.signedUrl ?? null,
+        expired_policy_copy_rows: resolved.expiredRowNos,
+        warning: expiredCopyWarning,
+      });
     }
 
     case 'admin_b2b_bulk_list_batches': {
@@ -1020,7 +1139,368 @@ export async function handleB2BBulkAction(action: string, ctx: GatewayContext): 
       return ok(enriched);
     }
 
+    // ── Klien: batalkan batch yang belum dibayar ───────────────────────────
+    // Sebelumnya status CANCELLED ada di CHECK constraint tetapi tidak ada
+    // kode yang menulisnya: klien yang salah impor tidak punya jalan keluar
+    // dan antrean admin menumpuk selamanya. Hanya pemilik batch, hanya saat
+    // SUBMITTED — batch INVOICED punya tagihan hidup yang tidak boleh
+    // ditinggalkan tanpa jejak, jadi itu ranah admin.
+    case 'b2b_bulk_cancel_batch': {
+      if (caller.role !== 'B2B_CLIENT') return err('Forbidden: B2B client only', 403);
+      const clientId = caller.spUser?.id;
+      if (!clientId) return err('No B2B profile', 403);
+      const batchId = String(params.batch_id ?? '');
+      if (!batchId) return err('batch_id required', 400);
+      const reason = String(params.reason ?? '').trim().slice(0, 300);
+
+      const { data: batch, error: bErr } = await db
+        .from('sp_b2b_batches')
+        .select('id, batch_number, client_id, status, total_amount')
+        .eq('id', batchId).maybeSingle();
+      if (bErr) { const _err = safeError(bErr); return err(_err.body.error, _err.status); }
+      if (!batch) return err('Batch not found', 404);
+      if (batch.client_id !== clientId) return err('Forbidden: bukan batch Anda', 403);
+      if (batch.status !== 'SUBMITTED') {
+        return err(`Batch tidak dapat dibatalkan sendiri (status: ${batch.status}). Hubungi administrator.`, 409);
+      }
+
+      const ts = new Date().toISOString();
+      const { data: updated, error: uErr } = await db.from('sp_b2b_batches').update({
+        status: 'CANCELLED',
+        cancelled_at: ts,
+        cancelled_by: clientId,
+        cancel_reason: reason || 'Dibatalkan oleh klien.',
+        updated_at: ts,
+      }).eq('id', batchId).eq('status', 'SUBMITTED')
+        .select('id, batch_number, status, cancelled_at').maybeSingle();
+      if (uErr) { const _err = safeError(uErr); return err(_err.body.error, _err.status); }
+      if (!updated) return err('Status batch sudah berubah. Muat ulang lalu coba lagi.', 409);
+
+      await db.from('sp_admin_notifications').insert({
+        type: 'B2B_BULK_CANCELLED',
+        title: `Batch B2B Dibatalkan — ${batch.batch_number}`,
+        body: `${batch.batch_number} dibatalkan oleh klien. Alasan: ${reason || '(tidak disebutkan)'}`,
+        metadata: { batch_id: batchId, reason: reason || null },
+        read: false,
+      }).then(() => {}, () => {});
+
+      logB2BActivity(db, {
+        clientId,
+        batchId,
+        batchNumber: batch.batch_number,
+        actorRole: caller.role,
+        actorEmail: caller.email,
+        action: 'bulk_batch_cancelled',
+        summary: `Klien membatalkan ${batch.batch_number}. Alasan: ${reason || '(tidak disebutkan)'}.`,
+        detail: { reason: reason || null, previous_status: batch.status },
+        ip: ctx.reqIp,
+        userAgent: ctx.reqUserAgent,
+      });
+
+      return ok(updated);
+    }
+
+    // ── Admin: batalkan batch (termasuk yang sudah punya invoice) ──────────
+    case 'admin_b2b_bulk_cancel_batch': {
+      if (!caller.isAdmin) return err('Forbidden: admin only', 403);
+      const batchId = String(params.batch_id ?? '');
+      if (!batchId) return err('batch_id required', 400);
+      const reason = String(params.reason ?? '').trim().slice(0, 300);
+
+      const { data: batch, error: bErr } = await db
+        .from('sp_b2b_batches')
+        .select('id, batch_number, client_id, status')
+        .eq('id', batchId).maybeSingle();
+      if (bErr) { const _err = safeError(bErr); return err(_err.body.error, _err.status); }
+      if (!batch) return err('Batch not found', 404);
+      if (batch.status === 'PAID' || batch.status === 'ISSUED') {
+        return err(`Batch sudah dibayar (status: ${batch.status}); pembatalan tidak diizinkan.`, 409);
+      }
+      if (batch.status === 'CANCELLED') {
+        return err('Batch sudah dibatalkan.', 409);
+      }
+
+      const ts = new Date().toISOString();
+      const { data: updated, error: uErr } = await db.from('sp_b2b_batches').update({
+        status: 'CANCELLED',
+        cancelled_at: ts,
+        cancelled_by: caller.spUser?.id ?? null,
+        cancel_reason: reason || 'Dibatalkan oleh administrator.',
+        updated_at: ts,
+      }).eq('id', batchId).in('status', ['SUBMITTED', 'INVOICED'])
+        .select('id, batch_number, status, cancelled_at').maybeSingle();
+      if (uErr) { const _err = safeError(uErr); return err(_err.body.error, _err.status); }
+      if (!updated) return err('Status batch sudah berubah. Muat ulang lalu coba lagi.', 409);
+
+      // An INVOICED batch may still have a payable Xendit invoice. Cancelling
+      // the batch does not void it at the provider, so leave an explicit task
+      // for finance instead of letting a payment arrive on a dead batch.
+      if (batch.status === 'INVOICED') {
+        await db.from('sp_admin_notifications').insert({
+          type: 'B2B_CANCELLED_WITH_LIVE_INVOICE',
+          title: `Batch dibatalkan setelah invoice terbit — ${batch.batch_number}`,
+          body: `Invoice Xendit untuk ${batch.batch_number} masih dapat dibayar. Kedaluwarsakan/void invoice tersebut agar tidak ada pembayaran masuk untuk batch yang sudah dibatalkan.`,
+          metadata: { batch_id: batchId },
+          read: false,
+        }).then(() => {}, () => {});
+      }
+
+      logB2BActivity(db, {
+        clientId: batch.client_id,
+        batchId,
+        batchNumber: batch.batch_number,
+        actorRole: caller.role ?? 'ADMIN',
+        actorEmail: caller.email,
+        action: 'bulk_batch_cancelled_by_admin',
+        summary: `Admin membatalkan ${batch.batch_number}. Alasan: ${reason || '(tidak disebutkan)'}.`,
+        detail: { reason: reason || null, previous_status: batch.status },
+        ip: ctx.reqIp,
+        userAgent: ctx.reqUserAgent,
+      });
+
+      return ok(updated);
+    }
+
+    // ── Admin: sapu batch SUBMITTED yang tidak pernah dibayar ──────────────
+    // Idempoten dan terbatas 200 batch per panggilan. Tidak menyentuh batch
+    // yang sudah punya invoice hidup (INVOICED) — invoice itu harus kedaluwarsa
+    // lewat webhook Xendit agar tidak ada tagihan yang masih bisa dibayar
+    // padahal batch-nya sudah dibatalkan.
+    case 'admin_b2b_expire_stale_batches': {
+      if (!caller.isAdmin) return err('Forbidden: admin only', 403);
+      const days = Math.min(Math.max(Number(params.older_than_days) || 7, 1), 30);
+      const cutoff = new Date(Date.now() - days * 86_400_000).toISOString();
+      const ts = new Date().toISOString();
+
+      const { data: stale, error: sErr } = await db
+        .from('sp_b2b_batches')
+        .select('id, batch_number, client_id, created_at')
+        .eq('status', 'SUBMITTED')
+        .lt('created_at', cutoff)
+        .order('created_at', { ascending: true })
+        .limit(200);
+      if (sErr) { const _err = safeError(sErr); return err(_err.body.error, _err.status); }
+
+      let expired = 0;
+      for (const b of stale ?? []) {
+        const { data: upd } = await db.from('sp_b2b_batches').update({
+          status: 'CANCELLED',
+          cancelled_at: ts,
+          cancelled_by: null,
+          cancel_reason: `Kedaluwarsa otomatis: ${days} hari tanpa pembayaran.`,
+          updated_at: ts,
+        }).eq('id', b.id).eq('status', 'SUBMITTED').select('id').maybeSingle();
+        if (!upd) continue;
+        expired++;
+        logB2BActivity(db, {
+          clientId: b.client_id,
+          batchId: b.id,
+          batchNumber: b.batch_number,
+          actorRole: 'SYSTEM',
+          actorEmail: null,
+          action: 'bulk_batch_expired',
+          summary: `${b.batch_number} kedaluwarsa otomatis setelah ${days} hari tanpa pembayaran.`,
+          detail: { older_than_days: days, created_at: b.created_at },
+          ip: ctx.reqIp,
+          userAgent: ctx.reqUserAgent,
+        });
+      }
+
+      return ok({ cutoff, older_than_days: days, scanned: (stale ?? []).length, expired });
+    }
+
+    // ── Admin: umur antrean batch (aging) ─────────────────────────────────
+    // Menjawab "berapa uang yang tertahan di antrean dan sudah berapa lama"
+    // tanpa menarik semua baris ke peramban.
+    case 'admin_b2b_batch_aging': {
+      if (!caller.isAdmin) return err('Forbidden: admin only', 403);
+      const days = Math.min(Math.max(Number(params.days) || 180, 7), 365);
+      const since = new Date(Date.now() - days * 86_400_000).toISOString();
+      const { data, error } = await db
+        .from('sp_b2b_batches')
+        .select('id, status, total_amount, created_at')
+        .gte('created_at', since)
+        .order('created_at', { ascending: true })
+        .limit(5000);
+      if (error) { const _err = safeError(error); return err(_err.body.error, _err.status); }
+
+      const now = Date.now();
+      const bucketOf = (ageDays: number) =>
+        ageDays < 7 ? 'under_7_days' : ageDays < 30 ? 'days_7_30' : ageDays < 90 ? 'days_30_90' : 'over_90_days';
+      const bucketLabels: Record<string, string> = {
+        under_7_days: '0–6 hari', days_7_30: '7–29 hari', days_30_90: '30–89 hari', over_90_days: '90+ hari',
+      };
+      const buckets: Record<string, { label: string; batches: number; amount: number }> = {};
+      for (const key of Object.keys(bucketLabels)) buckets[key] = { label: bucketLabels[key], batches: 0, amount: 0 };
+      const byStatus: Record<string, { batches: number; amount: number }> = {};
+
+      for (const b of data ?? []) {
+        const ageDays = Math.max(0, Math.floor((now - Date.parse(String(b.created_at))) / 86_400_000));
+        const amount = Number(b.total_amount) || 0;
+        const bucket = buckets[bucketOf(ageDays)];
+        bucket.batches += 1;
+        bucket.amount += amount;
+        const status = String(b.status ?? 'UNKNOWN');
+        byStatus[status] = byStatus[status] ?? { batches: 0, amount: 0 };
+        byStatus[status].batches += 1;
+        byStatus[status].amount += amount;
+      }
+
+      return ok({
+        as_of: new Date().toISOString(),
+        window_days: days,
+        // PostgREST caps the underlying select at 1,000 rows; say so rather
+        // than presenting a silently truncated queue as complete.
+        row_count: (data ?? []).length,
+        truncated: (data ?? []).length >= 1000,
+        buckets: Object.entries(buckets).map(([key, value]) => ({ key, ...value })),
+        by_status: byStatus,
+      });
+    }
+
+    // ── Klien: radar perpanjangan armada ───────────────────────────────────
+    // Batch membawa coverage_end_date per unit (v2.9.13). Tanpa aksi ini
+    // tanggal itu hanya tersimpan: tidak ada yang memberi tahu klien bahwa
+    // 40 unit habis masa pertanggungannya bulan depan — padahal justru di situ
+    // pendapatan perpanjangan berada.
+    case 'b2b_fleet_renewals': {
+      if (!caller.spUser) return err('No profile', 403);
+      if (caller.spUser.role !== 'B2B_CLIENT') return err('Forbidden: B2B only', 403);
+      const withinDays = Math.min(Math.max(Number(params.within_days) || 90, 1), 365);
+      const today = new Date().toISOString().slice(0, 10);
+      const horizon = new Date(Date.now() + withinDays * 86_400_000).toISOString().slice(0, 10);
+
+      const { data: batches, error: bErr } = await db
+        .from('sp_b2b_batches')
+        .select('id, batch_number, status')
+        .eq('client_id', caller.spUser.id)
+        .in('status', ['PAID', 'ISSUED'])
+        .order('created_at', { ascending: false })
+        .limit(500);
+      if (bErr) { const _err = safeError(bErr); return err(_err.body.error, _err.status); }
+      const batchIds = (batches ?? []).map((b: { id: string }) => b.id);
+      if (batchIds.length === 0) return ok({ as_of: today, within_days: withinDays, items: [] });
+
+      const batchMeta: Record<string, { batch_number: string; status: string }> = {};
+      for (const b of batches ?? []) batchMeta[b.id] = { batch_number: b.batch_number, status: b.status };
+
+      const { data: items, error: iErr } = await db
+        .from('sp_b2b_batch_items')
+        .select('id, batch_id, row_no, nasabah_name, plate_no, make, model, coverage_end_date, total_premium, status')
+        .in('batch_id', batchIds)
+        .gte('coverage_end_date', today)
+        .lte('coverage_end_date', horizon)
+        .order('coverage_end_date', { ascending: true })
+        .limit(1000);
+      if (iErr) { const _err = safeError(iErr); return err(_err.body.error, _err.status); }
+
+      const todayMs = Date.parse(`${today}T00:00:00Z`);
+      const rows = (items ?? []).map((it: Record<string, any>) => {
+        const end = String(it.coverage_end_date).slice(0, 10);
+        const daysRemaining = Math.ceil((Date.parse(`${end}T00:00:00Z`) - todayMs) / 86_400_000);
+        return {
+          ...it,
+          batch_number: batchMeta[it.batch_id]?.batch_number ?? null,
+          batch_status: batchMeta[it.batch_id]?.status ?? null,
+          days_remaining: daysRemaining,
+          urgency: daysRemaining <= 14 ? 'CRITICAL' : daysRemaining <= 45 ? 'SOON' : 'PLANNED',
+        };
+      });
+
+      return ok({ as_of: today, within_days: withinDays, count: rows.length, items: rows });
+    }
+
     default:
       return null;
   }
+}
+
+// ── Helpers: per-unit policy numbering ──────────────────────────────────────
+
+/** Accepts either { itemId: number } or [{ item_id, policy_number }]. */
+function normalizePolicyNumberOverrides(raw: unknown): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!raw) return out;
+  if (Array.isArray(raw)) {
+    for (const entry of raw) {
+      if (!entry || typeof entry !== 'object') continue;
+      const row = entry as Record<string, unknown>;
+      const itemId = String(row.item_id ?? row.itemId ?? '').trim();
+      const number = String(row.policy_number ?? row.policyNumber ?? '').trim();
+      if (itemId && number) out[itemId] = number;
+    }
+    return out;
+  }
+  if (typeof raw === 'object') {
+    for (const [itemId, value] of Object.entries(raw as Record<string, unknown>)) {
+      const key = String(itemId).trim();
+      const number = String(value ?? '').trim();
+      if (key && number) out[key] = number;
+    }
+  }
+  return out;
+}
+
+/**
+ * Load the batch rows, check policy copy expiry and produce one policy number
+ * per row. Never falls back to a single number for the whole batch.
+ *
+ * v2.9.29 — an expired policy copy is reported, not fatal. The copy is the
+ * client's PREVIOUS policy kept as supporting evidence; the legal basis of the
+ * cover being issued is the master policy. Blocking a PAID batch on it left
+ * already-paid vehicles uninsured over a document that ops can chase later, so
+ * the expiry now travels back as `expiredRowNos` for notification + audit.
+ */
+async function resolveUnitPolicyNumbers(
+  db: any,
+  batchId: string,
+  masterPolicyNumber: string,
+  rawOverrides: unknown,
+): Promise<{ assignments: UnitPolicyAssignment[]; expiredRowNos: number[]; error?: string }> {
+  const { data: rows, error } = await db
+    .from('sp_b2b_batch_items')
+    .select('id, row_no, policy_copy_expiry')
+    .eq('batch_id', batchId)
+    .order('row_no');
+  if (error) { const _err = safeError(error); return { assignments: [], expiredRowNos: [], error: _err.body.error }; }
+
+  const items = (rows ?? []) as PolicyNumberRow[];
+  if (items.length === 0) {
+    return { assignments: [], expiredRowNos: [], error: 'Batch tidak memiliki unit; tidak ada polis yang bisa diterbitkan.' };
+  }
+
+  const expired = new Set(expiredPolicyCopyRowIds(items, new Date().toISOString().slice(0, 10)));
+  const expiredRowNos = items.filter(r => expired.has(r.id)).map(r => r.rowNo);
+
+  // Legacy insurer flow allows a blank master number. Keep that, but never
+  // invent unit numbers out of an empty string.
+  if (!normalizePolicyNumber(masterPolicyNumber)) {
+    return { assignments: items.map(r => ({ itemId: r.id, rowNo: r.rowNo, policyNumber: '' })), expiredRowNos };
+  }
+
+  const built = buildUnitPolicyNumbers(masterPolicyNumber, items, normalizePolicyNumberOverrides(rawOverrides));
+  if (built.error) return { assignments: [], expiredRowNos: [], error: built.error };
+  return { assignments: built.assignments, expiredRowNos };
+}
+
+/** Write each row's own policy number in waves of 25 (bounded DB concurrency). */
+async function applyUnitPolicyNumbers(
+  db: any,
+  batchId: string,
+  assignments: UnitPolicyAssignment[],
+  ts: string,
+): Promise<string | null> {
+  const WAVE = 25;
+  for (let i = 0; i < assignments.length; i += WAVE) {
+    const wave = assignments.slice(i, i + WAVE);
+    const results = await Promise.all(wave.map(a => db
+      .from('sp_b2b_batch_items')
+      .update({ policy_number: a.policyNumber || null, status: 'ISSUED', updated_at: ts })
+      .eq('id', a.itemId)
+      .eq('batch_id', batchId)));
+    for (const r of results) {
+      if (r?.error) { const _err = safeError(r.error); return _err.body.error; }
+    }
+  }
+  return null;
 }

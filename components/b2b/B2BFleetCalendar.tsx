@@ -9,9 +9,11 @@
 // migration, and this screen says so instead of pretending coverage.
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { CalendarDays, Download, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { CalendarDays, Download, AlertTriangle, ShieldCheck, Truck } from 'lucide-react';
 import { Language } from '../../types';
-import { getCustomerOrders } from '../../services/supabaseService';
+import {
+  getCustomerOrders, getMyB2BFleetRenewals, type B2BFleetRenewalItem,
+} from '../../services/supabaseService';
 import {
   buildRenewalQueue, TIER_LABEL_ID, TIER_LABEL_EN,
   formatEndDate, type RenewalCandidate,
@@ -34,16 +36,38 @@ const TIER_TONE: Record<string, B2BPillTone> = {
   EXPIRED:  'danger',
 };
 
+// v2.9.29 — batch-unit renewal radar. A batch item has no policy order, so
+// buildRenewalQueue() cannot see it; the gateway reads coverage_end_date from
+// sp_b2b_batch_items directly and returns the urgency tier.
+const RENEWAL_TONE: Record<B2BFleetRenewalItem['urgency'], B2BPillTone> = {
+  CRITICAL: 'danger',
+  SOON:     'warn',
+  PLANNED:  'info',
+};
+const RENEWAL_LABEL: Record<B2BFleetRenewalItem['urgency'], { en: string; id: string }> = {
+  CRITICAL: { en: 'Critical', id: 'Kritis' },
+  SOON:     { en: 'Soon', id: 'Segera' },
+  PLANNED:  { en: 'Planned', id: 'Terjadwal' },
+};
+
 interface Props { lang: Language }
 
 const B2BFleetCalendar: React.FC<Props> = ({ lang }) => {
   const t = (en: string, id: string) => (lang === Language.EN ? en : id);
   const [orders, setOrders] = useState<Awaited<ReturnType<typeof getCustomerOrders>>>([]);
   const [loading, setLoading] = useState(true);
+  const [renewals, setRenewals] = useState<B2BFleetRenewalItem[]>([]);
+  const [renewalError, setRenewalError] = useState(false);
 
   useEffect(() => {
     let alive = true;
     getCustomerOrders('').then(o => { if (alive) setOrders(o); }).finally(() => { if (alive) setLoading(false); });
+    getMyB2BFleetRenewals(90)
+      .then(items => { if (alive) setRenewals(items); })
+      // getMyB2BFleetRenewals() logs and returns [] on failure; a non-empty
+      // failure would be indistinguishable, so the empty state never claims
+      // "no renewals" without saying it may be incomplete.
+      .catch(() => { if (alive) setRenewalError(true); });
     return () => { alive = false; };
   }, []);
 
@@ -116,6 +140,63 @@ const B2BFleetCalendar: React.FC<Props> = ({ lang }) => {
         >
           CSV
         </B2BButton>
+      </B2BGlass>
+
+      {/* Renewal radar — units inside bulk batches (v2.9.29) */}
+      <B2BGlass className="p-5">
+        <div className="flex items-start justify-between gap-3 mb-3">
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(79,70,229,0.08)' }}>
+              <Truck size={16} className="text-indigo-600" />
+            </div>
+            <div>
+              <p className="text-sm font-black text-slate-900">{t('Renewal radar — batch units', 'Radar perpanjangan — unit batch')}</p>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {t('Batch vehicles whose cover ends within 90 days.', 'Kendaraan batch yang pertanggungannya berakhir dalam 90 hari.')}
+              </p>
+            </div>
+          </div>
+          <B2BPill tone={renewals.length > 0 ? 'warn' : 'neutral'}>
+            {renewals.length} {t('units', 'unit')}
+          </B2BPill>
+        </div>
+
+        {renewalError ? (
+          <p className="text-xs text-amber-700 flex items-center gap-1.5">
+            <AlertTriangle size={13} />
+            {t('Renewal radar could not load. This list may be incomplete.',
+               'Radar perpanjangan gagal dimuat. Daftar ini mungkin tidak lengkap.')}
+          </p>
+        ) : renewals.length === 0 ? (
+          <p className="text-xs text-slate-500">
+            {t('No batch unit cover ends in the next 90 days.',
+               'Tidak ada pertanggungan unit batch yang berakhir dalam 90 hari ke depan.')}
+          </p>
+        ) : (
+          <ul className="divide-y divide-slate-100">
+            {renewals.map((r) => (
+              <li key={r.id} className="flex items-center justify-between gap-3 py-2.5">
+                <div className="min-w-0">
+                  <p className="text-xs font-bold text-slate-900 truncate">
+                    {r.nasabah_name}
+                    {r.plate_no && (
+                      <span className="ml-2 font-mono text-[11px] text-slate-500">{r.plate_no}</span>
+                    )}
+                  </p>
+                  <p className="text-[11px] text-slate-500 truncate mt-0.5">
+                    {[r.make, r.model].filter(Boolean).join(' ') || t('Vehicle', 'Kendaraan')}
+                    {' · '}{r.batch_number ?? '—'}
+                    {' · '}{t('ends', 'berakhir')} {formatEndDate(r.coverage_end_date, lang === Language.EN ? 'EN' : 'ID')}
+                  </p>
+                </div>
+                <B2BPill tone={RENEWAL_TONE[r.urgency] ?? 'neutral'} className="flex-shrink-0">
+                  {lang === Language.EN ? RENEWAL_LABEL[r.urgency].en : RENEWAL_LABEL[r.urgency].id}
+                  {' · '}{Math.abs(r.days_remaining)}{t('d', 'h')}
+                </B2BPill>
+              </li>
+            ))}
+          </ul>
+        )}
       </B2BGlass>
 
       {/* Month sections */}

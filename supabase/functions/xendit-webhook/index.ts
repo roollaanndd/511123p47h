@@ -462,6 +462,20 @@ Deno.serve(async (req) => {
 
       const expectedAmount = Number(batch?.total_amount ?? 0);
       const actualPaid = Number(paid_amount ?? 0);
+
+      // A cancelled batch must never be revived by a late payment. The
+      // provider invoice can outlive the cancellation, so bank the alert and
+      // stop: no PAID/READY transition, no "policy incoming" notification.
+      if (batch?.status === 'CANCELLED') {
+        await supabase.from('sp_admin_notifications').insert({
+          type: 'B2B_PAID_AFTER_CANCEL',
+          title: `Pembayaran masuk untuk batch yang dibatalkan — ${batch.batch_number ?? ''}`,
+          body: `Batch ${batch.batch_number ?? payment.batch_id} sudah dibatalkan tetapi invoice-nya dibayar Rp ${actualPaid.toLocaleString('id-ID')}. Perlu refund atau penerbitan ulang.`,
+          metadata: { batch_id: batch.id, amount: actualPaid, xendit_invoice_id: xendit_invoice_id ?? null },
+          read: false,
+        });
+        return new Response('ok', { status: 200, headers: CORS });
+      }
       const amountMismatch = batch && Math.abs(actualPaid - expectedAmount) > 100;
 
       if (amountMismatch) {
@@ -498,6 +512,19 @@ Deno.serve(async (req) => {
           title:    `Pembayaran Batch B2B Diterima – ${batch.batch_number ?? ''}`,
           body:     `${batch.company_name ?? 'Klien B2B'} telah membayar premi TLO massal untuk ${batch.item_count} unit. Batch siap diterbitkan polisnya.`,
           metadata: { batch_id: batch.id, amount: paid_amount, payment_method },
+          read:     false,
+        });
+
+        // v2.9.28 — the payer was never told anything in-app: only admins got
+        // a notification when a batch was paid. The client now sees the same
+        // event in their own notification feed (sp_notifications is keyed by
+        // sp_users.id = batch.client_id).
+        await supabase.from('sp_notifications').insert({
+          agent_id: batch.client_id,
+          type:     'B2B_BULK_PAID_CLIENT',
+          title:    `Pembayaran diterima — ${batch.batch_number ?? ''}`,
+          body:     `Pembayaran Rp ${actualPaid.toLocaleString('id-ID')} untuk ${batch.item_count} unit telah kami terima. Polis akan diterbitkan setelah dokumen dari penanggung kami terima.`,
+          metadata: { batch_id: batch.id, amount: actualPaid, payment_method, link: 'b2b' },
           read:     false,
         });
 
