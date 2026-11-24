@@ -2,18 +2,16 @@ import React, { useMemo, useState } from 'react';
 import { Download, FileText, CarFront, ShieldCheck, Calculator, Printer } from 'lucide-react';
 import jsPDF from 'jspdf';
 import {
-  calcBulkPremium, getActiveBulkRateConfig, MULTI_YEAR_DEPRECIATION_RATE, TPL_OPTIONS,
+  calcBulkPremium, getActiveBulkRateConfig, TPL_OPTIONS,
   type VehicleClass, type FleetCoverage, type FleetAddOns,
 } from '../../services/b2bFleetRating';
 import { PROVINCES, getZone } from '../../services/ojkRates';
 
-type Props = { client: any; lang: 'ID' | 'EN' | string };
+type Props = { lang: 'ID' | 'EN' | string };
 type Template = 'invoice' | 'proposal';
 
 const money = (n: number) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(Math.round(n || 0));
-const today = () => new Date().toISOString().slice(0, 10);
-
-const B2BQuickQuotation: React.FC<Props> = ({ client, lang }) => {
+const B2BQuickQuotation: React.FC<Props> = ({ lang }) => {
   const isEn = lang === 'EN';
   const [template, setTemplate] = useState<Template>('invoice');
   const [customer, setCustomer] = useState('');
@@ -52,7 +50,7 @@ const B2BQuickQuotation: React.FC<Props> = ({ client, lang }) => {
       vehicleClass, zone: getZone(province), financingValue: vehicleValue,
       otr: Math.max(0, Number(otr) || vehicleValue), tenorMonths: months,
       coverage, depreciationRate: months > 12 ? Math.min(0.5, Math.max(0, Number(depreciation) / 100)) : 0,
-      discountRateOverride: Math.min(rateConfig.discountRateStandard, Math.max(0, Number(discount) / 100)),
+      discountRateOverride: Math.min(vehicleClass === 'HEAVY_EQUIPMENT' ? rateConfig.discountRateHeavy : rateConfig.discountRateStandard, Math.max(0, Number(discount) / 100)),
       addons,
     }, rateConfig);
   // eslint-disable-next-line react-hooks/exhaustive-deps
