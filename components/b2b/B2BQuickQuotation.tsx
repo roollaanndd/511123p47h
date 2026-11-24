@@ -28,7 +28,7 @@ function renderDocument(canvas:HTMLCanvasElement,d:{
  text('PENAWARAN ASURANSI',870,42,30,'#fff',true);text('KENDARAAN BERMOTOR',870,78,30,'#fff',true);text('Car Insurance Proposal',870,108,18,'#fff');
  text('RINCIAN PERHITUNGAN PREMI ASURANSI KENDARAAN',35,164,30,dark,true);
  text(d.template==='proposal'?'PROPOSAL MULTI-TAHUN':'SINGLE VEHICLE INVOICE',36,198,22,green,true);
- text('Perlindungan kendaraan berdasarkan rate aktif SurePath dan pilihan perluasan.',36,228,18,ink);
+ text('Perlindungan kendaraan berdasarkan rate aktif SurePath dan pilihan perluasan.',36,228,18,ink);text('No. '+d.quoteNo+'  |  '+d.date+'  |  '+(d.customer||'Customer belum diisi'),36,255,15,dark,true);
  // vector car illustration
  x.fillStyle='#f9fcfd';x.strokeStyle='#365b4d';x.lineWidth=5;x.beginPath();x.moveTo(790,214);x.lineTo(825,171);x.quadraticCurveTo(845,139,900,138);x.lineTo(1010,138);x.quadraticCurveTo(1050,141,1085,185);x.lineTo(1150,202);x.lineTo(1158,235);x.lineTo(775,235);x.closePath();x.fill();x.stroke();
  x.fillStyle='#b9e5f1';x.fillRect(865,153,88,48);x.fillRect(964,153,65,48);x.fillStyle='#20382e';x.beginPath();x.arc(850,232,23,0,Math.PI*2);x.arc(1080,232,23,0,Math.PI*2);x.fill();
@@ -46,12 +46,8 @@ function renderDocument(canvas:HTMLCanvasElement,d:{
  rateRows.forEach((r,i)=>{text(r[0],412,top+78+i*34,17,muted);text(r[1],870,top+78+i*34,18,dark,true,'right');});
  box(937,top+66,215,74,'#f2fae7','#c6e69a');text('RATE YANG DIPAKAI',1050,top+94,14,muted,true,'center');text((d.result.rate*100).toFixed(3)+'%',1050,top+127,30,green,true,'center');
  box(937,top+154,215,74,'#f2fae7');text('TOTAL PREMI',1050,top+182,14,muted,true,'center');text(rupiah(total),1050,top+215,23,green,true,'center');
- const ty=752,th=d.result.schedule.length?320:275;box(28,ty,1144,th);box(28,ty,1144,42,green,green);text(d.template==='proposal'?'RINCIAN PERHITUNGAN PREMI PER TAHUN':'RINCIAN PERHITUNGAN PREMI',50,ty+29,22,'#fff',true);
+ const rows:Array<[string,string,string,string,number]>=[['Premi kendaraan (gross)',rupiah(d.vehicleValue),(d.result.rate*100).toFixed(4)+'%','Sesuai rate aktif',d.result.premiumGross],['Diskon','—',(d.result.discountRate*100).toFixed(2)+'%','Potongan premi dasar',-d.result.discountAmount]];addOns.forEach(v=>rows.push([addonNames[v[0]]||v[0],'—','—','Perluasan terpilih',v[1]]));if(d.result.planLoading)rows.push(['Loading paket','—','—','Sesuai konfigurasi',d.result.planLoading]);rows.push(['Biaya administrasi','—','—','Sesuai rate set aktif',d.result.adminFee]);const ty=752,th=Math.max(d.result.schedule.length?320:275,116+rows.length*34+28);box(28,ty,1144,th);box(28,ty,1144,42,green,green);text(d.template==='proposal'?'RINCIAN PERHITUNGAN PREMI PER TAHUN':'RINCIAN PERHITUNGAN PREMI',50,ty+29,22,'#fff',true);
  x.fillStyle=lime;x.fillRect(42,ty+52,1116,38);text('KOMPONEN',55,ty+76,15,dark,true);text('NILAI BASIS',390,ty+76,15,dark,true,'right');text('RATE',575,ty+76,15,dark,true,'right');text('KETERANGAN',780,ty+76,15,dark,true);text('PREMI (RP)',1138,ty+76,15,dark,true,'right');
- const rows:Array<[string,string,string,string,number]>=[['Premi kendaraan (gross)',rupiah(d.vehicleValue),(d.result.rate*100).toFixed(4)+'%','Sesuai rate aktif',d.result.premiumGross],['Diskon','—',(d.result.discountRate*100).toFixed(2)+'%','Potongan premi dasar',-d.result.discountAmount]];
- addOns.forEach(v=>rows.push([addonNames[v[0]]||v[0],'—','—','Perluasan terpilih',v[1]]));
- if(d.result.planLoading)rows.push(['Loading paket','—','—','Sesuai konfigurasi',d.result.planLoading]);
- rows.push(['Biaya administrasi','—','—','Sesuai rate set aktif',d.result.adminFee]);
  rows.forEach((r,i)=>{const y=ty+116+i*34;if(i%2===0){x.fillStyle='#f7fbf5';x.fillRect(42,y-23,1116,32);}text(fit(r[0],300,16),55,y,16,ink);text(r[1],390,y,16,ink,false,'right');text(r[2],575,y,16,ink,false,'right');text(r[3],780,y,15,muted);text(rupiah(r[4]),1138,y,16,r[4]<0?'#c43d2e':dark,true,'right');});
  const totalY=ty+116+rows.length*34;x.fillStyle='#e4f6bf';x.fillRect(42,totalY-23,1116,38);text('TOTAL ESTIMASI PREMI',55,totalY+3,18,dark,true);text(rupiah(total),1138,totalY+3,21,green,true,'right');
  let low=ty+th+22;
