@@ -44,9 +44,9 @@ function renderDocument(canvas:HTMLCanvasElement,d:{
  [coverage,...addOns.map(v=>addonNames[v[0]]||v[0]),'Biaya administrasi sesuai rate aktif'].slice(0,7).forEach((s,i)=>{text('✓',48,top+78+i*27,20,green,true);text(fit(s,285,17),77,top+78+i*27,17);});
  const rateRows=[['Rate kendaraan',(d.result.rate*100).toFixed(4)+'%'],['Zona wilayah','Wilayah '+d.zone],['Diskon aktif',(d.result.discountRate*100).toFixed(2)+'%'],['Penyusutan',(d.result.depreciationRate*100).toFixed(1)+'% / tahun'],['Nilai basis',rupiah(d.vehicleValue)]];
  rateRows.forEach((r,i)=>{text(r[0],412,top+78+i*34,17,muted);text(r[1],870,top+78+i*34,18,dark,true,'right');});
- box(937,top+66,215,74,14 as any,'#f2fae7');text('RATE YANG DIPAKAI',1050,top+94,14,muted,true,'center');text((d.result.rate*100).toFixed(3)+'%',1050,top+127,30,green,true,'center');
+ box(937,top+66,215,74,'#f2fae7','#c6e69a');text('RATE YANG DIPAKAI',1050,top+94,14,muted,true,'center');text((d.result.rate*100).toFixed(3)+'%',1050,top+127,30,green,true,'center');
  box(937,top+154,215,74,'#f2fae7');text('TOTAL PREMI',1050,top+182,14,muted,true,'center');text(rupiah(total),1050,top+215,23,green,true,'center');
- const ty=752,th=d.result.schedule.length?360:275;box(28,ty,1144,th);box(28,ty,1144,42,green,green);text(d.template==='proposal'?'RINCIAN PERHITUNGAN PREMI PER TAHUN':'RINCIAN PERHITUNGAN PREMI',50,ty+29,22,'#fff',true);
+ const ty=752,th=d.result.schedule.length?320:275;box(28,ty,1144,th);box(28,ty,1144,42,green,green);text(d.template==='proposal'?'RINCIAN PERHITUNGAN PREMI PER TAHUN':'RINCIAN PERHITUNGAN PREMI',50,ty+29,22,'#fff',true);
  x.fillStyle=lime;x.fillRect(42,ty+52,1116,38);text('KOMPONEN',55,ty+76,15,dark,true);text('NILAI BASIS',390,ty+76,15,dark,true,'right');text('RATE',575,ty+76,15,dark,true,'right');text('KETERANGAN',780,ty+76,15,dark,true);text('PREMI (RP)',1138,ty+76,15,dark,true,'right');
  const rows:Array<[string,string,string,string,number]>=[['Premi kendaraan (gross)',rupiah(d.vehicleValue),(d.result.rate*100).toFixed(4)+'%','Sesuai rate aktif',d.result.premiumGross],['Diskon','—',(d.result.discountRate*100).toFixed(2)+'%','Potongan premi dasar',-d.result.discountAmount]];
  addOns.forEach(v=>rows.push([addonNames[v[0]]||v[0],'—','—','Perluasan terpilih',v[1]]));
@@ -55,15 +55,15 @@ function renderDocument(canvas:HTMLCanvasElement,d:{
  rows.forEach((r,i)=>{const y=ty+116+i*34;if(i%2===0){x.fillStyle='#f7fbf5';x.fillRect(42,y-23,1116,32);}text(fit(r[0],300,16),55,y,16,ink);text(r[1],390,y,16,ink,false,'right');text(r[2],575,y,16,ink,false,'right');text(r[3],780,y,15,muted);text(rupiah(r[4]),1138,y,16,r[4]<0?'#c43d2e':dark,true,'right');});
  const totalY=ty+116+rows.length*34;x.fillStyle='#e4f6bf';x.fillRect(42,totalY-23,1116,38);text('TOTAL ESTIMASI PREMI',55,totalY+3,18,dark,true);text(rupiah(total),1138,totalY+3,21,green,true,'right');
  let low=ty+th+22;
- if(d.result.schedule.length){box(28,low,1144,210);box(28,low,1144,40,green,green);text('JADWAL NILAI PERTANGGUNGAN & PREMI',50,low+27,20,'#fff',true);text('TAHUN',55,low+70,15,dark,true);text('NILAI PERTANGGUNGAN',260,low+70,15,dark,true);text('BULAN',520,low+70,15,dark,true);text('RATE',760,low+70,15,dark,true);text('PREMI GROSS',1135,low+70,15,dark,true,'right');
- d.result.schedule.slice(0,5).forEach((r,i)=>{const y=low+108+i*28;text(String(r.year),55,y,16);text(rupiah(r.sumInsured),260,y,16);text(String(r.months),520,y,16);text((d.result.rate*100).toFixed(3)+'%',760,y,16);text(rupiah(r.premiumGross),1135,y,16,dark,true,'right');});low+=228;}
- box(28,low,555,190);box(28,low,555,40,orange,orange);text('REKAPITULASI PEMBAYARAN',48,low+27,20,'#fff',true);
+ if(d.result.schedule.length){box(28,low,1144,190);box(28,low,1144,40,green,green);text('JADWAL NILAI PERTANGGUNGAN & PREMI',50,low+27,20,'#fff',true);text('TAHUN',55,low+70,15,dark,true);text('NILAI PERTANGGUNGAN',260,low+70,15,dark,true);text('BULAN',520,low+70,15,dark,true);text('RATE',760,low+70,15,dark,true);text('PREMI GROSS',1135,low+70,15,dark,true,'right');
+ d.result.schedule.slice(0,5).forEach((r,i)=>{const y=low+108+i*28;text(String(r.year),55,y,16);text(rupiah(r.sumInsured),260,y,16);text(String(r.months),520,y,16);text((d.result.rate*100).toFixed(3)+'%',760,y,16);text(rupiah(r.premiumGross),1135,y,16,dark,true,'right');});low+=205;}
+ box(28,low,555,160);box(28,low,555,40,orange,orange);text('REKAPITULASI PEMBAYARAN',48,low+27,20,'#fff',true);
  const recap=[['Premi kendaraan (gross)',d.result.premiumGross],['Diskon',-d.result.discountAmount],['Perluasan / TPL / PA',d.result.addonPremium],['Loading paket',d.result.planLoading],['Biaya administrasi',d.result.adminFee]];
- recap.forEach((r,i)=>{text(r[0],48,low+70+i*24,16);text(rupiah(r[1]),555,low+70+i*24,16,ink,true,'right');});
- box(605,low,567,190);box(605,low,567,40,green,green);text('INFORMASI PERTANGGUNGAN',625,low+27,20,'#fff',true);
+ recap.forEach((r,i)=>{text(r[0],48,low+65+i*20,16);text(rupiah(r[1]),555,low+70+i*24,16,ink,true,'right');});
+ box(605,low,567,160);box(605,low,567,40,green,green);text('INFORMASI PERTANGGUNGAN',625,low+27,20,'#fff',true);
  const info=['Customer: '+(d.customer||'Belum diisi'),'Kendaraan: '+vehicle,'Nomor polisi: '+(d.plate||'Belum diisi'),'Wilayah: '+d.province+' (Zona '+d.zone+')','Tenor: '+d.months+' bulan · TPL limit: '+rupiah(d.tplLimit)];
- info.forEach((s,i)=>text(fit(s,520,16),625,low+72+i*25,16));
- low+=210;box(28,low,1144,95,'#f7fbf4');text('KETERANGAN',50,low+29,18,green,true);text('Estimasi indikatif berdasarkan rate set aktif SurePath. Premi, syarat, dan penerimaan risiko final',50,low+56,15,muted);text('mengikuti konfirmasi serta proses underwriting perusahaan asuransi. Bukan bukti penerbitan polis.',50,low+78,15,muted);
+ info.forEach((s,i)=>text(fit(s,520,16),625,low+65+i*20,16));
+ low+=170;box(28,low,1144,70,'#f7fbf4');text('KETERANGAN',50,low+29,18,green,true);text('Estimasi indikatif berdasarkan rate set aktif SurePath. Premi, syarat, dan penerimaan risiko final',50,low+56,15,muted);text('mengikuti konfirmasi serta proses underwriting perusahaan asuransi. Bukan bukti penerbitan polis.',50,low+68,15,muted);
  if(d.notes)text('Catatan: '+fit(d.notes,1000,14),50,low+91,14,muted);
  x.fillStyle=dark;x.fillRect(0,H-74,W,74);text('www.myinsurepath.com',45,H-30,18,'#fff',true);text('cs@myinsurepath.com',430,H-30,18,'#fff');text('SurePath · Your Path to Protection',1150,H-30,18,'#fff',true,'right');
 }
