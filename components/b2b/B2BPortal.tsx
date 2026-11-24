@@ -35,6 +35,7 @@ import B2BFleetCalendar from './B2BFleetCalendar';
 // XLSX parser, PDF builder) that isn't needed on the overview.
 const B2BNewSubmission = lazy(() => import('./B2BNewSubmission'));
 const B2BUnitOrder     = lazy(() => import('./B2BUnitOrder'));
+const B2BQuickQuotation = lazy(() => import('./B2BQuickQuotation'));
 const B2BBulkImport    = lazy(() => import('./B2BBulkImport'));
 const B2BSubmissions   = lazy(() => import('./B2BSubmissions'));
 const B2BBulkBatches   = lazy(() => import('./B2BBulkBatches'));
@@ -58,7 +59,7 @@ interface Props {
 type Section =
   | 'dashboard'
   | 'fleet'
-  | 'new-unit' | 'new-single' | 'new-bulk'
+  | 'new-unit' | 'new-single' | 'new-bulk' | 'quick-quotation'
   | 'submissions' | 'batches'
   | 'quotes'
   | 'workshops'
@@ -146,6 +147,7 @@ const B2BPortal: React.FC<Props> = ({ client, onLogout, lang }) => {
       featured: true,
       groupLabel: t('Create', 'Aksi'),
       children: [
+        { id: 'quick-quotation', label: t('Quick Quotation', 'Quick Quotation') },
         { id: 'new-unit',   label: t('Unit (Vehicle)', 'Order Unit') },
         { id: 'new-bulk',   label: t('Bulk Import', 'Impor Massal') },
         { id: 'new-single', label: t('Other Request', 'Pengajuan Lain') },
@@ -181,6 +183,7 @@ const B2BPortal: React.FC<Props> = ({ client, onLogout, lang }) => {
       case 'fleet':       return [root, t('Fleet Calendar', 'Kalender Armada')];
       case 'workshops':   return [root, crMonitor, t('Workshop directory', 'Direktori Bengkel')];
       case 'new-unit':    return [root, crCreate, t('Unit Order', 'Order Unit')];
+      case 'quick-quotation': return [root, crCreate, t('Quick Quotation', 'Quick Quotation')];
       case 'new-single':  return [root, crCreate, t('Other Request', 'Pengajuan Lain')];
       case 'new-bulk':    return [root, crCreate, t('Bulk Import', 'Impor Massal')];
       case 'submissions': return [root, crMonitor, t('Requests', 'Pengajuan')];
@@ -251,6 +254,13 @@ const B2BPortal: React.FC<Props> = ({ client, onLogout, lang }) => {
             loadErrorDetail={loadErrorDetail}
             onRetry={() => { loadData(); }}
           />
+        );
+      case 'quick-quotation':
+        if (isMaster) return null;
+        return (
+          <Suspense fallback={<B2BPageSkeleton variant="form" />}>
+            <B2BQuickQuotation lang={lang} />
+          </Suspense>
         );
       case 'new-unit':
         return (
