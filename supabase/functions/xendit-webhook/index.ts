@@ -1,6 +1,6 @@
-
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { logB2BActivity } from '../_shared/b2bActivityLog.ts';
+import { timingSafeEqualStr } from '../_shared/timingSafe.ts';
 
 // Server-to-server: called by Xendit payment gateway (no browser CORS needed).
 const CORS = { 'Content-Type': 'application/json' };
@@ -40,7 +40,7 @@ Deno.serve(async (req) => {
       console.error('XENDIT_WEBHOOK_TOKEN not set — rejecting webhook');
       return new Response('Server misconfiguration', { status: 500, headers: CORS });
     }
-    if (callbackToken !== XENDIT_WEBHOOK_TOKEN) {
+    if (!(await timingSafeEqualStr(callbackToken, XENDIT_WEBHOOK_TOKEN))) {
       console.warn('Invalid webhook token');
       return new Response('Unauthorized', { status: 401, headers: CORS });
     }
@@ -102,7 +102,7 @@ Deno.serve(async (req) => {
 
     if (payErr) {
       console.error('Payment update failed:', payErr.code ?? 'unknown');
-      return new Response('ok', { status: 200, headers: CORS });
+      return new Response('Retry later', { status: 500, headers: CORS });
     }
     if (!payment) {
       // Already PAID (including a concurrent duplicate), or no matching payment.
@@ -119,7 +119,7 @@ Deno.serve(async (req) => {
       // do NOT credit commission — flag for manual review.
       const { data: order } = await supabase
         .from('sp_policy_orders')
-        .select('agent_id, order_number, client_name, client_phone, product_name, product_code, total_premium, insurer_name, commission_amount, commission_rate, coin_reward')
+        .select('status, agent_id, order_number, client_name, client_phone, product_name, product_code, total_premium, insurer_name, commission_amount, commission_rate, coin_reward')
         .eq('id', payment.order_id)
         .single();
 
@@ -131,15 +131,12 @@ Deno.serve(async (req) => {
         console.error(`Amount mismatch for order ${payment.order_id}: expected ${expectedAmount}, paid ${actualPaid}`);
         // Mark the order for manual review instead of auto-advancing.
         await supabase
-          .from('sp_policy_orders')
+          .from('sp_payments')
           .update({
-            status: 'SUBMITTED',
+            status: 'AMOUNT_MISMATCH',
             updated_at: new Date().toISOString(),
-            // Stash the mismatch in metadata for the admin to investigate
-            // (assumes a jsonb column exists; if not, this is a no-op)
           })
-          .eq('id', payment.order_id)
-          .in('status', ['SUBMITTED']);
+          .eq('external_id', external_id);
 
         await supabase.from('sp_admin_notifications').insert({
           type:     'PAYMENT_AMOUNT_MISMATCH',
@@ -154,11 +151,25 @@ Deno.serve(async (req) => {
       }
 
       // Move order status: SUBMITTED → UNDER_REVIEW
-      await supabase
+      const { data: claimedOrder, error: claimOrderErr } = await supabase
         .from('sp_policy_orders')
         .update({ status: 'UNDER_REVIEW', updated_at: new Date().toISOString() })
         .eq('id', payment.order_id)
-        .in('status', ['SUBMITTED']);
+        .eq('status', 'SUBMITTED')
+      .select('id')
+      .maybeSingle();
+            if (claimOrderErr) throw claimOrderErr;
+            if (!claimedOrder) {
+              await supabase.from('sp_admin_notifications').insert({
+                type: 'PAYMENT_ON_NON_SUBMITTED_ORDER',
+                title: `Pembayaran masuk untuk order berstatus ${order?.status ?? 'UNKNOWN'} – ${order?.order_number ?? ''}`,
+                body: `Invoice ${external_id} dibayar Rp ${actualPaid.toLocaleString('id-ID')}, tetapi order sudah tidak berstatus SUBMITTED. Komisi tidak dikreditkan otomatis; perlu refund atau rekonsiliasi manual.`,
+                order_id: payment.order_id,
+                metadata: { external_id, order_status: order?.status ?? null, paid_amount: actualPaid },
+                read: false,
+                        });
+                      return new Response('ok', { status: 200, headers: CORS });
+            }
 
       if (order) {
         // Auto-generate review token if not already exists
