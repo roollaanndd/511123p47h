@@ -72,7 +72,30 @@ Deno.serve(async (req) => {
     if (order.status !== 'SUBMITTED') {
       return json(CORS, { error: `Order is not in a payable state (status: ${order.status})` }, 409);
     }
+    // One live invoice per order — reuse an active PENDING/INVOICED invoice
+    const { data: liveInvoice, error: liveErr } = await supabase
+          .from('sp_payments')
+      .select('id, invoice_url, xendit_invoice_id, external_id, status')
+      .eq('order_id', order.id)
+      .in('status', ['PENDING', 'INVOICED'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
+    if (liveErr) {
+      console.error('create-xendit-invoice: live invoice lookup error:', liveErr);
+      return json(CORS, { error: 'Could not check existing invoices' }, 500);
+    }
+    if (liveInvoice?.invoice_url) {
+      return json(CORS, {
+        invoice_url: liveInvoice.invoice_url,
+        xendit_invoice_id: liveInvoice.xendit_invoice_id,
+        external_id: liveInvoice.external_id,
+        status: liveInvoice.status,
+        reused: true,
+      }, 200);
+    }
+    
     // ── Server-side amount validation ──────────────────────────────────────
     const totalPremium = Number(order.total_premium);
     if (!Number.isFinite(totalPremium) || totalPremium <= 0) {
