@@ -1,5 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { corsHeaders as buildCors } from '../_shared/cors.ts'
+import { timingSafeEqualStr } from '../_shared/timingSafe.ts'
 
 // ─── Verify OTP ──────────────────────────────────────────────────────────────
 //
@@ -49,6 +50,11 @@ Deno.serve(async (req) => {
     }
 
     const normalized = normalizePhone(phone)
+    if (!/^628\d{8,12}$/.test(normalized)) {
+      return new Response(JSON.stringify({ ok: false, error: 'Nomor HP tidak valid' }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
     // Find valid, unused, non-expired OTP
@@ -85,7 +91,7 @@ Deno.serve(async (req) => {
       })
     }
 
-    if (row.code !== code) {
+       if (!(await timingSafeEqualStr(String(row.code), String(code)))) {
       // FIX v2.7.56 (audit): counter percobaan kini compare-and-swap. Sebelumnya
       // dua request salah yang bersamaan sama-sama membaca attempts=0 lalu
       // menulis 1 — kunci 5-percobaan bisa dilewati dengan konkurensi.
@@ -127,10 +133,19 @@ Deno.serve(async (req) => {
     }
 
     // Mark OTP used
-    await supabase
+       const { data: claimed, error: claimErr } = await supabase
       .from('sp_otp_codes')
       .update({ used_at: new Date().toISOString() })
       .eq('id', row.id)
+      .is('used_at', null)
+      .select('id')
+      .maybeSingle()
+
+    if (claimErr || !claimed) {
+      return new Response(JSON.stringify({ ok: false, error: 'Kode otp tidak valid atau sudah digunakan' }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
 
     // ── SECURITY: do NOT generate a magic link for any email ──────────────
     // Previous behavior allowed account takeover. Phone OTP verification now
