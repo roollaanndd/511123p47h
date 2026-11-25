@@ -87,6 +87,9 @@ Deno.serve(async (req) => {
     }
 
     const normalized = normalizePhone(phone)
+    if (!/^628\d{8,12}$/.test(normalized)) {
+      return json({ ok: false, error: 'Format nomor HP tidak valid' }, 400, corsHeaders)
+    }
     const clientIp = getClientIp(req)
 
     // Generate OTP first so we have it ready
@@ -161,27 +164,36 @@ Deno.serve(async (req) => {
     }
 
     // Send via Fonnte WhatsApp API
-    if (!FONNTE_TOKEN) {
-      console.warn('FONNTE_TOKEN not set — OTP not sent via WhatsApp')
-    } else {
-      const message = `Kode verifikasi SurePath Anda: *${code}*\n\nBerlaku 5 menit. Jangan bagikan ke siapapun.`
-      const fRes = await fetch('https://api.fonnte.com/send', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          token: FONNTE_TOKEN,
-        },
-        body: JSON.stringify({
-          target: normalized,
-          message,
-          countryCode: '62',
-        }),
-      })
-      const fData = await fRes.json()
-      if (!fData.status) {
-        console.error('Fonnte error:', JSON.stringify(fData))
-      }
+       if (!FONNTE_TOKEN) {
+      console.error('FONNTE_TOKEN not configured — cannot send OTP')
+      return json({ ok: false, error: 'Layanan OTP belum dikonfigurasi' }, 503, corsHeaders)
     }
+
+    const message = `Kode verifikasi SurePath Anda: *${code}*\n\nBerlaku 5 menit. Jangan bagikan ke siapapun.`
+    const fRes = await fetch('https://api.fonnte.com/send', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: FONNTE_TOKEN,
+      },
+      body: JSON.stringify({
+        target: normalized,
+        message,
+        countryCode: '62',
+      }),
+    })
+    const fData = await fRes.json().catch(() => ({}))
+    if (!fRes.ok || !fData.status) {
+      console.error('Fonnte error:', fRes.status, JSON.stringify(fData))
+      await supabase
+        .from('sp_otp_codes')
+        .update({ used_at: new Date().toISOString() })
+        .eq('phone', normalized)
+        .eq('code', code)
+        .is('used_at', null)
+      return json({ ok: false, error: 'Gagal mengirim OTP melalui WhatsApp' }, 502, corsHeaders)
+    }
+   
 
     return json({ ok: true, phone: normalized }, 200, corsHeaders)
   } catch (err) {
