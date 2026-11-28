@@ -1083,7 +1083,12 @@ function drawSurePathLogo(doc: any, x: number, y: number, mode: 'light' | 'dark'
   if (logoDataUrl) {
     try {
       const fmt = logoDataUrl.startsWith('data:image/jpeg') ? 'JPEG' : 'PNG';
-      doc.addImage(logoDataUrl, fmt, x, y - logoBoxH + 8, logoBoxW, logoBoxH, undefined, 'FAST');
+      const dimensions = doc.getImageProperties(logoDataUrl);
+      const scale = Math.min(logoBoxW / dimensions.width, logoBoxH / dimensions.height);
+      const drawW = dimensions.width * scale;
+      const drawH = dimensions.height * scale;
+      const drawY = y - logoBoxH + 8 + (logoBoxH - drawH) / 2;
+      doc.addImage(logoDataUrl, fmt, x, drawY, drawW, drawH, undefined, 'FAST');
       return;
     } catch (e) {
       console.warn('QuotationSlip: addImage failed, falling back to drawn shield', e);
