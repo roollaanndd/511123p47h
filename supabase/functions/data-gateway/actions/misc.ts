@@ -155,7 +155,7 @@ ${UNTRUSTED_INPUT_NOTICE}`;
 
     // ─── save_quote — agent saves their quote ──────────────────────────────
     case 'save_quote': {
-        if (!caller.spUser || caller.spUser.role !== 'AGENT') {
+        if (!caller.spUser || caller.spUser.role !== 'AGENT' || caller.spUser.verified === false) {
           return json({ error: 'Forbidden: verified agent account required' }, 403);
         }
         const allowed = await checkRateLimit(`user:${caller.ownerId}`, 60);
