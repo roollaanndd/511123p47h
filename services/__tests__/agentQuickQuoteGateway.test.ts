@@ -73,18 +73,21 @@ describe('save_quote gateway security', () => {
     expect(insertedRows[0].status).toBe('DRAFT');
   });
 
-  it('rejects non-agent and unverified-agent callers', async () => {
+  it('rejects callers who are not agents', async () => {
     const customer = makeContext();
     customer.ctx.caller.spUser = { id: 'customer-1', role: 'CUSTOMER', verified: true };
-    const customerResult = await handleMiscAction('save_quote', customer.ctx as any);
-    expect(customerResult?.status).toBe(403);
+    const result = await handleMiscAction('save_quote', customer.ctx as any);
+    expect(result?.status).toBe(403);
     expect(customer.insertedRows).toHaveLength(0);
+  });
 
-    const unverified = makeContext();
-    unverified.ctx.caller.spUser = { id: 'agent-2', role: 'AGENT', verified: false };
-    const unverifiedResult = await handleMiscAction('save_quote', unverified.ctx as any);
-    expect(unverifiedResult?.status).toBe(403);
-    expect(unverified.insertedRows).toHaveLength(0);
+  it('allows an unverified agent to save an indicative quote but keeps it as a draft', async () => {
+    const { ctx, insertedRows } = makeContext();
+    ctx.caller.spUser.verified = false;
+    const result = await handleMiscAction('save_quote', ctx as any);
+    expect(result?.status).toBe(200);
+    expect(insertedRows).toHaveLength(1);
+    expect(insertedRows[0].status).toBe('DRAFT');
   });
 
   it('rejects unsupported product types and malformed premium values', async () => {
