@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight, CheckCircle2, Send, RefreshCw, FileCheck, Us
 import { Language } from '../../types';
 import { formatIDR } from '../car-wizard/WizardUI';
 import {
-  saveQuote, addClient, listActiveInsurers, getInsurerProducts, getAvailableInsurerProducts, getActiveOjkRateSet,
+  saveQuote, addClient, listActiveInsurers, getActiveInsurerIdsForProduct, getAvailableInsurerProducts, getActiveOjkRateSet,
   type SpClient, type SpQuote, type SpInsurer, type SpInsurerProduct
 } from '../../services/supabaseService';
 import { calculateInsurerQuotePricing, getInsurerQuoteDiscountCapPercent } from '../../services/agentQuotePricing';
@@ -213,14 +213,12 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
     setLoadingInsurers(true);
     setInsurerLoadError('');
     setInsurerOptions([]);
-    Promise.all([listActiveInsurers(), getInsurerProducts()])
-      .then(([insurers, products]) => {
+    Promise.all([listActiveInsurers(), getActiveInsurerIdsForProduct(product)])
+      .then(([insurers, supportedProductInsurerIds]) => {
         if (cancelled) return;
         const activeInsurers = (insurers ?? []).filter(insurer => insurer.is_active);
         const activeIds = new Set(activeInsurers.map(insurer => insurer.id));
-        const supportedIds = new Set((products ?? [])
-          .filter(row => row.is_active && String(row.product_type).toUpperCase() === product && activeIds.has(row.insurer_id))
-          .map(row => row.insurer_id));
+        const supportedIds = new Set((supportedProductInsurerIds ?? []).filter(id => activeIds.has(id)));
         const options = activeInsurers.filter(insurer => supportedIds.has(insurer.id));
         setInsurerOptions(options);
         if (selectedInsurerId && !supportedIds.has(selectedInsurerId)) {
@@ -235,7 +233,7 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
       })
       .finally(() => { if (!cancelled) setLoadingInsurers(false); });
     return () => { cancelled = true; };
-  }, [step, quoteMode, product, selectedInsurerId]);
+  }, [step, quoteMode, product]);
 
   // Re-check the chosen insurer against product, coverage and maximum vehicle age.
   useEffect(() => {
@@ -647,8 +645,8 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
           ...(breakdown.addonsDetail.paPassenger > 0? [{ label: 'PA Penumpang',         amount: breakdown.addonsDetail.paPassenger }]: []),
           { label: 'Biaya Administrasi', amount: breakdown.adminFee },
           { label: 'Materai Tarif Dasar', amount: breakdown.stampDuty },
-          ...(selectedInsurerProduct?.policy_cost ? [{ label: 'Biaya Polis Penanggung', amount: selectedInsurerProduct.policy_cost }] : []),
-          ...(selectedInsurerProduct?.stamp_duty ? [{ label: 'Materai Penanggung', amount: selectedInsurerProduct.stamp_duty }] : []),
+          ...(insurerQuotePricing && insurerQuotePricing.policyCost > 0 ? [{ label: 'Biaya Polis Penanggung', amount: insurerQuotePricing.policyCost }] : []),
+          ...(insurerQuotePricing && insurerQuotePricing.insurerStampDuty > 0 ? [{ label: 'Materai Penanggung', amount: insurerQuotePricing.insurerStampDuty }] : []),
         ];
         vehicleBrand = carInputs.brand;
         vehicleModel = carInputs.model;
