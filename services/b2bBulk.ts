@@ -334,6 +334,42 @@ export async function adminAssignB2BBulkInsurer(batchId: string, insurerId: stri
   return data as SpB2BBatch;
 }
 
+// ─── Corporate submission insurer routing ──────────────────────────────────
+
+export interface SpB2BSubmissionInsurerAssignment {
+  id: string;
+  submission_id: string;
+  insurer_id: string;
+  status: 'ASSIGNED' | 'REQUEST_INFO' | 'QUOTED' | 'DECLINED';
+  decision_notes: string | null;
+  authorization_confirmed: boolean;
+  authorization_confirmed_at: string | null;
+  created_at: string;
+  updated_at: string;
+  quoted_at: string | null;
+  insurer?: { id: string; name: string; logo_url: string | null } | null;
+}
+
+export async function adminAssignB2BSubmissionInsurer(input: {
+  submissionId: string;
+  insurerId: string;
+  authorizationConfirmed: boolean;
+}): Promise<SpB2BSubmissionInsurerAssignment | null> {
+  const { data, error } = await callGateway('admin_b2b_assign_submission_insurer', {
+    submission_id: input.submissionId,
+    insurer_id: input.insurerId,
+    authorization_confirmed: input.authorizationConfirmed,
+  });
+  if (error) { console.error('adminAssignB2BSubmissionInsurer:', error); return null; }
+  return data as SpB2BSubmissionInsurerAssignment;
+}
+
+export async function adminListB2BSubmissionInsurers(submissionId: string): Promise<SpB2BSubmissionInsurerAssignment[]> {
+  const { data, error } = await callGateway('admin_b2b_list_submission_insurers', { submission_id: submissionId });
+  if (error) { console.error('adminListB2BSubmissionInsurers:', error); throw new Error(error); }
+  return (data ?? []) as SpB2BSubmissionInsurerAssignment[];
+}
+
 // ─── Document upload (reuses the b2b-documents bucket) ────────────────────
 
 // FIX v2.9.12: file sumber klien sebelumnya diunggah fire-and-forget dan
