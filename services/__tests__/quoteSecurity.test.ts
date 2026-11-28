@@ -1,4 +1,7 @@
+import { TextEncoder as NodeTextEncoder } from 'node:util';
 import { describe, expect, it } from 'vitest';
+
+(globalThis as any).TextEncoder ??= NodeTextEncoder;
 import { validateQuoteSaveInput } from '../../supabase/functions/_shared/quoteSecurity';
 
 describe('agent quote save input validation', () => {
