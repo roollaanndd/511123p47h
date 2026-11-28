@@ -543,7 +543,7 @@ export function fromB2BQuote(q: B2BQuoteSource, companyName?: string): Quotation
     insurer: insurerName,
     insurerShort,
     ...(insurerLogoUrl ? { insurerLogoUrl } : {}),
-    brandMode: insurerSelected ? 'INSURER' : 'SUREPATH',
+    brandMode: insurerLogoUrl ? 'INSURER' : 'SUREPATH',
 
     periodStart: new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' }),
     periodEnd,
