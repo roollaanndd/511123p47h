@@ -12,13 +12,13 @@ The Agent Quote Builder supports a low-friction, indicative quote without forcin
 4. Review the indicative estimate.
 5. Optionally enter a prospective customer's name, then save, print, or share the estimate.
 
-A quick quote does not create a customer CRM record, policy, certificate, payment obligation, or commission.
+A quick quote does not create a customer CRM record, policy, certificate, payment obligation, or commission. A saved-but-unsent quote is stored as `DRAFT`.
 
 ## Application and issuance boundary
 
 A customer profile is not a prerequisite for an indicative estimate. It is not optional where the selected insurer's application flow requires customer identity, KYC, consent, supporting documents, vehicle survey, underwriting, payment, or other acceptance conditions.
 
-Actual purchase must use the existing product-specific application wizard. Policy status and commission must be created only by the authorized issuance/approval lifecycle after the insurer's acceptance and required payment/issuance events. The quote builder must not directly insert an ACTIVE policy or commission.
+Actual purchase must use the existing product-specific application wizard. Policy status and commission must be created only by the authorized issuance/approval lifecycle after the insurer's acceptance and required payment/issuance events. The quote builder must not directly insert an ACTIVE policy or commission. The `save_quote` gateway action is agent-only, derives `agent_id` from the authenticated caller, validates product/premium/payload, rate-limits writes, and verifies ownership of any attached CRM customer. It always persists a saved quote as `DRAFT`.
 
 ## Insurer and pricing disclosure
 
