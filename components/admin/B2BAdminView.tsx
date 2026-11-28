@@ -381,7 +381,7 @@ const B2BCard: React.FC<{ sub: SpB2BSubmission; insurers: InsurerOption[]; onUpd
       <div className="rounded-xl border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/50 dark:bg-emerald-950/10 p-3 space-y-2">
         <div className="flex items-center justify-between gap-2">
           <p className="text-2xs font-black uppercase tracking-widest text-ds-ink3">Insurer routing</p>
-          <span className="text-[10px] text-ds-ink3">{insurerAssignments.length} assigned</span>
+          <span className="text-[11px] text-ds-ink3">{insurerAssignments.length} assigned</span>
         </div>
         {insurerAssignments.length > 0 ? (
           <div className="space-y-1.5">
@@ -389,12 +389,12 @@ const B2BCard: React.FC<{ sub: SpB2BSubmission; insurers: InsurerOption[]; onUpd
               <div key={a.id} className="flex items-center justify-between gap-2 rounded-lg bg-white dark:bg-ds-card2 px-2.5 py-2">
                 <div className="min-w-0">
                   <p className="text-xs font-bold text-ds-ink dark:text-white truncate">{a.insurer?.name ?? 'Insurer'}</p>
-                  <p className="text-[10px] text-ds-ink3">{a.decision_notes || (a.authorization_confirmed ? 'Product authorization confirmed' : 'Authorization not confirmed')}</p>
+                  <p className="text-[11px] text-ds-ink3">{a.decision_notes || (a.authorization_confirmed ? 'Product authorization confirmed' : 'Authorization not confirmed')}</p>
                   {a.quote && (
                     <div className="mt-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/20 px-2 py-1.5">
                       <p className="text-[11px] font-black text-emerald-800 dark:text-emerald-300">{fmtIDR(Number(a.quote.premium_amount || 0))}</p>
-                      <p className="text-[9px] text-emerald-700 dark:text-emerald-400">Valid until {fmtDate(a.quote.valid_until)} · {a.quote.status}</p>
-                      {a.quote.terms && <p className="mt-1 text-[10px] text-ds-ink3 line-clamp-2">{a.quote.terms}</p>}
+                      <p className="text-[11px] text-emerald-700 dark:text-emerald-400">Valid until {fmtDate(a.quote.valid_until)} · {a.quote.status}</p>
+                      {a.quote.terms && <p className="mt-1 text-[11px] text-ds-ink3 line-clamp-2">{a.quote.terms}</p>}
                     </div>
                   )}
                 </div>
