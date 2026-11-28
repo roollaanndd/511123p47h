@@ -191,8 +191,20 @@ const InsurerB2BRequests: React.FC<Props> = ({ authToken, refreshTick }) => {
                           </div>
                         ))}
                       </div>
-                      {Array.isArray(s.submission_data?.documents) && (
-                        <p className="mt-2 inline-flex items-center gap-1 text-[10px] text-ds-ink3"><FileText size={12} /> {s.submission_data.documents.length} supporting document(s) listed in submission</p>
+                      {Array.isArray(s.documents) && s.documents.length > 0 && (
+                        <div className="mt-3 space-y-1.5">
+                          <p className="text-[9px] font-black uppercase tracking-wider text-ds-ink3">Supporting documents · secure links expire in 5 minutes</p>
+                          {s.documents.map(doc => (
+                            <div key={doc.id} className="flex items-center justify-between gap-2 rounded-lg border border-ds-border dark:border-[#26354A] px-2.5 py-2">
+                              <span className="min-w-0 truncate text-[10px] text-ds-ink dark:text-white">{doc.doc_type.replace(/_/g, ' ')} · {doc.file_name}</span>
+                              {doc.signed_url ? (
+                                <a href={doc.signed_url} target="_blank" rel="noreferrer" className="shrink-0 text-[10px] font-bold text-emerald-700 dark:text-emerald-400 underline">Open</a>
+                              ) : (
+                                <span className="shrink-0 text-[9px] text-ds-ink3">Unavailable</span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
                       )}
                     </div>
 
