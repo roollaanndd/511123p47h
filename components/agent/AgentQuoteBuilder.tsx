@@ -764,10 +764,11 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
       {/* Header */}
       <div className="flex items-center gap-3">
         <button onClick={step === 'product' ? onBack : () => {
-          if (step === 'inputs') { setStep('product'); setQuoteMode(null); }
+          if (step === 'insurer') { setStep('product'); setQuoteMode(null); }
+          else if (step === 'inputs') { setStep(isVehicleQuickQuote ? 'insurer' : 'product'); if (!isVehicleQuickQuote) setQuoteMode(null); }
           else if (step === 'client') setStep('inputs');
           else if (step === 'quote_summary' || step === 'summary') {
-            setStep(quoteMode === 'penawaran' ? 'inputs' : 'client');
+            setStep(isVehicleQuickQuote ? 'client' : quoteMode === 'penawaran' ? 'inputs' : 'client');
           }
         }} className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-gray-600 active:bg-gray-200 transition-colors flex-shrink-0">
           <ChevronLeft size={18} />
@@ -897,15 +898,17 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
           )}
 
           {clientMode === 'onetime' && (
-            <div>
-              <label className={labelClass}>{t('Client Name', 'Nama Klien')}</label>
-              <input
-                type="text"
-                placeholder={t('Enter client name…', 'Masukkan nama klien…')}
-                value={onetimeName}
-                onChange={e => setOnetimeName(e.target.value)}
-                className={inputClass}
-              />
+            <div className="space-y-3">
+              <div>
+                <label className={labelClass}>{t('Customer name', 'Nama calon nasabah')} *</label>
+                <input type="text" placeholder={t('Enter customer name…', 'Masukkan nama calon nasabah…')}
+                  value={onetimeName} onChange={e => setOnetimeName(e.target.value)} className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>{t('Phone / WhatsApp (optional)', 'Telepon / WhatsApp (opsional)')}</label>
+                <input type="tel" placeholder="08xxxxxxxxxx" value={onetimePhone}
+                  onChange={e => setOnetimePhone(e.target.value)} className={inputClass} />
+              </div>
             </div>
           )}
 
@@ -978,7 +981,7 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
             <div className="space-y-3 pt-1">
               <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 text-center">Pilih Tindakan</p>
               <button
-                onClick={() => { setQuoteMode('penawaran'); setClientMode('onetime'); setOnetimeName(''); setStep('inputs'); }}
+                onClick={() => { setQuoteMode('penawaran'); setClientMode('onetime'); setOnetimeName(''); setOnetimePhone(''); setSelectedInsurerId(''); setSelectedInsurerProduct(null); setStep(product === 'CAR' || product === 'MOTORCYCLE' ? 'insurer' : 'inputs'); }}
                 className="w-full rounded-[1.5rem] overflow-hidden text-left active:scale-95 transition-all shadow-lg"
               >
                 <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-5">
@@ -1041,7 +1044,43 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
         </div>
       )}
 
-      {/* ─── STEP 2: PRODUCT INPUTS ─── */}
+      {/* ─── STEP 2: INSURER SELECTION (vehicle Quick Quote only) ─── */}
+      {step === 'insurer' && (product === 'CAR' || product === 'MOTORCYCLE') && (
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-emerald-100 bg-white p-4">
+            <p className="text-sm font-black text-slate-900">{t('Choose the insurance company', 'Pilih perusahaan asuransi')}</p>
+            <p className="mt-1 text-xs leading-relaxed text-slate-500">{t('Only active insurer partners with a configured product for this vehicle type are listed. The selected insurer determines eligibility, fees, discount limits and the official quotation logo.', 'Hanya perusahaan mitra aktif dengan produk yang telah dikonfigurasi untuk jenis kendaraan ini yang ditampilkan. Penanggung terpilih menentukan kelayakan, biaya, batas diskon, dan logo resmi pada PDF.')}</p>
+          </div>
+          {loadingInsurers && <div className="rounded-2xl border border-slate-200 bg-white p-5 text-center text-sm text-slate-500"><RefreshCw size={16} className="inline animate-spin mr-2" />{t('Loading insurer partners…', 'Memuat perusahaan asuransi…')}</div>}
+          {!loadingInsurers && insurerLoadError && <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">{insurerLoadError}</div>}
+          {!loadingInsurers && insurerOptions.map(insurer => {
+            const selected = selectedInsurerId === insurer.id;
+            const hasOfficialLogo = !!insurer.logo_url;
+            return (
+              <button key={insurer.id} type="button" disabled={!hasOfficialLogo}
+                onClick={() => { setSelectedInsurerId(insurer.id); setSelectedInsurerProduct(null); setStep('inputs'); }}
+                className={"w-full flex items-center gap-3 rounded-2xl border p-4 text-left transition-all " + (selected ? 'border-emerald-500 bg-emerald-50' : 'border-slate-200 bg-white') + (!hasOfficialLogo ? ' opacity-60 cursor-not-allowed' : ' hover:border-emerald-300')}>
+                <span className="flex h-14 w-20 shrink-0 items-center justify-center rounded-xl border border-slate-100 bg-white p-2">
+                  {hasOfficialLogo ? <img src={insurer.logo_url} alt={insurer.name + ' official logo'} className="max-h-full max-w-full object-contain" /> : <FileText size={22} className="text-slate-300" />}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-black text-slate-900">{insurer.name}</span>
+                  <span className="mt-1 block text-xs text-slate-500">{hasOfficialLogo ? t('Active vehicle product configured', 'Produk kendaraan aktif telah dikonfigurasi') : t('Official logo is missing — ask admin to configure it', 'Logo resmi belum tersedia — minta admin melengkapinya')}</span>
+                </span>
+                {selected && <CheckCircle2 size={18} className="text-emerald-600" />}
+                {!hasOfficialLogo && <span className="text-[10px] font-bold text-amber-700">{t('Unavailable', 'Belum siap')}</span>}
+              </button>
+            );
+          })}
+          <button type="button" disabled={!selectedInsurerId || !selectedInsurer?.logo_url}
+            onClick={() => setStep('inputs')}
+            className="w-full h-12 rounded-xl bg-emerald-600 text-white text-sm font-bold disabled:opacity-40">
+            {t('Continue to vehicle details', 'Lanjut ke data kendaraan')} <ChevronRight size={16} className="inline ml-1" />
+          </button>
+        </div>
+      )}
+
+      {/* ─── STEP 3: PRODUCT INPUTS ─── */}
       {step === 'inputs' && (
         <div className="space-y-4">
           {/* STNK — kartu pindai yang sama dengan portal Nasabah (v2.7.50).
@@ -1151,17 +1190,6 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
                 />
               </div>
 
-              <div>
-                <label className={labelClass}>{t('Coverage Type', 'Tipe Perlindungan')}</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {(['COMPREHENSIVE', 'TLO'] as const).map(c => (
-                    <button key={c} onClick={() => setCarInputs(v => ({ ...v, coverage: c }))}
-                      className={`py-3 rounded-xl text-xs font-semibold transition-all ${carInputs.coverage === c ? 'bg-emerald-500 text-white shadow-md' : 'bg-white border border-gray-200 text-gray-500'}`}>
-                      {c}
-                    </button>
-                  ))}
-                </div>
-              </div>
             </>
           )}
 
@@ -1262,12 +1290,12 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
           <button
             disabled={!canProceedInputs()}
             onClick={() => {
-              if (quoteMode === 'penawaran') setStep(product === 'CAR' || product === 'MOTORCYCLE' ? 'quote_summary' : 'summary');
+              if (quoteMode === 'penawaran') setStep(product === 'CAR' || product === 'MOTORCYCLE' ? 'client' : 'summary');
               else setStep('client');
             }}
             className="w-full h-12 rounded-xl bg-emerald-500 text-white font-semibold text-sm active:bg-emerald-600 transition-all disabled:opacity-40 flex items-center justify-center gap-2"
           >
-            {quoteMode === 'penawaran' ? t('View Quick Quote', 'Lihat Estimasi') : t('Next: Client Info', 'Lanjut: Data Klien')} <ChevronRight size={16} />
+            {quoteMode === 'penawaran' ? ((product === 'CAR' || product === 'MOTORCYCLE') ? t('Next: Customer Details', 'Lanjut: Data Nasabah') : t('View Quick Quote', 'Lihat Estimasi')) : t('Next: Client Info', 'Lanjut: Data Klien') } <ChevronRight size={16} />
           </button>
         </div>
       )}
@@ -1275,6 +1303,33 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
       {/* ─── STEP QUOTE_SUMMARY: Penawaran-only for CAR/MOTORCYCLE ─── */}
       {step === 'quote_summary' && (product === 'CAR' || product === 'MOTORCYCLE') && (
         <div className="space-y-4">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4">
+            <div className="flex items-center gap-3">
+              <span className="flex h-12 w-20 items-center justify-center rounded-xl border border-slate-100 bg-white p-2">
+                {selectedInsurer?.logo_url && <img src={selectedInsurer.logo_url} alt={selectedInsurer.name + ' official logo'} className="max-h-full max-w-full object-contain" />}
+              </span>
+              <div className="min-w-0">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{t('Selected insurer', 'Perusahaan asuransi terpilih')}</p>
+                <p className="truncate text-sm font-black text-slate-900">{selectedInsurer?.name ?? '—'}</p>
+              </div>
+            </div>
+            {loadingInsurerProduct && <p className="mt-3 text-xs text-slate-500"><RefreshCw size={13} className="mr-1 inline animate-spin" />{t('Checking product eligibility…', 'Memeriksa kelayakan produk…')}</p>}
+            {!loadingInsurerProduct && !selectedInsurerProduct && <p className="mt-3 rounded-xl bg-amber-50 p-3 text-xs leading-relaxed text-amber-800">{t('This insurer has no active product matching the selected coverage or vehicle age. Change the coverage or go back and select another insurer.', 'Penanggung ini tidak memiliki produk aktif yang sesuai dengan jenis jaminan atau usia kendaraan. Ubah jaminan atau kembali untuk memilih penanggung lain.')}</p>}
+            {!loadingInsurerProduct && selectedInsurerProduct && <p className="mt-2 text-xs text-emerald-700">{t('Eligible product configuration verified for this vehicle and coverage.', 'Konfigurasi produk terverifikasi sesuai kendaraan dan jaminan ini.')}</p>}
+          </div>
+
+          <div className="bg-white dark:bg-ds-card rounded-2xl p-4 border border-gray-200 dark:border-ds-border space-y-3">
+            <p className="text-xs font-black uppercase tracking-widest text-gray-500 dark:text-ds-ink2">{t('Main coverage', 'Jenis perlindungan utama')}</p>
+            <div className="grid grid-cols-2 gap-2">
+              {(['COMPREHENSIVE', 'TLO'] as const).map(coverage => (
+                <button key={coverage} type="button" onClick={() => setCarInputs(v => ({ ...v, coverage }))}
+                  className={"py-3 rounded-xl text-xs font-bold transition-all " + (carInputs.coverage === coverage ? 'bg-emerald-500 text-white shadow-md' : 'bg-white border border-gray-200 text-gray-500')}>
+                  {coverage}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Addon Coverage Selection */}
           <div className="bg-white dark:bg-ds-card rounded-2xl p-4 border border-gray-200 dark:border-ds-border space-y-3">
             <p className="text-xs font-black uppercase tracking-widest text-gray-500 dark:text-ds-ink2">Perluasan Jaminan</p>
@@ -1343,8 +1398,7 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
           <div className="bg-gradient-to-br from-slate-900 to-slate-800 dark:from-slate-800 dark:to-slate-900 rounded-[2rem] p-6 text-white shadow-2xl">
             <p className="text-slate-400 text-xs font-black uppercase tracking-widest mb-1">Penawaran Kendaraan</p>
             <p className="mb-3 text-[11px] leading-relaxed text-amber-200">{t('Indicative estimate only. Final premium, coverage, eligibility and documents depend on the selected insurer and underwriting approval. This is not a policy or proof of cover.', 'Estimasi indikatif. Premi final, jaminan, kelayakan, dan dokumen mengikuti perusahaan asuransi yang dipilih serta persetujuan underwriting. Ini bukan polis atau bukti pertanggungan.')}</p>
-            <label className="block text-xs text-slate-300 mb-1">{t('Customer name (optional)', 'Nama calon nasabah (opsional)')}</label>
-            <input type="text" value={onetimeName} onChange={e => setOnetimeName(e.target.value)} placeholder={t('Enter name only if needed', 'Isi nama jika diperlukan')} className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-emerald-400/50" />
+            <p className="text-xs text-slate-300">{t('Prepared for', 'Ditujukan kepada')}: {clientName || t('Prospective customer', 'Calon nasabah')}{clientPhone ? ' · ' + clientPhone : ''}</p>
             <p className="text-slate-400 text-sm mt-0.5">{carInputs.brand} {carInputs.model} ({carInputs.year})</p>
             <div className="mt-4 pt-4 border-t border-white/10 space-y-2">
               <div className="flex justify-between">
@@ -1357,7 +1411,7 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400 text-xs font-bold">Rate OJK</span>
-                <span className="font-bold text-sm">{(getBaseRateByBand(product === 'MOTORCYCLE' ? 'MOTORCYCLE' : 'CAR', carInputs.coverage, getZone(carInputs.province), getVehicleCategory(carInputs.price), 'MID') * 100).toFixed(2)}%</span>
+                <span className="font-bold text-sm">{((vehiclePremiumBreakdown?.rate ?? getBaseRateByBand(product === 'MOTORCYCLE' ? 'MOTORCYCLE' : 'CAR', carInputs.coverage, getZone(carInputs.province), getVehicleCategory(carInputs.price), 'MID')) * 100).toFixed(2)}%</span>
               </div>
             </div>
             {/* v2.7.50 — diskon pindah ke step ringkasan: muncul DAN dihitung
@@ -1369,11 +1423,11 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
                   id="agent-quote-discount-quote"
                   type="number"
                   min="0"
-                  max="15"
+                  max={isVehicleQuickQuote ? discountCapPercent : 15}
                   step="0.5"
                   inputMode="decimal"
                   value={discountRate}
-                  onChange={event => setDiscountRate(Math.min(15, Math.max(0, Number(event.target.value) || 0)))}
+                  onChange={event => setDiscountRate(Math.min(isVehicleQuickQuote ? discountCapPercent : 15, Math.max(0, Number(event.target.value) || 0)))}
                   className="w-20 rounded-xl border border-white/20 bg-white/10 px-3 py-1.5 text-right text-sm font-bold text-white focus:outline-none focus:ring-2 focus:ring-emerald-400/50"
                   aria-describedby="agent-quote-discount-quote-note"
                 />
@@ -1388,8 +1442,20 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
                   <span className="font-bold text-sm text-emerald-400">−{formatIDR(discountAmount)}</span>
                 </div>
               </div>
-              <p id="agent-quote-discount-quote-note" className="mt-1 text-[10px] leading-relaxed text-slate-500">{t('Max. 15% for the estimate. The final discount still follows product/insurer limits and applicable approvals.', 'Maks. 15% untuk estimasi. Diskon final tetap mengikuti batas produk/insurer dan persetujuan yang berlaku.')}</p>
+              <p id="agent-quote-discount-quote-note" className="mt-1 text-[10px] leading-relaxed text-slate-500">{isVehicleQuickQuote ? t('Insurer-configured discount ceiling: ' + discountCapPercent.toFixed(2) + '%. The discount is calculated against the tariff premium and remains subject to insurer approval.', 'Batas diskon sesuai konfigurasi penanggung: ' + discountCapPercent.toFixed(2) + '%. Diskon dihitung dari premi tarif dan tetap memerlukan persetujuan penanggung.') : t('Max. 15% for the estimate. The final discount still follows product/insurer limits and applicable approvals.', 'Maks. 15% untuk estimasi. Diskon final tetap mengikuti batas produk/insurer dan persetujuan yang berlaku.')}</p>
             </div>
+            {vehiclePremiumBreakdown && insurerQuotePricing && (
+              <div className="mt-4 space-y-1 border-t border-white/10 pt-4">
+                <p className="mb-2 text-[10px] font-black uppercase tracking-widest text-slate-400">{t('Detailed premium breakdown', 'Rincian premi')}</p>
+                <div className="flex justify-between text-xs"><span className="text-slate-300">{t('Base tariff premium', 'Premi dasar')}</span><b>{formatIDR(vehiclePremiumBreakdown.basePremium)}</b></div>
+                {vehiclePremiumBreakdown.addonPremium > 0 && <div className="flex justify-between text-xs"><span className="text-slate-300">{t('Coverage extensions', 'Perluasan jaminan')}</span><b>{formatIDR(vehiclePremiumBreakdown.addonPremium)}</b></div>}
+                <div className="flex justify-between text-xs"><span className="text-slate-300">{t('Administration fee', 'Biaya administrasi')}</span><b>{formatIDR(vehiclePremiumBreakdown.adminFee)}</b></div>
+                <div className="flex justify-between text-xs"><span className="text-slate-300">{t('Tariff stamp duty', 'Materai tarif')}</span><b>{formatIDR(vehiclePremiumBreakdown.stampDuty)}</b></div>
+                <div className="flex justify-between text-xs"><span className="text-slate-300">{t('Insurer policy cost', 'Biaya polis penanggung')}</span><b>{formatIDR(insurerQuotePricing.policyCost)}</b></div>
+                <div className="flex justify-between text-xs"><span className="text-slate-300">{t('Insurer stamp duty', 'Materai penanggung')}</span><b>{formatIDR(insurerQuotePricing.insurerStampDuty)}</b></div>
+                <div className="flex justify-between text-xs"><span className="text-slate-300">{t('Discount', 'Diskon')} ({(insurerQuotePricing.discountRate * 100).toFixed(2)}%)</span><b className="text-emerald-300">−{formatIDR(insurerQuotePricing.discountAmount)}</b></div>
+              </div>
+            )}
             <div className="mt-4 pt-4 border-t border-white/10">
               <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Est. Premi Tahunan</p>
             <p className="font-black text-3xl text-white mt-0.5">{formatIDR(premium)}</p>
@@ -1398,7 +1464,7 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
 
           <button
             onClick={handlePrintQuote}
-            disabled={printingQuote || !carInputs.province || !carInputs.brand || !carInputs.model || carInputs.price <= 0}
+            disabled={printingQuote || loadingInsurerProduct || !selectedInsurerProduct || !selectedInsurer?.logo_url || !insurerQuotePricing || !carInputs.province || !carInputs.brand || !carInputs.model || carInputs.price <= 0}
             className="h-12 px-5 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-500 text-white font-bold text-sm shadow-lg shadow-emerald-500/30 active:scale-95 transition-all disabled:opacity-50 w-full flex items-center justify-center gap-2"
           >
             {printingQuote ? <RefreshCw size={14} className="animate-spin" /> : <Download size={14} />}
@@ -1407,7 +1473,7 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
 
           <button
             onClick={handleSaveQuote}
-            disabled={saving || !!savedQuote}
+            disabled={saving || !!savedQuote || loadingInsurerProduct || !selectedInsurerProduct || !selectedInsurer?.logo_url || !insurerQuotePricing}
             className="h-12 px-5 rounded-xl border border-gray-200 bg-white text-gray-700 font-semibold text-sm active:bg-gray-50 transition-all disabled:opacity-50 w-full flex items-center justify-center gap-2"
           >
             {saving ? <RefreshCw size={14} className="animate-spin" /> : <FileCheck size={14} />}
