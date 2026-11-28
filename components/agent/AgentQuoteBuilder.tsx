@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight, CheckCircle2, Send, RefreshCw, FileCheck, Us
 import { Language } from '../../types';
 import { formatIDR } from '../car-wizard/WizardUI';
 import {
-  saveQuote, addClient, listActiveInsurers, getInsurerProducts, getAvailableInsurerProducts,
+  saveQuote, addClient, listActiveInsurers, getInsurerProducts, getAvailableInsurerProducts, getActiveOjkRateSet,
   type SpClient, type SpQuote, type SpInsurer, type SpInsurerProduct
 } from '../../services/supabaseService';
 import { calculateInsurerQuotePricing, getInsurerQuoteDiscountCapPercent } from '../../services/agentQuotePricing';
@@ -235,7 +235,7 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
       })
       .finally(() => { if (!cancelled) setLoadingInsurers(false); });
     return () => { cancelled = true; };
-  }, [step, quoteMode, product]);
+  }, [step, quoteMode, product, selectedInsurerId]);
 
   // Re-check the chosen insurer against product, coverage and maximum vehicle age.
   useEffect(() => {
@@ -557,6 +557,7 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
       return;
     }
     setSaving(true);
+    const activeRateSet = isVehicleQuickQuote ? await getActiveOjkRateSet() : null;
     const q = await saveQuote({
       agent_id: agentId,
       client_id: clientId,
@@ -582,6 +583,7 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
         } : null,
         pricing_snapshot: vehiclePremiumBreakdown && insurerQuotePricing ? {
           source: 'OJK rate engine + active insurer product configuration',
+          rate_set: activeRateSet ? { id: activeRateSet.id, version: activeRateSet.version, source_reference: activeRateSet.source_reference, effective_date: activeRateSet.effective_date } : { version: 'compiled-default', source_reference: 'SEOJK No. 6/SEOJK.05/2017' },
           zone: vehiclePremiumBreakdown.zone,
           category: vehiclePremiumBreakdown.category,
           rate: vehiclePremiumBreakdown.rate,
@@ -1058,7 +1060,7 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
             const hasOfficialLogo = !!insurer.logo_url;
             return (
               <button key={insurer.id} type="button" disabled={!hasOfficialLogo}
-                onClick={() => { setSelectedInsurerId(insurer.id); setSelectedInsurerProduct(null); setStep('inputs'); }}
+                onClick={() => { setSelectedInsurerId(insurer.id); setSelectedInsurerProduct(null); }}
                 className={"w-full flex items-center gap-3 rounded-2xl border p-4 text-left transition-all " + (selected ? 'border-emerald-500 bg-emerald-50' : 'border-slate-200 bg-white') + (!hasOfficialLogo ? ' opacity-60 cursor-not-allowed' : ' hover:border-emerald-300')}>
                 <span className="flex h-14 w-20 shrink-0 items-center justify-center rounded-xl border border-slate-100 bg-white p-2">
                   {hasOfficialLogo ? <img src={insurer.logo_url} alt={insurer.name + ' official logo'} className="max-h-full max-w-full object-contain" /> : <FileText size={22} className="text-slate-300" />}
@@ -1434,7 +1436,7 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
               </div>
               <div className="mt-2 space-y-1">
                 <div className="flex justify-between">
-                  <span className="text-slate-400 text-xs font-bold">{t('Base premium', 'Premi dasar')}</span>
+                  <span className="text-slate-400 text-xs font-bold">{t('Gross before discount', 'Total sebelum diskon')}</span>
                   <span className="font-bold text-sm">{formatIDR(basePremium)}</span>
                 </div>
                 <div className="flex justify-between">
