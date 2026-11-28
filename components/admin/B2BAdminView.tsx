@@ -158,14 +158,20 @@ const QuoteForm: React.FC<QuoteFormProps> = ({ submissionId, clientId, productTy
       terms,
       status: 'PENDING',
     };
-    const ok = await createB2BQuote(quoteData);
-    if (ok) {
-      await updateB2BSubmissionStatus(submissionId, 'QUOTED');
-      onSaved();
-    } else {
-      setErr('Failed to save quote. Please try again.');
+    try {
+      const ok = await createB2BQuote(quoteData);
+      if (ok) {
+        await updateB2BSubmissionStatus(submissionId, 'QUOTED');
+        onSaved();
+      } else {
+        setErr('Failed to save quote. Please try again.');
+      }
+    } catch (error) {
+      console.error('Unable to save B2B insurer quotation:', error);
+      setErr('The quote could not be saved. Please retry.');
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   };
 
   return (
@@ -182,7 +188,7 @@ const QuoteForm: React.FC<QuoteFormProps> = ({ submissionId, clientId, productTy
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="col-span-2">
-          <label className="block text-xs font-semibold text-ds-ink3 mb-1">Active Insurer</label>
+          <label className="block text-xs font-semibold text-ds-ink3 mb-1">Active Insurer — confirm product authorization</label>
           <select
             value={selectedInsurerId}
             onChange={e => setSelectedInsurerId(e.target.value)}
