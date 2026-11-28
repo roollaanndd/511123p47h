@@ -271,7 +271,7 @@ const B2BCard: React.FC<{ sub: SpB2BSubmission; onUpdated: () => void; onToast: 
   const [authorizationConfirmed, setAuthorizationConfirmed] = useState(false);
   const [assigningInsurer, setAssigningInsurer] = useState(false);
 
-  const loadInsurerAssignments = async () => {
+  const loadInsurerAssignments = useCallback(async () => {
     try {
       const [assignments, activeInsurers] = await Promise.all([
         adminListB2BSubmissionInsurers(sub.id),
@@ -282,9 +282,13 @@ const B2BCard: React.FC<{ sub: SpB2BSubmission; onUpdated: () => void; onToast: 
     } catch (error) {
       console.error('Unable to load B2B insurer assignments:', error);
     }
-  };
+  }, [sub.id]);
 
-  useEffect(() => { void loadInsurerAssignments(); }, [sub.id]);
+  useEffect(() => {
+    void loadInsurerAssignments();
+    const timer = window.setInterval(() => { void loadInsurerAssignments(); }, 30000);
+    return () => window.clearInterval(timer);
+  }, [loadInsurerAssignments]);
 
   const assignInsurer = async () => {
     if (!selectedAssignmentInsurer || !authorizationConfirmed || assigningInsurer) return;
@@ -1491,6 +1495,14 @@ const B2BAdminView: React.FC = () => {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // Keep the admin underwriting queue in sync with insurer portal responses
+  // while the B2B tab is open; manual refresh remains available as before.
+  useEffect(() => {
+    if (tab !== 'b2b') return;
+    const timer = window.setInterval(() => { void load(); }, 30000);
+    return () => window.clearInterval(timer);
+  }, [load, tab]);
 
   // Surfaced prominently per the owner's request (5 Nov 2026) — bulk batches
   // awaiting payment or awaiting master-policy issuance are easy to lose
