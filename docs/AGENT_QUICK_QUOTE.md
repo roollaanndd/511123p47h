@@ -52,3 +52,19 @@ For fleet submissions that do not include a validated unit schedule, do not calc
 ### B2B insurer authorization boundary
 
 The B2B insurer picker returns active insurers and their configured display logos. An active record and logo do **not** prove that an insurer has approved every B2B product line, risk class, or customer segment. Operations must confirm product authorization and placement authority against the current insurer agreement before issuing a quote. The server validates active status and the configured HTTPS logo, but it does not infer product authorization from `is_active`.
+
+
+## Corporate B2B insurer routing
+
+Corporate B2B submissions now support an explicit admin-to-insurer underwriting assignment:
+
+- Admins assign a submission to an active insurer only after confirming product-specific insurer authorization has been verified. Active status and a configured logo are not treated as proof of underwriting authority.
+- Assignments are stored in `sp_b2b_submission_insurers`, a gateway-only table with RLS enabled and direct `anon`/`authenticated` grants revoked.
+- Insurers authenticate through their existing token flow and can only list or respond to assignments belonging to their own insurer ID.
+- The insurer portal supports quotation submission, requests for information, and declines. Premium, validity date, coverage notes, and terms are supplied by the insurer; SurePath does not infer them.
+- A submitted insurer quotation is stored in the existing `sp_b2b_quotes` table. The assignment ID and server-resolved insurer identity/logo are written into reserved metadata so the client quote view and PDF adapter can use the same record.
+- Admin submission cards display assignment status and received offer details. The corporate client quote view and submission status refresh periodically while open.
+- Supporting submission documents are exposed to the assigned insurer only through server-generated signed URLs with a five-minute expiry.
+- Admin and client notifications are emitted when an insurer requests information, declines, or submits a quotation.
+
+The first version uses an explicit admin attestation for product-specific insurer authorization. It does not yet implement automated insurer appetite/rate matching; that requires a maintained insurer-product authorization matrix and verified underwriting rules.
