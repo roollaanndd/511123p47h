@@ -122,6 +122,7 @@ describe('b2bUnitOrder — adapter PDF agent', () => {
       coverageStartDate: '2026-11-18',
       coverageEndDate: '2027-11-18',
       insurerName: 'PT Zurich Asuransi Indonesia Tbk',
+      insurerLogoUrl: 'https://cdn.example.com/zurich-logo.png',
       planName: 'Standard',
       planLoading: 0,
       line,
@@ -132,6 +133,8 @@ describe('b2bUnitOrder — adapter PDF agent', () => {
     expect(data.preparedForCompany).toBe('PT Contoh');
     expect(data.preparedForPerson).toContain('Budi');
     expect(data.insurerShort).toBe('Zurich');
+    expect(data.insurerLogoUrl).toBe('https://cdn.example.com/zurich-logo.png');
+    expect(data.brandMode).toBe('INSURER');
     expect(data.vehicleBrand).toBe('Toyota');
     expect(data.engineNumber).toBe('4A92-1');
     expect(data.chassisNumber).toBe('MHKFS4');
@@ -143,5 +146,24 @@ describe('b2bUnitOrder — adapter PDF agent', () => {
     expect(data.klausulList.join(' ')).toMatch(/Baru/);
     // QR/e-quote diisi oleh publishAndDownloadQuotation, bukan adapter.
     expect(data.eQuoteCode).toBeUndefined();
+  });
+
+  it('tidak mengarang Zurich ketika penanggung belum dipilih', () => {
+    const data = fromB2BUnitOrder({
+      companyName: 'PT Contoh',
+      nasabahName: 'Budi',
+      vehicleClass: 'CAR',
+      vehicleCondition: 'BARU',
+      financingValue: 250000000,
+      tenorMonths: 12,
+      coverageStartDate: '2026-11-18',
+      coverageEndDate: '2027-11-18',
+      line,
+    });
+
+    expect(data.insurer).toBe('Penanggung belum dipilih');
+    expect(data.insurerLogoUrl).toBeUndefined();
+    expect(data.brandMode).toBe('SUREPATH');
+    expect(data.termsList.join(' ')).toMatch(/Penanggung belum dipilih/);
   });
 });
