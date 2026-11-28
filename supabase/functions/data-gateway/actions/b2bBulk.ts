@@ -1480,7 +1480,22 @@ export async function handleB2BBulkAction(action: string, ctx: GatewayContext): 
         .eq('submission_id', submissionId)
         .order('created_at', { ascending: true });
       if (error) { const _err = safeError(error); return err(_err.body.error, _err.status); }
-      return ok(data ?? []);
+      const { data: quotes, error: quotesErr } = await db.from('sp_b2b_quotes')
+        .select('id, submission_id, insurer_name, premium_amount, valid_until, terms, status, coverage_details, created_at')
+        .eq('submission_id', submissionId)
+        .order('created_at', { ascending: false });
+      if (quotesErr) { const _err = safeError(quotesErr); return err(_err.body.error, _err.status); }
+      const quoteByAssignment = new Map<string, any>();
+      for (const quote of quotes ?? []) {
+        const assignmentId = quote.coverage_details?.__assignment_id;
+        if (assignmentId && !quoteByAssignment.has(String(assignmentId))) {
+          quoteByAssignment.set(String(assignmentId), quote);
+        }
+      }
+      return ok((data ?? []).map((assignment: any) => ({
+        ...assignment,
+        quote: quoteByAssignment.get(assignment.id) ?? null,
+      })));
     }
 
     default:
