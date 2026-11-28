@@ -216,7 +216,7 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
     Promise.all([listActiveInsurers(), getActiveInsurerIdsForProduct(product)])
       .then(([insurers, supportedProductInsurerIds]) => {
         if (cancelled) return;
-        const activeInsurers = (insurers ?? []).filter(insurer => insurer.is_active);
+        const activeInsurers = insurers ?? [];
         const activeIds = new Set(activeInsurers.map(insurer => insurer.id));
         const supportedIds = new Set((supportedProductInsurerIds ?? []).filter(id => activeIds.has(id)));
         const options = activeInsurers.filter(insurer => supportedIds.has(insurer.id));
@@ -1316,6 +1316,7 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
             {loadingInsurerProduct && <p className="mt-3 text-xs text-slate-500"><RefreshCw size={13} className="mr-1 inline animate-spin" />{t('Checking product eligibility…', 'Memeriksa kelayakan produk…')}</p>}
             {!loadingInsurerProduct && !selectedInsurerProduct && <p className="mt-3 rounded-xl bg-amber-50 p-3 text-xs leading-relaxed text-amber-800">{t('This insurer has no active product matching the selected coverage or vehicle age. Change the coverage or go back and select another insurer.', 'Penanggung ini tidak memiliki produk aktif yang sesuai dengan jenis jaminan atau usia kendaraan. Ubah jaminan atau kembali untuk memilih penanggung lain.')}</p>}
             {!loadingInsurerProduct && selectedInsurerProduct && <p className="mt-2 text-xs text-emerald-700">{t('Eligible product configuration verified for this vehicle and coverage.', 'Konfigurasi produk terverifikasi sesuai kendaraan dan jaminan ini.')}</p>}
+            <p className="mt-3 border-t border-slate-100 pt-3 text-[11px] leading-relaxed text-slate-500">{t('Indicative premium uses the OJK tariff engine plus this insurer product configuration. It is not an insurer-confirmed final premium; underwriting and insurer confirmation still apply.', 'Premi indikatif menggunakan mesin tarif OJK ditambah konfigurasi produk penanggung ini. Ini bukan premi final yang telah dikonfirmasi penanggung; keputusan underwriting dan konfirmasi penanggung tetap berlaku.')}</p>
           </div>
 
           <div className="bg-white dark:bg-ds-card rounded-2xl p-4 border border-gray-200 dark:border-ds-border space-y-3">
