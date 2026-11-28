@@ -694,7 +694,7 @@ export function fromAgentQuote(q: AgentQuoteSource): QuotationSlipData {
     }),
 
     preparedForCompany: q.clientName,
-    preparedForPerson: q.clientPhone || '',
+    preparedForPerson: q.clientPhone ? 'Telp/WA: ' + q.clientPhone : '',
     previousPolicyNumber: '-',
     insurer: insurerName,
     insurerShort,
