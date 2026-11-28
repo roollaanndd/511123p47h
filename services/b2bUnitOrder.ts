@@ -9,7 +9,7 @@
 //      PDF B2B identik (judul, kop, QR e-quotation, 4 halaman US Letter) dengan
 //      PDF yang diterbitkan agent — bukan format A4 terpisah lagi.
 
-import type { BuiltLineItem, FleetAddOns, FleetCoverage, VehicleClass } from './b2bFleetRating';
+import type { BuiltLineItem, BulkTotals, FleetAddOns, FleetCoverage, RawBulkRow, VehicleClass } from './b2bFleetRating';
 import type { QuotationSlipData } from './quotationSlipPdf';
 
 export type VehicleCondition = 'BARU' | 'BEKAS';
@@ -187,7 +187,8 @@ const ADDON_NAMES: Array<[keyof FleetAddOns, string]> = [
 export function fromB2BUnitOrder(o: B2BUnitQuoteSource): QuotationSlipData {
   const isMotor = o.vehicleClass !== 'HEAVY_EQUIPMENT';
   const coverage: FleetCoverage = o.line.coverage;
-  const insurerName = o.insurerName || 'PT Zurich Asuransi Indonesia Tbk';
+  const insurerSelected = Boolean(o.insurerName?.trim());
+  const insurerName = insurerSelected ? o.insurerName!.trim() : 'Penanggung belum dipilih';
   const insurerShort = insurerShortName(insurerName);
   const productName = isMotor
     ? `Asuransi Kendaraan Bermotor — ${coverage === 'TLO' ? 'TLO' : 'Comprehensive'}`
@@ -222,6 +223,7 @@ export function fromB2BUnitOrder(o: B2BUnitQuoteSource): QuotationSlipData {
     insurer: insurerName,
     insurerShort,
     ...(o.insurerLogoUrl ? { insurerLogoUrl: o.insurerLogoUrl } : {}),
+    brandMode: insurerSelected ? 'INSURER' : 'SUREPATH',
 
     agentName: 'Tim B2B SurePath',
     agentCode: 'B2B',
@@ -291,9 +293,11 @@ export function fromB2BUnitOrder(o: B2BUnitQuoteSource): QuotationSlipData {
     ],
 
     termsList: [
-      `Penawaran ini untuk penutupan asuransi atas kendaraan ${vehicleSummary} dengan penempatan pada ${insurerName}, mengikuti syarat dan kondisi Polis Standar Asuransi Kendaraan Bermotor Indonesia beserta klausul terlampir.`,
+      insurerSelected
+        ? `Penawaran ini untuk penutupan asuransi atas kendaraan ${vehicleSummary} dengan penempatan pada ${insurerName}, mengikuti syarat dan kondisi Polis Standar Asuransi Kendaraan Bermotor Indonesia beserta klausul terlampir.`
+        : `Penawaran indikatif untuk kendaraan ${vehicleSummary}. Penanggung belum dipilih; penempatan dan penerbitan polis menunggu pilihan serta akseptasi penanggung.`,
       'Penawaran berlaku selama 30 (tiga puluh) hari sejak tanggal penerbitan. Untuk menghindari terputusnya jaminan, konfirmasi dan pembayaran disarankan sebelum tanggal mulai pertanggungan.',
-      `Rate premi menggunakan acuan tarif OJK (SEOJK 6/2017); rate ${rate}, band ${o.line.category ?? '-'}, zone ${o.line.zone}. Premi final mengikuti konfirmasi tertulis dari Penanggung.`,
+      `Perhitungan menggunakan rate set B2B armada yang aktif; rate ${rate}, kategori ${o.line.category ?? '-'}, zona ${o.line.zone}. Premi final mengikuti validasi server dan konfirmasi tertulis dari Penanggung.`,
       'Polis diterbitkan setelah subjectivity terpenuhi, konfirmasi penutupan, dan pembayaran premi diterima.',
       'Dokumen ini bukan surat konfirmasi penutupan; seluruh konfirmasi dan akseptasi merupakan kewenangan penuh Penanggung.',
     ],
@@ -310,3 +314,150 @@ export function fromB2BUnitOrder(o: B2BUnitQuoteSource): QuotationSlipData {
     transferMemo: `${o.contractNo || 'QS/B2B'} — ${vehicleSummary} ${o.nasabahName}`.trim(),
   };
 }
+
+// ─── Adapter: B2B bulk-import fleet quote → insurer-branded PDF ────────────
+export interface B2BBulkQuoteItem {
+  raw: Pick<RawBulkRow, 'nasabahName' | 'make' | 'typeName' | 'modelYear' | 'plateNo' | 'financingValue' | 'tenorMonths'>;
+  line: BuiltLineItem;
+}
+
+export interface B2BBulkQuoteSource {
+  companyName: string;
+  items: B2BBulkQuoteItem[];
+  totals: BulkTotals;
+  insurerName?: string;
+  insurerLogoUrl?: string;
+}
+
+/**
+ * Fleet PDF summary for the B2B bulk-import flow. The Excel quotation remains
+ * the detailed per-unit schedule; this PDF is the executive summary and is
+ * explicitly indicative because the gateway recalculates every row at submit.
+ */
+export function fromB2BBulkQuote(o: B2BBulkQuoteSource): QuotationSlipData {
+  const insurerSelected = Boolean(o.insurerName?.trim());
+  const insurerName = insurerSelected ? o.insurerName!.trim() : 'Penanggung belum dipilih';
+  const insurerShort = insurerShortName(insurerName);
+  const itemCount = o.items.length;
+  const totalSumInsured = o.items.reduce((sum, item) => sum + (Number(item.raw.financingValue) || 0), 0);
+  const classes = [...new Set(o.items.map(item => item.line.vehicleClass))];
+  const coverages = [...new Set(o.items.map(item => item.line.coverage))];
+  const classSummary = classes.map(value => value === 'CAR' ? 'Mobil' : value === 'MOTORCYCLE' ? 'Motor' : 'Alat Berat').join(', ');
+  const coverageSummary = coverages.map(value => value === 'COMPREHENSIVE' ? 'Comprehensive' : 'TLO').join(' / ');
+  const addonAndPlan = o.totals.totalAddons + o.totals.totalPlanLoading;
+  const subtotal = o.totals.totalPremiumGross + addonAndPlan;
+  const netAfterDiscount = o.totals.totalPremiumNet + addonAndPlan;
+  const topItems = o.items.slice(0, 6).map((item, index) => ({
+    no: String(index + 1),
+    desc: [
+      item.raw.nasabahName || `Unit ${item.line.rowNo}`,
+      [item.raw.make, item.raw.typeName, item.raw.modelYear].filter(Boolean).join(' '),
+      item.raw.plateNo,
+    ].filter(Boolean).join(' — '),
+    amount: fmtIDR(item.raw.financingValue || 0),
+  }));
+  if (itemCount > 6) {
+    const remainingSumInsured = o.items.slice(6).reduce((sum, item) => sum + (Number(item.raw.financingValue) || 0), 0);
+    topItems.push({
+      no: '…',
+      desc: `${itemCount - 6} unit lainnya (rincian pada lampiran Excel)`,
+      amount: fmtIDR(remainingSumInsured),
+    });
+  }
+  const today = new Date().toISOString().slice(0, 10);
+  const rateSource = 'Rate set armada B2B yang aktif; setiap baris dihitung ulang oleh server saat batch diajukan.';
+
+  return {
+    quotationNumber: quoteNumber(),
+    slipType: 'PENAWARAN INDIKATIF ASURANSI ARMADA',
+    issueDate: fmtDateShortID(new Date().toISOString().slice(0, 10)),
+    yearTag: String(new Date().getFullYear()),
+    validUntil: plus30DaysISO(),
+    productType: 'OTHER',
+    productName: 'Asuransi Armada / Fleet Motor Vehicle',
+    objectSummary: `Fleet / Armada — ${itemCount} unit`,
+    objectDetails: [
+      { label: 'TERTANGGUNG', value: o.companyName },
+      { label: 'JUMLAH UNIT', value: String(itemCount) },
+      { label: 'KELAS KENDARAAN', value: classSummary || '-' },
+      { label: 'JENIS PERTANGGUNGAN', value: coverageSummary || '-' },
+      { label: 'TOTAL NILAI PEMBIAYAAN', value: fmtIDR(totalSumInsured) },
+    ],
+    preparedForCompany: o.companyName,
+    preparedForPerson: `Fleet / Armada — ${itemCount} unit`,
+    previousPolicyNumber: '-',
+    insurer: insurerName,
+    insurerShort,
+    ...(o.insurerLogoUrl ? { insurerLogoUrl: o.insurerLogoUrl } : {}),
+    brandMode: insurerSelected ? 'INSURER' : 'SUREPATH',
+    agentName: 'Tim B2B SurePath',
+    agentCode: 'B2B',
+    periodStart: 'Sesuai tanggal efektif per unit',
+    periodEnd: 'Sesuai tenor per unit',
+    periodStartShort: 'Per unit',
+    periodEndShort: 'Per unit',
+    titleMain: 'Penawaran',
+    titleMid: 'Asuransi',
+    titleAccent: 'Armada.',
+    ledeHtml: insurerSelected
+      ? `Penawaran indikatif asuransi armada untuk ${o.companyName}, ${itemCount} unit, dengan preferensi penempatan pada ${insurerShort}. Premi dihitung dari rate set armada B2B yang aktif; rincian per unit tersedia pada lampiran Excel.`
+      : `Penawaran indikatif asuransi armada untuk ${o.companyName}, ${itemCount} unit. Penanggung belum dipilih; penempatan tetap menunggu pilihan dan akseptasi penanggung.`,
+    insuredName: o.companyName,
+    insuredAddress: '-',
+    vehicleBrand: 'Armada',
+    vehicleType: classSummary || 'Fleet',
+    vehicleYear: '-',
+    engineNumber: '-',
+    chassisNumber: '-',
+    plateNumber: '-',
+    seats: '-',
+    color: '-',
+    usage: 'Komersial / Operasional Perusahaan',
+    coverageCondition: `Jenis pertanggungan: ${coverageSummary || 'sesuai schedule per unit'}. Kelas kendaraan: ${classSummary || 'sesuai schedule per unit'}. Perhitungan dan tenor mengikuti rincian masing-masing unit pada schedule.`,
+    additionalCoverage: 'Sesuai perluasan dan paket yang dipilih pada setiap unit; lihat lampiran Excel untuk rincian.',
+    deductible: 'Sesuai ketentuan polis penanggung dan kelas kendaraan pada setiap unit.',
+    klausulList: [
+      'Rincian kendaraan, nilai pembiayaan, zona, tenor dan premi per unit mengikuti schedule Excel.',
+      'Setiap baris dengan flag atau data tidak lengkap harus diverifikasi sebelum penutupan.',
+      'Penutupan tunduk pada akseptasi dan persetujuan penuh dari Penanggung.',
+    ],
+    sumInsuredItems: topItems,
+    totalSumInsured: fmtIDR(totalSumInsured),
+    premiumComponents: [
+      { component: 'Premi dasar armada', basis: `${itemCount} unit`, rate: 'Sesuai rate per unit', premium: fmtIDR(o.totals.totalPremiumGross) },
+      { component: 'Perluasan & paket', basis: `${itemCount} unit`, rate: '—', premium: fmtIDR(addonAndPlan) },
+    ],
+    subtotalPremium: fmtIDR(subtotal),
+    discountLabel: 'Total diskon armada',
+    discountAmount: o.totals.totalDiscount > 0 ? `(${fmtIDR(o.totals.totalDiscount)})` : '(0,00)',
+    premiumAfterDiscount: fmtIDR(netAfterDiscount),
+    policyFee: fmtIDR(o.totals.totalAdminFee),
+    stampDuty: '0,00',
+    totalPremium: fmtIDR(o.totals.totalAmount),
+    subjectivityList: [
+      'Rincian per unit pada schedule Excel harus lengkap dan sesuai dokumen sumber.',
+      'Zona, kelas kendaraan, nilai pembiayaan, OTR, tenor dan perluasan dapat diverifikasi kembali oleh tim operasional.',
+      'Premi pada PDF ini bersifat indikatif; server menghitung ulang setiap baris saat batch diajukan.',
+      'Penutupan tunduk pada akseptasi dan persetujuan penuh dari Penanggung.',
+    ],
+    termsList: [
+      insurerSelected
+        ? `Penawaran indikatif ini disiapkan untuk preferensi penempatan pada ${insurerName}; penerimaan risiko dan penerbitan polis tetap menjadi kewenangan Penanggung.`
+        : 'Penanggung belum dipilih. Penawaran ini bukan konfirmasi penutupan dan belum memberikan bukti pertanggungan.',
+      rateSource,
+      'Rincian tarif, diskon, biaya, tenor, zona dan nilai pertanggungan per unit tercantum pada lampiran Excel.',
+      'Batch baru menjadi order setelah diajukan; penerbitan polis mengikuti verifikasi dokumen, akseptasi penanggung dan pembayaran.',
+      'Dokumen ini bersifat indikatif dan bukan polis atau bukti pertanggungan.',
+    ],
+    closingTitle: 'Lindungi Armada Anda,',
+    closingAccent: 'Sekarang Juga.',
+    closingDesc: 'Tinjau kembali schedule kendaraan, selesaikan flag data, dan ajukan batch untuk perhitungan ulang serta proses akseptasi penanggung.',
+    bankName: 'BANK BCA',
+    bankNameShort: 'BCA',
+    bankAccount: '5730 - 807 - 807',
+    bankAccountName: 'PT. Ruang Proteksi Indonesia',
+    paymentDueDate: fmtDateShortID(today),
+    transferMemo: `QS/B2B Fleet — ${o.companyName}`,
+  };
+}
+

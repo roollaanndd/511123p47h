@@ -84,6 +84,11 @@ const B2BSubmissions: React.FC<Props> = ({ clientId, lang, onNavigate, allClient
     return () => { cancelled = true; };
   }, [clientId, allClients, reloadKey]);
 
+  useEffect(() => {
+    const timer = window.setInterval(() => setReloadKey(k => k + 1), 30000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   const filtered = submissions
     .filter(s => filter === 'ALL' || s.status === filter)
     .filter(s => !search || s.company_name.toLowerCase().includes(search.toLowerCase()))

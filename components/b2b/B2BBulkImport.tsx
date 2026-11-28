@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Upload, Loader2, CheckCircle2, AlertTriangle, ChevronLeft, ChevronRight,
   ExternalLink, FileSpreadsheet, FileDown, X,
@@ -17,8 +17,10 @@ import { downloadBulkQuoteExcel, quoteRowFromLineItem } from '../../services/b2b
 import { downloadBulkTemplate } from '../../services/b2bBulkTemplate';
 import {
   createB2BBulkBatch, createB2BBulkInvoice, uploadB2BBulkSourceFile,
-  type B2BBulkSourceUpload,
+  listActiveInsurers, type SpInsurer, type B2BBulkSourceUpload,
 } from '../../services/supabaseService';
+import { publishAndDownloadQuotation } from '../../services/quotationService';
+import { fromB2BBulkQuote } from '../../services/b2bUnitOrder';
 
 interface Props {
   clientId: string;
@@ -57,6 +59,19 @@ const B2BBulkImport: React.FC<Props> = ({ clientId, client, onDone, lang }) => {
   const [batchResult, setBatchResult] = useState<{ batchId: string; batchNumber: string } | null>(null);
   const [invoiceUrl, setInvoiceUrl] = useState<string | null>(null);
   const [invoiceLoading, setInvoiceLoading] = useState(false);
+  const [insurers, setInsurers] = useState<SpInsurer[]>([]);
+  const [preferredInsurerId, setPreferredInsurerId] = useState('');
+  const [loadingInsurers, setLoadingInsurers] = useState(true);
+  const [downloadingQuotePdf, setDownloadingQuotePdf] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    listActiveInsurers()
+      .then(rows => { if (alive) setInsurers(rows); })
+      .catch(error => { console.error('Unable to load B2B insurers:', error); if (alive) setInsurers([]); })
+      .finally(() => { if (alive) setLoadingInsurers(false); });
+    return () => { alive = false; };
+  }, []);
 
   const handleFile = async (f: File) => {
     setError('');
@@ -125,6 +140,7 @@ const B2BBulkImport: React.FC<Props> = ({ clientId, client, onDone, lang }) => {
 
   const totals = useMemo(() => calcBulkTotals(items), [items]);
   const flaggedCount = useMemo(() => items.filter(it => it.flags.length > 0).length, [items]);
+  const preferredInsurer = insurers.find(insurer => insurer.id === preferredInsurerId) ?? null;
 
   const setOverride = (rowNo: number, patch: Partial<RowOverride>) => {
     setOverrides(prev => ({ ...prev, [rowNo]: { ...prev[rowNo], ...patch } }));
@@ -138,6 +154,42 @@ const B2BBulkImport: React.FC<Props> = ({ clientId, client, onDone, lang }) => {
       items.map((it, i) => quoteRowFromLineItem(it, rawRows[i])),
       { sourceFileName: fileName || undefined },
     );
+  };
+
+  const handleDownloadQuotePdf = async () => {
+    if (!preferredInsurer) {
+      setError(t('Select an insurer before generating the insurer-branded fleet PDF.', 'Pilih penanggung sebelum membuat PDF penawaran armada dengan logo penanggung.'));
+      return;
+    }
+    if (!preferredInsurer.logo_url) {
+      setError(t('The selected insurer has no official logo configured. Ask an admin to update its profile.', 'Logo resmi penanggung belum dikonfigurasi. Minta admin memperbarui profilnya.'));
+      return;
+    }
+    if (items.length === 0) {
+      setError(t('There are no rated units to quote.', 'Belum ada unit yang dapat dihitung.'));
+      return;
+    }
+
+    setDownloadingQuotePdf(true);
+    setError('');
+    try {
+      const data = fromB2BBulkQuote({
+        companyName: String(client?.company_name ?? client?.companyName ?? client?.name ?? 'Klien B2B').trim() || 'Klien B2B',
+        items: items.map((line, index) => ({ raw: rawRows[index], line })),
+        totals,
+        insurerName: preferredInsurer.name,
+        insurerLogoUrl: preferredInsurer.logo_url,
+      });
+      await publishAndDownloadQuotation(data, {
+        sourceApp: 'B2B',
+        totalPremiumNumeric: totals.totalAmount,
+      });
+    } catch (error) {
+      console.error('[B2B] Fleet quotation PDF failed:', error);
+      setError(t('Unable to generate the insurer-branded PDF. Check the insurer logo and try again.', 'Gagal membuat PDF berlogo penanggung. Periksa logo penanggung dan coba lagi.'));
+    } finally {
+      setDownloadingQuotePdf(false);
+    }
   };
 
   const handleSubmit = async () => {
@@ -194,6 +246,7 @@ const B2BBulkImport: React.FC<Props> = ({ clientId, client, onDone, lang }) => {
       companyName: client?.company_name ?? '',
       sourceFileName: fileName,
       sourceFile: sourceFile ?? undefined,
+      preferredInsurerId: preferredInsurerId || null,
       items: payloadItems,
     });
 
@@ -471,12 +524,44 @@ const B2BBulkImport: React.FC<Props> = ({ clientId, client, onDone, lang }) => {
           </div>
         </div>
 
-        <button
-          onClick={handleDownloadQuote}
-          className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl border border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-400 text-sm font-bold hover:bg-emerald-50 dark:hover:bg-emerald-500/10 transition-colors"
-        >
-          <FileDown size={16} /> {t('Download Quotation (Excel)', 'Unduh Quotation (Excel)')}
-        </button>
+        <div className="rounded-2xl border border-slate-200 dark:border-white/10 p-4 space-y-2">
+          <label className="block text-xs font-bold text-ds-ink3 uppercase tracking-wider">{t('Preferred insurer', 'Penanggung pilihan')}</label>
+          <select
+            value={preferredInsurerId}
+            onChange={e => setPreferredInsurerId(e.target.value)}
+            disabled={loadingInsurers || submitting}
+            className="w-full rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-ds-card2 px-3 py-2.5 text-sm"
+          >
+            <option value="">{loadingInsurers ? t('Loading insurers…', 'Memuat penanggung…') : t('Select an active insurer', 'Pilih penanggung aktif')}</option>
+            {insurers.map(insurer => <option key={insurer.id} value={insurer.id}>{insurer.name}</option>)}
+          </select>
+          {preferredInsurer && (
+            <div className="flex items-center gap-3">
+              {preferredInsurer.logo_url
+                ? <img src={preferredInsurer.logo_url} alt={preferredInsurer.name + ' logo'} className="h-8 max-w-24 object-contain" />
+                : <AlertTriangle size={14} className="text-amber-600" />}
+              <span className="text-xs text-ds-ink3">{preferredInsurer.logo_url ? preferredInsurer.name : t('Official insurer logo is missing; PDF generation is blocked.', 'Logo resmi penanggung belum tersedia; PDF tidak dapat dibuat.')}</span>
+            </div>
+          )}
+          <p className="text-2xs text-ds-ink3">{t('The PDF is an indicative fleet summary. The Excel file contains the detailed per-unit schedule; the server recalculates every unit when the batch is submitted.', 'PDF ini adalah ringkasan indikatif armada. File Excel berisi rincian per unit; server menghitung ulang setiap unit saat batch diajukan.')}</p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <button
+            onClick={handleDownloadQuote}
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl border border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-400 text-sm font-bold hover:bg-emerald-50 dark:hover:bg-emerald-500/10 transition-colors"
+          >
+            <FileDown size={16} /> {t('Download Detailed Quotation (Excel)', 'Unduh Rincian Penawaran (Excel)')}
+          </button>
+          <button
+            onClick={handleDownloadQuotePdf}
+            disabled={downloadingQuotePdf || !preferredInsurer || !preferredInsurer.logo_url || loadingInsurers}
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl border border-indigo-200 dark:border-indigo-500/30 text-indigo-700 dark:text-indigo-300 text-sm font-bold hover:bg-indigo-50 dark:hover:bg-indigo-500/10 transition-colors disabled:opacity-40"
+          >
+            {downloadingQuotePdf ? <Loader2 size={16} className="animate-spin" /> : <FileDown size={16} />}
+            {t('Download Insurer-Branded PDF', 'Unduh PDF Berlogo Penanggung')}
+          </button>
+        </div>
 
         {error && (
           <div className="flex items-start gap-2 rounded-xl bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 p-3 text-xs text-rose-700 dark:text-rose-300">

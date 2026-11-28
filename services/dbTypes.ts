@@ -675,6 +675,8 @@ export interface SpB2BQuote {
   id: string;
   submission_id: string;
   client_id: string;
+  /** Transient create payload; gateway resolves the official name/logo from sp_insurers. */
+  insurer_id?: string;
   insurer_name?: string;
   premium_amount: number;
   coverage_details: Record<string, any>;

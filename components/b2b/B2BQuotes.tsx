@@ -101,6 +101,13 @@ const B2BQuotes: React.FC<Props> = ({ clientId, lang, companyName, allClients, c
   };
   useEffect(() => { void load(); }, [clientId, allClients, reloadKey]);
 
+  // Insurer portal quotes are written server-side; refresh the client view
+  // periodically so newly issued offers appear without a manual page reload.
+  useEffect(() => {
+    const timer = window.setInterval(() => setReloadKey(k => k + 1), 30000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   const handleAction = async (status: 'ACCEPTED' | 'REJECTED') => {
     if (!selected) return;
     setActing(true);
@@ -288,13 +295,13 @@ const B2BQuotes: React.FC<Props> = ({ clientId, lang, companyName, allClients, c
             </div>
 
             {/* Coverage */}
-            {Object.keys(selected.coverage_details ?? {}).length > 0 && (
+            {Object.keys(selected.coverage_details ?? {}).filter(key => !key.startsWith('__')).length > 0 && (
               <div className="border-t border-slate-200/70 pt-3">
                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 block">
                   {t('Coverage', 'Pertanggungan')}
                 </span>
                 <div className="rounded-xl bg-slate-50 border border-slate-200/70 p-3 space-y-2">
-                  {Object.entries(selected.coverage_details).map(([k, v]) => (
+                  {Object.entries(selected.coverage_details).filter(([key]) => !key.startsWith('__')).map(([k, v]) => (
                     <div key={k} className="flex justify-between gap-3 text-xs">
                       <span className="text-slate-500">{coverageLabel(k, lang)}</span>
                       <span className="font-bold text-slate-900 text-right">{coverageValue(k, v)}</span>

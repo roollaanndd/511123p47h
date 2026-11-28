@@ -487,6 +487,7 @@ export function fromCustomerOrder(o: SpPolicyOrderSource, customerName?: string,
 export interface B2BQuoteSource {
   id: string;
   insurer_name?: string;
+  insurer_logo_url?: string;
   premium_amount: number;
   coverage_details?: Record<string, any>;
   valid_until?: string;
@@ -495,7 +496,9 @@ export interface B2BQuoteSource {
 }
 
 export function fromB2BQuote(q: B2BQuoteSource, companyName?: string): QuotationSlipData {
-  const insurerName = q.insurer_name || 'PT Zurich Asuransi Indonesia Tbk';
+  const insurerName = q.insurer_name?.trim() || 'Penanggung belum dipilih';
+  const insurerLogoUrl = q.insurer_logo_url || q.coverage_details?.__insurer_logo_url;
+  const insurerSelected = Boolean(q.insurer_name?.trim());
   const insurerShort = insurerName
     .replace(/^PT\.?\s*/i, '')
     .replace(/\s+(Asuransi|Tbk|Indonesia).*$/i, '')
@@ -504,7 +507,10 @@ export function fromB2BQuote(q: B2BQuoteSource, companyName?: string): Quotation
   const periodEnd = addYearsID(periodStart, 1);
   const company = companyName || 'Klien Korporasi SurePath';
 
-  const coverageEntries = Object.entries(q.coverage_details ?? {});
+  // Internal insurer metadata is persisted inside coverage_details for
+  // backwards-compatible storage; never display it as customer coverage.
+  const coverageEntries = Object.entries(q.coverage_details ?? {})
+    .filter(([key]) => !key.startsWith('__'));
   const coverageLabel = (k: string) => k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
   const sumInsuredItems = coverageEntries.length > 0
     ? coverageEntries.slice(0, 6).map(([k, v], i) => ({
@@ -536,6 +542,8 @@ export function fromB2BQuote(q: B2BQuoteSource, companyName?: string): Quotation
     previousPolicyNumber: '-',
     insurer: insurerName,
     insurerShort,
+    ...(insurerLogoUrl ? { insurerLogoUrl } : {}),
+    brandMode: insurerLogoUrl ? 'INSURER' : 'SUREPATH',
 
     periodStart: new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' }),
     periodEnd,
@@ -545,7 +553,9 @@ export function fromB2BQuote(q: B2BQuoteSource, companyName?: string): Quotation
     titleMain: 'Penawaran',
     titleMid: 'Asuransi',
     titleAccent: 'Korporasi.',
-    ledeHtml: `Penawaran asuransi korporasi untuk ${company}, ditempatkan melalui ${insurerShort}. Rincian jaminan dan premi tercantum pada halaman berikut.`,
+    ledeHtml: insurerSelected
+      ? `Penawaran asuransi korporasi untuk ${company}, ditempatkan melalui ${insurerShort}. Rincian jaminan dan premi tercantum pada halaman berikut.`
+      : `Penawaran indikatif asuransi korporasi untuk ${company}. Penanggung belum dipilih; penempatan tetap menunggu pilihan dan akseptasi penanggung.`,
 
     insuredName: company,
     insuredAddress: '-',
@@ -591,12 +601,15 @@ export function fromB2BQuote(q: B2BQuoteSource, companyName?: string): Quotation
     ],
 
     termsList: [
-      `Penawaran ini ditempatkan pada ${insurerName}, mengikuti syarat dan kondisi polis standar penanggung beserta klausul terlampir.`,
+      insurerSelected
+        ? `Penawaran ini ditempatkan pada ${insurerName}, mengikuti syarat dan kondisi polis standar penanggung beserta klausul terlampir.`
+        : 'Penanggung belum dipilih. Penawaran ini bukan konfirmasi penutupan dan belum memberikan bukti pertanggungan.',
       q.valid_until
         ? `Penawaran berlaku sampai ${dateShortID(q.valid_until)}.`
         : 'Penawaran berlaku selama 30 (tiga puluh) hari sejak tanggal penerbitan.',
       ...(q.terms ? [q.terms] : []),
-      'Polis diterbitkan setelah subjectivity terpenuhi, konfirmasi penutupan, dan pembayaran premi diterima.',
+      'Polis diterbitkan setelah subjectivity terpenuhi, konfirmasi penutupan, akseptasi penanggung, dan pembayaran premi diterima.',
+      'Penawaran ini bersifat indikatif dan bukan polis atau bukti pertanggungan.',
     ],
 
     closingTitle: 'Lindungi Bisnis Anda,',
@@ -635,6 +648,8 @@ export interface AgentQuoteSource {
   ojkRate?: number;
   rateBand?: 'MIN' | 'MID' | 'MAX';
   providerName?: string;
+  insurerLogoUrl?: string;
+  brandMode?: 'SUREPATH' | 'INSURER';
   rows: { label: string; amount: number }[];
   discountAmount?: number;
   totalPremium: number;
@@ -647,7 +662,7 @@ export function fromAgentQuote(q: AgentQuoteSource): QuotationSlipData {
   const isMotor = productType === 'MOTOR';
   const productName = PRODUCT_NAMES[productType];
   const coverage = PRODUCT_COVERAGE[productType];
-  const insurerName = q.providerName || 'PT Zurich Asuransi Indonesia Tbk';
+  const insurerName = q.providerName?.trim() || 'Penanggung belum dipilih';
   const insurerShort = insurerName
     .replace(/^PT\.?\s*/i, '')
     .replace(/\s+(Asuransi|Tbk|Indonesia).*$/i, '')
@@ -662,11 +677,12 @@ export function fromAgentQuote(q: AgentQuoteSource): QuotationSlipData {
   // Setiap nilai di bawah sudah punya fallback-nya sendiri, jadi daftar kosong
   // tetap menghasilkan slip yang benar — bukan layar gagal.
   const rows = Array.isArray(q.rows) ? q.rows.filter(r => r && typeof r.label === 'string') : [];
-  const basePremium = rows.find(r => /premi\s+dasar|casco|base/i.test(r.label))?.amount ?? q.totalPremium * 0.9;
-  const addonRows = rows.filter(r => !/premi\s+dasar|casco|base|biaya|materai/i.test(r.label));
+  const premiumRows = rows.filter(r => !/admin|biaya polis|materai/i.test(r.label));
+  const basePremium = premiumRows.find(r => /premi\s+dasar|casco|base/i.test(r.label))?.amount ?? q.totalPremium * 0.9;
+  const addonRows = premiumRows.filter(r => !/premi\s+dasar|casco|base/i.test(r.label));
   const addonPremium = addonRows.reduce((s, r) => s + (r.amount ?? 0), 0);
-  const adminFee = rows.find(r => /admin/i.test(r.label))?.amount ?? 50000;
-  const stampDuty = rows.find(r => /materai/i.test(r.label))?.amount ?? 10000;
+  const adminFee = rows.filter(r => /admin|biaya polis/i.test(r.label)).reduce((s, r) => s + (Number(r.amount) || 0), 0);
+  const stampDuty = rows.filter(r => /materai/i.test(r.label)).reduce((s, r) => s + (Number(r.amount) || 0), 0);
   const discountAmount = q.discountAmount ?? 0;
   const netPremium = q.totalPremium - adminFee - stampDuty;
   const rate = q.ojkRate ? (q.ojkRate * 100).toFixed(2).replace('.', ',') + '%' : (sumInsured > 0 ? (basePremium / sumInsured * 100).toFixed(2).replace('.', ',') + '%' : '-');
@@ -691,10 +707,12 @@ export function fromAgentQuote(q: AgentQuoteSource): QuotationSlipData {
     }),
 
     preparedForCompany: q.clientName,
-    preparedForPerson: q.clientPhone || '',
+    preparedForPerson: q.clientPhone ? 'Telp/WA: ' + q.clientPhone : '',
     previousPolicyNumber: '-',
     insurer: insurerName,
     insurerShort,
+    insurerLogoUrl: q.insurerLogoUrl,
+    brandMode: q.brandMode,
 
     agentName: q.agentName,
     agentPhone: q.agentPhone,

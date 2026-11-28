@@ -155,6 +155,75 @@ export async function listInsurerOrderDocuments(
   return data?.documents ?? [];
 }
 
+// ─── Corporate B2B underwriting queue ──────────────────────────────────────
+
+export interface InsurerB2BSubmission {
+  id: string;
+  client_id: string;
+  product_type: string;
+  company_name: string;
+  pic_name: string;
+  pic_phone: string;
+  pic_email: string | null;
+  submission_data: Record<string, unknown> | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InsurerB2BSubmissionAssignment {
+  id: string;
+  submission_id: string;
+  insurer_id: string;
+  status: 'ASSIGNED' | 'REQUEST_INFO' | 'QUOTED' | 'DECLINED';
+  decision_notes: string | null;
+  created_at: string;
+  updated_at: string;
+  quoted_at: string | null;
+  submission: InsurerB2BSubmission & {
+    documents?: Array<{
+      id: string;
+      doc_type: string;
+      file_name: string;
+      file_size: number | null;
+      mime_type: string | null;
+      uploaded_at: string;
+      signed_url: string | null;
+    }>;
+  };
+}
+
+export async function listInsurerB2BSubmissions(token: string): Promise<InsurerB2BSubmissionAssignment[]> {
+  const { data, error } = await callGatewayToken<InsurerB2BSubmissionAssignment[]>('insurer_list_b2b_submissions', { token });
+  if (error) throw new Error(error);
+  return data ?? [];
+}
+
+export async function submitInsurerB2BDecision(
+  token: string,
+  assignmentId: string,
+  input: {
+    decision: 'QUOTE' | 'REQUEST_INFO' | 'DECLINE';
+    premiumAmount?: number;
+    validUntil?: string;
+    terms?: string;
+    coverageDetails?: Record<string, unknown>;
+    notes?: string;
+  },
+): Promise<void> {
+  const { error } = await callGatewayToken('insurer_submit_b2b_quote', {
+    token,
+    assignment_id: assignmentId,
+    decision: input.decision,
+    premium_amount: input.premiumAmount,
+    valid_until: input.validUntil,
+    terms: input.terms,
+    coverage_details: input.coverageDetails,
+    notes: input.notes,
+  });
+  if (error) throw new Error(error);
+}
+
 // ─── B2B bulk batches assigned to this insurer ─────────────────────────────
 
 export interface InsurerBulkBatch {

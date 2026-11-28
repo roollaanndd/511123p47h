@@ -2,6 +2,7 @@
 // Auto-generated from data-gateway/index.ts split
 import type { GatewayContext, ActionResult } from './types.ts';
 import { wrapUserContent, UNTRUSTED_INPUT_NOTICE } from '../../_shared/promptSafety.ts';
+import { validateQuoteSaveInput } from '../../_shared/quoteSecurity.ts';
 
 // json() helper — returns ActionResult (main index.ts converts to Response)
 import { safeError } from '../../_shared/errorMap.ts';
@@ -82,37 +83,54 @@ ${UNTRUSTED_INPUT_NOTICE}`;
       }
 
     case 'admin_create_b2b_quote': {
-        // FIX v2.8.20 (audit 2026-11-11): aksi lama membaca insurer_id/premium
-        // dan membuang sisanya, padahal UI (B2BAdminView QuoteForm → website.ts
-        // createB2BQuote) mengirim bentuk kanonik SpB2BQuote — insurer_name,
-        // premium_amount, valid_until, terms. Hasilnya setiap penawaran
-        // tersimpan dengan penanggung kosong dan premi Rp 0. Aksi kini menerima
-        // bentuk kanonik, mengambil client_id dari baris pengajuan (bukan dari
-        // params), menvalidasi isi, dan menyeragamkan status pengajuan ke
-        // QUOTED di sisi server. Jika skema live masih menyimpan sisa kolom
-        // lama, kolom yang tidak ada dilempar progresif sampai insert cocok.
+        // B2B insurer quotations are created only by admin/operations.
+        // The client submits an insurer ID; the gateway resolves the official
+        // name and logo from sp_insurers so a browser cannot spoof branding.
         if (!caller.isAdmin) return json({ error: 'Forbidden: admin only' }, 403);
         const submissionId = String(params.submission_id ?? '');
+        const insurerId = String(params.insurer_id ?? '').trim();
         if (!submissionId) return json({ error: 'submission_id required' }, 400);
+        if (!insurerId) return json({ error: 'insurer_id wajib dipilih' }, 400);
+
         const { data: submission, error: subErr } = await db.from('sp_b2b_submissions')
           .select('id, client_id, company_name').eq('id', submissionId).maybeSingle();
         if (subErr) { const _err = safeError(subErr); return json(_err.body, _err.status); }
         if (!submission) return json({ error: 'Submission not found' }, 404);
 
-        const insurerName = String(params.insurer_name ?? params.insurer_id ?? '').trim();
+        const { data: insurer, error: insurerErr } = await db.from('sp_insurers')
+          .select('id, name, logo_url, is_active').eq('id', insurerId).maybeSingle();
+        if (insurerErr) { const _err = safeError(insurerErr); return json(_err.body, _err.status); }
+        if (!insurer || insurer.is_active !== true) return json({ error: 'Insurer not found or inactive' }, 400);
+
+        const insurerName = String(insurer.name ?? '').trim();
+        const insurerLogoUrl = String(insurer.logo_url ?? '').trim();
+        if (!insurerName) return json({ error: 'Nama penanggung tidak valid' }, 400);
+        if (!/^https:\/\//i.test(insurerLogoUrl)) {
+          return json({ error: 'Logo resmi penanggung belum dikonfigurasi dengan URL HTTPS' }, 400);
+        }
+
         const premiumAmount = Number(params.premium_amount ?? params.premium ?? 0);
         const validUntil = params.valid_until ? String(params.valid_until) : null;
         const terms = params.terms !== undefined && params.terms !== null ? String(params.terms) : '';
-        if (!insurerName) return json({ error: 'insurer_name wajib diisi' }, 400);
         if (!Number.isFinite(premiumAmount) || premiumAmount <= 0) return json({ error: 'premium_amount harus lebih besar dari nol' }, 400);
         if (!validUntil) return json({ error: 'valid_until wajib diisi' }, 400);
+
+        const rawCoverageDetails = params.coverage_details && typeof params.coverage_details === 'object' && !Array.isArray(params.coverage_details)
+          ? params.coverage_details as Record<string, unknown>
+          : {};
+        // Reserved metadata is always overwritten with server-trusted values.
+        const coverageDetails = {
+          ...Object.fromEntries(Object.entries(rawCoverageDetails).filter(([key]) => !key.startsWith('__'))),
+          __insurer_id: insurer.id,
+          __insurer_logo_url: insurerLogoUrl,
+        };
 
         let quoteRow: Record<string, unknown> = {
           submission_id: submissionId,
           client_id: submission.client_id,
           insurer_name: insurerName,
           premium_amount: premiumAmount,
-          coverage_details: (params.coverage_details && typeof params.coverage_details === 'object') ? params.coverage_details : {},
+          coverage_details: coverageDetails,
           valid_until: validUntil,
           terms,
           status: 'PENDING',
@@ -125,15 +143,13 @@ ${UNTRUSTED_INPUT_NOTICE}`;
           const { data, error } = await db.from('sp_b2b_quotes').insert(quoteRow).select().single();
           if (!error) { quote = data; break; }
           lastErr = error;
-          const m = error.message.match(/column ["']?([a-z_]+)["']? .*does not exist/i) ?? error.message.match(/["']([a-z_]+)["'] .*does not exist/i);
+          const m = error.message.match(/column ["']?([a-z_]+)["'] .*does not exist/i) ?? error.message.match(/["']([a-z_]+)["'] .*does not exist/i);
           const missing = m?.[1];
           if (!missing || !(missing in quoteRow)) break;
           delete quoteRow[missing];
         }
         if (!quote) return json({ error: lastErr?.message ?? 'Gagal menyimpan penawaran' }, 400);
 
-        // Selaraskan status pengajuan — panggilan admin_update_b2b_submission
-        // dari UI tetap aman karena idempoten.
         await db.from('sp_b2b_submissions').update({ status: 'QUOTED', updated_at: new Date().toISOString() })
           .eq('id', submissionId).then(() => {}, () => {});
 
@@ -155,20 +171,38 @@ ${UNTRUSTED_INPUT_NOTICE}`;
 
     // ─── save_quote — agent saves their quote ──────────────────────────────
     case 'save_quote': {
-        if (!caller.spUser) return json({ error: 'No profile' }, 403);
-        // FIX v1.50.0: use canonical sp_users.id so the quote shows up in the
-        // agent's own list (which queries by sp_users.id).
-        // FIX: the payload column is `quote_data` (NOT NULL). This wrote to
-        // `details`, which does not exist on sp_quotes — so every save was
-        // rejected and the agent's quote builder reported a save failure.
+        if (!caller.spUser || caller.spUser.role !== 'AGENT') {
+          return json({ error: 'Forbidden: agent account required' }, 403);
+        }
+        const allowed = await checkRateLimit(`user:${caller.ownerId}`, 60);
+        if (!allowed) return json({ error: 'Rate limit exceeded. Coba lagi dalam 1 jam.' }, 429);
+
+        const parsed = validateQuoteSaveInput(params);
+        if (!parsed.ok) return json({ error: parsed.error }, parsed.status);
+        const { productType, premiumEstimate, quoteData, clientId, clientName } = parsed.value;
+
+        // Customer records are optional for quotes. If an existing customer is
+        // attached, prove that the record belongs to this agent before storing it.
+        if (clientId) {
+          const { data: client, error: clientError } = await db.from('sp_clients')
+            .select('id')
+            .eq('id', clientId)
+            .eq('agent_id', caller.ownerId)
+            .maybeSingle();
+          if (clientError) { const _err = safeError(clientError); return json(_err.body, _err.status); }
+          if (!client) return json({ error: 'Client not found for this agent' }, 404);
+        }
+
+        // The caller identity is authoritative. A client cannot choose another
+        // agent_id or mark an unsent quote as SENT/CONVERTED.
         const { data, error } = await db.from('sp_quotes').insert({
           agent_id: caller.ownerId,
-          client_id: params.client_id ?? null,
-          client_name: String(params.client_name ?? ''),
-          product_type: String(params.product_type ?? 'CAR'),
-          status: String(params.status ?? 'SENT'),
-          premium_estimate: Number(params.premium_estimate ?? 0),
-          quote_data: params.quote_data ?? params.details ?? {},
+          client_id: clientId,
+          client_name: clientName,
+          product_type: productType,
+          status: 'DRAFT',
+          premium_estimate: premiumEstimate,
+          quote_data: quoteData,
         }).select().single();
         if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         return json({ data });

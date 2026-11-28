@@ -1,7 +1,7 @@
 // v2.9.13 — aturan lampiran order unit B2B & adapter PDF agent.
 import { describe, it, expect } from 'vitest';
 import {
-  fromB2BUnitOrder, hasEnoughUsedVehiclePhotos, hasNewVehicleDocument,
+  fromB2BUnitOrder, fromB2BBulkQuote, hasEnoughUsedVehiclePhotos, hasNewVehicleDocument,
   isPolicyCopyStillValid, validateB2BUnitOrder,
   type B2BAttachment, type B2BUnitOrderValidationInput,
 } from '../b2bUnitOrder';
@@ -122,6 +122,7 @@ describe('b2bUnitOrder — adapter PDF agent', () => {
       coverageStartDate: '2026-11-18',
       coverageEndDate: '2027-11-18',
       insurerName: 'PT Zurich Asuransi Indonesia Tbk',
+      insurerLogoUrl: 'https://cdn.example.com/zurich-logo.png',
       planName: 'Standard',
       planLoading: 0,
       line,
@@ -132,6 +133,8 @@ describe('b2bUnitOrder — adapter PDF agent', () => {
     expect(data.preparedForCompany).toBe('PT Contoh');
     expect(data.preparedForPerson).toContain('Budi');
     expect(data.insurerShort).toBe('Zurich');
+    expect(data.insurerLogoUrl).toBe('https://cdn.example.com/zurich-logo.png');
+    expect(data.brandMode).toBe('INSURER');
     expect(data.vehicleBrand).toBe('Toyota');
     expect(data.engineNumber).toBe('4A92-1');
     expect(data.chassisNumber).toBe('MHKFS4');
@@ -143,5 +146,61 @@ describe('b2bUnitOrder — adapter PDF agent', () => {
     expect(data.klausulList.join(' ')).toMatch(/Baru/);
     // QR/e-quote diisi oleh publishAndDownloadQuotation, bukan adapter.
     expect(data.eQuoteCode).toBeUndefined();
+  });
+
+  it('tidak mengarang Zurich ketika penanggung belum dipilih', () => {
+    const data = fromB2BUnitOrder({
+      companyName: 'PT Contoh',
+      nasabahName: 'Budi',
+      vehicleClass: 'CAR',
+      vehicleCondition: 'BARU',
+      financingValue: 250000000,
+      tenorMonths: 12,
+      coverageStartDate: '2026-11-18',
+      coverageEndDate: '2027-11-18',
+      line,
+    });
+
+    expect(data.insurer).toBe('Penanggung belum dipilih');
+    expect(data.insurerLogoUrl).toBeUndefined();
+    expect(data.brandMode).toBe('SUREPATH');
+    expect(data.termsList.join(' ')).toMatch(/Penanggung belum dipilih/);
+  });
+
+  it('builds an insurer-branded fleet summary with totals matching the bulk engine', () => {
+    const data = fromB2BBulkQuote({
+      companyName: 'PT Armada Contoh',
+      insurerName: 'PT Sompo Insurance Indonesia',
+      insurerLogoUrl: 'https://cdn.example.com/sompo-logo.png',
+      items: [
+        {
+          raw: { nasabahName: 'Budi', make: 'Toyota', typeName: 'Avanza', modelYear: 2024, plateNo: 'B 1234 XYZ', financingValue: 250000000, tenorMonths: 12 },
+          line,
+        },
+        {
+          raw: { nasabahName: 'Sari', make: 'Honda', typeName: 'Brio', modelYear: 2023, plateNo: 'B 5678 XYZ', financingValue: 180000000, tenorMonths: 12 },
+          line: { ...line, rowNo: 2, zone: 3 },
+        },
+      ],
+      totals: {
+        itemCount: 2,
+        totalPremiumGross: 1250000,
+        totalDiscount: 125000,
+        totalPremiumNet: 1125000,
+        totalAdminFee: 100000,
+        totalAddons: 50000,
+        totalPlanLoading: 0,
+        totalAmount: 1275000,
+      },
+    });
+
+    expect(data.brandMode).toBe('INSURER');
+    expect(data.insurerLogoUrl).toBe('https://cdn.example.com/sompo-logo.png');
+    expect(data.objectDetails.find(row => row.label === 'JUMLAH UNIT')?.value).toBe('2');
+    expect(data.totalSumInsured).toContain('430.000.000');
+    expect(data.premiumAfterDiscount).toContain('1.175.000');
+    expect(data.totalPremium).toContain('1.275.000');
+    expect(data.termsList.join(' ')).toMatch(/setiap baris dihitung ulang oleh server/i);
+    expect(data.termsList.join(' ')).toMatch(/bukan polis atau bukti pertanggungan/i);
   });
 });

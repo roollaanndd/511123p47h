@@ -1410,6 +1410,94 @@ export async function handleB2BBulkAction(action: string, ctx: GatewayContext): 
       return ok({ as_of: today, within_days: withinDays, count: rows.length, items: rows });
     }
 
+    // ── Admin: assign a corporate submission to an insurer ───────────────
+    case 'admin_b2b_assign_submission_insurer': {
+      if (!caller.isAdmin) return err('Forbidden: admin only', 403);
+      const submissionId = String(params.submission_id ?? '').trim();
+      const insurerId = String(params.insurer_id ?? '').trim();
+      const authorizationConfirmed = params.authorization_confirmed === true;
+      if (!submissionId || !insurerId) return err('submission_id and insurer_id are required', 400);
+      if (!authorizationConfirmed) return err('Confirm that product-specific insurer authorization has been verified before assignment', 400);
+
+      const { data: submission, error: submissionErr } = await db.from('sp_b2b_submissions')
+        .select('id, client_id, company_name, product_type, status')
+        .eq('id', submissionId).maybeSingle();
+      if (submissionErr) { const _err = safeError(submissionErr); return err(_err.body.error, _err.status); }
+      if (!submission) return err('Submission not found', 404);
+      if (submission.status === 'ACCEPTED' || submission.status === 'REJECTED') {
+        return err(`Submission is already terminal (${submission.status})`, 409);
+      }
+
+      const { data: insurer, error: insurerErr } = await db.from('sp_insurers')
+        .select('id, name, logo_url, is_active')
+        .eq('id', insurerId).maybeSingle();
+      if (insurerErr) { const _err = safeError(insurerErr); return err(_err.body.error, _err.status); }
+      if (!insurer || insurer.is_active !== true) return err('Insurer not found or inactive', 404);
+
+      const ts = new Date().toISOString();
+      const { data: existing, error: existingErr } = await db.from('sp_b2b_submission_insurers')
+        .select('id, status').eq('submission_id', submissionId).eq('insurer_id', insurerId).maybeSingle();
+      if (existingErr) { const _err = safeError(existingErr); return err(_err.body.error, _err.status); }
+      if (existing?.status === 'QUOTED' || existing?.status === 'DECLINED') {
+        return err('This insurer has already completed its response for the submission', 409);
+      }
+
+      const payload = {
+        submission_id: submissionId,
+        insurer_id: insurerId,
+        assigned_by: caller.ownerId,
+        authorization_confirmed: true,
+        authorization_confirmed_at: ts,
+        authorization_confirmed_by: caller.ownerId,
+        status: 'ASSIGNED',
+        decision_notes: null,
+        updated_at: ts,
+      };
+      const write = existing
+        ? await db.from('sp_b2b_submission_insurers').update(payload).eq('id', existing.id).select().single()
+        : await db.from('sp_b2b_submission_insurers').insert(payload).select().single();
+      if (write.error) { const _err = safeError(write.error); return err(_err.body.error, _err.status); }
+
+      await db.from('sp_b2b_submissions').update({ status: 'REVIEWING', updated_at: ts })
+        .eq('id', submissionId).in('status', ['SUBMITTED', 'REVIEWING']);
+      await db.from('sp_admin_notifications').insert({
+        type: 'B2B_INSURER_ASSIGNED',
+        title: 'Pengajuan B2B ditugaskan ke insurer',
+        body: `${submission.company_name}: ${insurer.name} ditugaskan meninjau ${submission.product_type}.`,
+        read: false,
+        metadata: { submission_id: submissionId, insurer_id: insurerId, product_type: submission.product_type },
+      }).then(() => {}, () => {});
+      return ok({ ...write.data, insurer: { id: insurer.id, name: insurer.name, logo_url: insurer.logo_url } });
+    }
+
+    // ── Admin: list insurer assignments for a corporate submission ─────────
+    case 'admin_b2b_list_submission_insurers': {
+      if (!caller.isAdmin) return err('Forbidden: admin only', 403);
+      const submissionId = String(params.submission_id ?? '').trim();
+      if (!submissionId) return err('submission_id required', 400);
+      const { data, error } = await db.from('sp_b2b_submission_insurers')
+        .select('id, submission_id, insurer_id, status, decision_notes, authorization_confirmed, authorization_confirmed_at, created_at, updated_at, quoted_at, insurer:sp_insurers(id, name, logo_url)')
+        .eq('submission_id', submissionId)
+        .order('created_at', { ascending: true });
+      if (error) { const _err = safeError(error); return err(_err.body.error, _err.status); }
+      const { data: quotes, error: quotesErr } = await db.from('sp_b2b_quotes')
+        .select('id, submission_id, insurer_name, premium_amount, valid_until, terms, status, coverage_details, created_at')
+        .eq('submission_id', submissionId)
+        .order('created_at', { ascending: false });
+      if (quotesErr) { const _err = safeError(quotesErr); return err(_err.body.error, _err.status); }
+      const quoteByAssignment = new Map<string, any>();
+      for (const quote of quotes ?? []) {
+        const assignmentId = quote.coverage_details?.__assignment_id;
+        if (assignmentId && !quoteByAssignment.has(String(assignmentId))) {
+          quoteByAssignment.set(String(assignmentId), quote);
+        }
+      }
+      return ok((data ?? []).map((assignment: any) => ({
+        ...assignment,
+        quote: quoteByAssignment.get(assignment.id) ?? null,
+      })));
+    }
+
     default:
       return null;
   }

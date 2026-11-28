@@ -5,6 +5,7 @@ import {
   getAllB2BSubmissions,
   updateB2BSubmissionStatus,
   createB2BQuote,
+  listActiveInsurers,
   getAllLifeApplications,
   updateLifeApplicationStatus,
   adminGetAllB2BBulkBatches,
@@ -26,6 +27,7 @@ import {
   supabase,
   type SpB2BSubmission,
   type SpB2BQuote,
+  type SpInsurer,
   type SpLifeApplication,
   type SpB2BBatch,
   type SpB2BUser,
@@ -35,7 +37,13 @@ import {
 } from '../../services/supabaseService';
 import ModuleIcon from '../shared/ModuleIcon';
 import { useConfirmDialog, usePromptDialog } from '../ui';
-import { getB2BBulkBatch, type SpB2BBatchItem } from '../../services/b2bBulk';
+import {
+  getB2BBulkBatch,
+  adminAssignB2BSubmissionInsurer,
+  adminListB2BSubmissionInsurers,
+  type SpB2BBatchItem,
+  type SpB2BSubmissionInsurerAssignment,
+} from '../../services/b2bBulk';
 import AddUserWizard, { type WizardCredential } from './AddUserWizard';
 import { FIELD_MATRIX } from './wizard/kycMatrix';
 
@@ -102,12 +110,15 @@ const Badge: React.FC<{ cls: string; label: string }> = ({ cls, label }) => (
 interface QuoteFormProps {
   submissionId: string;
   clientId: string;
+  productType: SpB2BSubmission['product_type'];
   onSaved: () => void;
   onClose: () => void;
 }
 
-const QuoteForm: React.FC<QuoteFormProps> = ({ submissionId, clientId, onSaved, onClose }) => {
-  const [insurerName, setInsurerName] = useState('');
+const QuoteForm: React.FC<QuoteFormProps> = ({ submissionId, clientId, productType, onSaved, onClose }) => {
+  const [insurers, setInsurers] = useState<SpInsurer[]>([]);
+  const [selectedInsurerId, setSelectedInsurerId] = useState('');
+  const [loadingInsurers, setLoadingInsurers] = useState(true);
   const [premiumAmount, setPremiumAmount] = useState(0);
   const [validUntil, setValidUntil] = useState('');
   const [terms, setTerms] = useState('');
@@ -115,51 +126,102 @@ const QuoteForm: React.FC<QuoteFormProps> = ({ submissionId, clientId, onSaved, 
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
 
+  useEffect(() => {
+    let alive = true;
+    setLoadingInsurers(true);
+    listActiveInsurers()
+      .then(items => { if (alive) setInsurers(items); })
+      .catch(error => { console.error('Unable to load active B2B insurers:', error); if (alive) setInsurers([]); })
+      .finally(() => { if (alive) setLoadingInsurers(false); });
+    return () => { alive = false; };
+  }, []);
+
+  const selectedInsurer = insurers.find(insurer => insurer.id === selectedInsurerId) ?? null;
   const addRow = () => { if (rows.length < 10) setRows(r => [...r, { key: '', value: '' }]); };
   const removeRow = (i: number) => setRows(r => r.filter((_, idx) => idx !== i));
   const updateRow = (i: number, field: 'key' | 'value', val: string) =>
     setRows(r => r.map((row, idx) => idx === i ? { ...row, [field]: val } : row));
 
   const save = async () => {
-    if (!insurerName || !premiumAmount || !validUntil) { setErr('Insurer, premium, and valid-until are required.'); return; }
+    if (!selectedInsurer) { setErr('Select an active insurer.'); return; }
+    if (!selectedInsurer.logo_url) { setErr('This insurer has no official logo configured. Update its insurer profile before issuing a branded quote.'); return; }
+    if (!Number.isFinite(premiumAmount) || premiumAmount <= 0 || !validUntil) {
+      setErr('A positive premium and valid-until date are required.');
+      return;
+    }
     setSaving(true);
+    setErr('');
     const coverageDetails: Record<string, string> = {};
     rows.filter(r => r.key.trim()).forEach(r => { coverageDetails[r.key.trim()] = r.value; });
     const quoteData: Omit<SpB2BQuote, 'id' | 'created_at' | 'updated_at'> = {
       submission_id: submissionId,
       client_id: clientId,
-      insurer_name: insurerName,
+      insurer_id: selectedInsurer.id,
+      insurer_name: selectedInsurer.name,
       premium_amount: premiumAmount,
       coverage_details: coverageDetails,
       valid_until: validUntil,
       terms,
       status: 'PENDING',
     };
-    const ok = await createB2BQuote(quoteData);
-    if (ok) {
-      await updateB2BSubmissionStatus(submissionId, 'QUOTED');
-      onSaved();
-    } else {
-      setErr('Failed to save quote. Please try again.');
+    try {
+      const ok = await createB2BQuote(quoteData);
+      if (ok) {
+        await updateB2BSubmissionStatus(submissionId, 'QUOTED');
+        onSaved();
+      } else {
+        setErr('Failed to save quote. Please try again.');
+      }
+    } catch (error) {
+      console.error('Unable to save B2B insurer quotation:', error);
+      setErr('The quote could not be saved. Please retry.');
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   };
 
   return (
     <div className="mt-3 p-4 bg-slate-50 dark:bg-ds-card2 border border-ds-border dark:border-ds-border rounded-2xl space-y-3">
       <div className="flex items-center justify-between mb-1">
-        <p className="text-sm font-bold text-ds-ink dark:text-white">Add Quote</p>
+        <p className="text-sm font-bold text-ds-ink dark:text-white">Create insurer quotation</p>
         <button onClick={onClose} className="text-ds-ink3 hover:text-ds-ink2"><ChevronUp size={16} /></button>
       </div>
-      {err && <p className="text-xs text-rose-700 dark:text-rose-200 flex items-center gap-1"><AlertTriangle size={12} />{err}</p>}
+      {err && <p role="alert" className="text-xs text-rose-700 dark:text-rose-200 flex items-center gap-1"><AlertTriangle size={12} />{err}</p>}
+      <div className="rounded-xl border border-sky-200 bg-sky-50 dark:border-sky-900 dark:bg-sky-950/20 p-3 text-xs text-sky-900 dark:text-sky-100">
+        {productType === 'FLEET_MV'
+          ? 'This fleet request contains aggregate unit count and fleet value, not a validated per-vehicle schedule. Enter the premium from the reviewed insurer/underwriter quotation; do not infer a per-unit OJK rate from the aggregate value. Use B2B Unit Order or Bulk Import for server-recalculated per-vehicle pricing.'
+          : 'Enter the premium returned by the insurer/underwriter after reviewing the submitted risk details. This form does not invent a rate or replace insurer underwriting.'}
+      </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="col-span-2">
-          <label className="block text-xs font-semibold text-ds-ink3 mb-1">Insurer Name</label>
-          <input value={insurerName} onChange={e => setInsurerName(e.target.value)} className={INPUT} placeholder="e.g. Prudential" />
+          <label className="block text-xs font-semibold text-ds-ink3 mb-1">Active Insurer — confirm product authorization</label>
+          <select
+            value={selectedInsurerId}
+            onChange={e => setSelectedInsurerId(e.target.value)}
+            disabled={loadingInsurers || saving}
+            className={INPUT}
+          >
+            <option value="">{loadingInsurers ? 'Loading insurers…' : 'Select an active insurer'}</option>
+            {insurers.map(insurer => <option key={insurer.id} value={insurer.id}>{insurer.name}</option>)}
+          </select>
+          {selectedInsurer && (
+            <div className="mt-2 flex items-center gap-3 rounded-xl border border-ds-border bg-white dark:bg-ds-card2 p-3">
+              {selectedInsurer.logo_url
+                ? <img src={selectedInsurer.logo_url} alt={selectedInsurer.name + ' logo'} className="h-9 max-w-28 object-contain" />
+                : <AlertTriangle size={16} className="text-amber-600" />}
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-ds-ink dark:text-white">{selectedInsurer.name}</p>
+                <p className="text-2xs text-ds-ink3">{selectedInsurer.logo_url ? 'Official logo configured' : 'Official logo missing — branded quotation is blocked'}</p>
+              </div>
+            </div>
+          )}
+          {!loadingInsurers && insurers.length === 0 && (
+            <p className="mt-1 text-xs text-rose-600">No active insurers are available. Check insurer configuration.</p>
+          )}
         </div>
         <div>
-          <label className="block text-xs font-semibold text-ds-ink3 mb-1">Premium (IDR)</label>
-          <input type="number" value={premiumAmount} onChange={e => setPremiumAmount(Number(e.target.value))} className={INPUT} />
+          <label className="block text-xs font-semibold text-ds-ink3 mb-1">Insurer / Underwriter Premium (IDR)</label>
+          <input type="number" min="1" value={premiumAmount} onChange={e => setPremiumAmount(Number(e.target.value))} className={INPUT} />
         </div>
         <div>
           <label className="block text-xs font-semibold text-ds-ink3 mb-1">Valid Until</label>
@@ -186,11 +248,11 @@ const QuoteForm: React.FC<QuoteFormProps> = ({ submissionId, clientId, onSaved, 
         <textarea value={terms} onChange={e => setTerms(e.target.value)} rows={3} className={TEXTAREA} />
       </div>
       <button
-        onClick={save} disabled={saving}
+        onClick={save} disabled={saving || loadingInsurers || !selectedInsurer || !selectedInsurer.logo_url}
         className="w-full py-2.5 rounded-xl bg-emerald-500 text-white font-semibold text-sm disabled:opacity-40 flex items-center justify-center gap-2"
       >
         {saving ? <RefreshCw size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
-        Save Quote
+        Save Insurer Quotation
       </button>
     </div>
   );
@@ -198,11 +260,49 @@ const QuoteForm: React.FC<QuoteFormProps> = ({ submissionId, clientId, onSaved, 
 
 // ─── B2B Submission Card ──────────────────────────────────────────────────────
 
-const B2BCard: React.FC<{ sub: SpB2BSubmission; onUpdated: () => void; onToast: (m: string) => void }> = ({ sub, onUpdated, onToast }) => {
+const B2BCard: React.FC<{ sub: SpB2BSubmission; insurers: InsurerOption[]; onUpdated: () => void; onToast: (m: string) => void }> = ({ sub, insurers, onUpdated, onToast }) => {
   const [showQuoteForm, setShowQuoteForm] = useState(false);
   const [status, setStatus] = useState(sub.status);
   const [notes, setNotes] = useState(sub.admin_notes ?? '');
   const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [insurerAssignments, setInsurerAssignments] = useState<SpB2BSubmissionInsurerAssignment[]>([]);
+  const [selectedAssignmentInsurer, setSelectedAssignmentInsurer] = useState('');
+  const [authorizationConfirmed, setAuthorizationConfirmed] = useState(false);
+  const [assigningInsurer, setAssigningInsurer] = useState(false);
+
+  const loadInsurerAssignments = useCallback(async () => {
+    try {
+      setInsurerAssignments(await adminListB2BSubmissionInsurers(sub.id));
+    } catch (error) {
+      console.error('Unable to load B2B insurer assignments:', error);
+    }
+  }, [sub.id]);
+
+  useEffect(() => {
+    void loadInsurerAssignments();
+    const timer = window.setInterval(() => { void loadInsurerAssignments(); }, 30000);
+    return () => window.clearInterval(timer);
+  }, [loadInsurerAssignments]);
+
+  const assignInsurer = async () => {
+    if (!selectedAssignmentInsurer || !authorizationConfirmed || assigningInsurer) return;
+    setAssigningInsurer(true);
+    const result = await adminAssignB2BSubmissionInsurer({
+      submissionId: sub.id,
+      insurerId: selectedAssignmentInsurer,
+      authorizationConfirmed,
+    });
+    setAssigningInsurer(false);
+    if (!result) {
+      onToast('Insurer assignment failed. Check authorization and try again.');
+      return;
+    }
+    setSelectedAssignmentInsurer('');
+    setAuthorizationConfirmed(false);
+    await loadInsurerAssignments();
+    onToast('Insurer assigned. The submission is now visible in its insurer portal.');
+    onUpdated();
+  };
 
   const changeStatus = async (s: string) => {
     setStatus(s as SpB2BSubmission['status']);
@@ -277,6 +377,65 @@ const B2BCard: React.FC<{ sub: SpB2BSubmission; onUpdated: () => void; onToast: 
         </div>
       )}
 
+      {/* Insurer routing — explicit product authorization attestation is required. */}
+      <div className="rounded-xl border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/50 dark:bg-emerald-950/10 p-3 space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-2xs font-black uppercase tracking-widest text-ds-ink3">Insurer routing</p>
+          <span className="text-[11px] text-ds-ink3">{insurerAssignments.length} assigned</span>
+        </div>
+        {insurerAssignments.length > 0 ? (
+          <div className="space-y-1.5">
+            {insurerAssignments.map(a => (
+              <div key={a.id} className="flex items-center justify-between gap-2 rounded-lg bg-white dark:bg-ds-card2 px-2.5 py-2">
+                <div className="min-w-0">
+                  <p className="text-xs font-bold text-ds-ink dark:text-white truncate">{a.insurer?.name ?? 'Insurer'}</p>
+                  <p className="text-[11px] text-ds-ink3">{a.decision_notes || (a.authorization_confirmed ? 'Product authorization confirmed' : 'Authorization not confirmed')}</p>
+                  {a.quote && (
+                    <div className="mt-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/20 px-2 py-1.5">
+                      <p className="text-[11px] font-black text-emerald-800 dark:text-emerald-300">{fmtIDR(Number(a.quote.premium_amount || 0))}</p>
+                      <p className="text-[11px] text-emerald-700 dark:text-emerald-400">Valid until {fmtDate(a.quote.valid_until)} · {a.quote.status}</p>
+                      {a.quote.terms && <p className="mt-1 text-[11px] text-ds-ink3 line-clamp-2">{a.quote.terms}</p>}
+                    </div>
+                  )}
+                </div>
+                <Badge cls={a.status === 'QUOTED' ? B2B_STATUS_CLS.QUOTED : a.status === 'DECLINED' ? B2B_STATUS_CLS.REJECTED : B2B_STATUS_CLS.REVIEWING} label={a.status} />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-ds-ink3">No insurer has been assigned to this corporate request.</p>
+        )}
+        <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2">
+          <select
+            value={selectedAssignmentInsurer}
+            onChange={e => setSelectedAssignmentInsurer(e.target.value)}
+            className={INPUT}
+            disabled={assigningInsurer}
+          >
+            <option value="">Select active insurer…</option>
+            {insurers.map(insurer => <option key={insurer.id} value={insurer.id}>{insurer.name}</option>)}
+          </select>
+          <button
+            type="button"
+            onClick={assignInsurer}
+            disabled={!selectedAssignmentInsurer || !authorizationConfirmed || assigningInsurer}
+            className="px-3 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold disabled:opacity-40"
+          >
+            {assigningInsurer ? 'Assigning…' : 'Assign insurer'}
+          </button>
+        </div>
+        <label className="flex items-start gap-2 text-[11px] leading-relaxed text-ds-ink3">
+          <input
+            type="checkbox"
+            checked={authorizationConfirmed}
+            onChange={e => setAuthorizationConfirmed(e.target.checked)}
+            className="mt-0.5 accent-emerald-600"
+            disabled={assigningInsurer}
+          />
+          I confirm this insurer's authorization for this specific B2B product/risk has been verified before assignment.
+        </label>
+      </div>
+
       {/* Add Quote Button */}
       <button
         onClick={() => setShowQuoteForm(v => !v)}
@@ -290,6 +449,7 @@ const B2BCard: React.FC<{ sub: SpB2BSubmission; onUpdated: () => void; onToast: 
         <QuoteForm
           submissionId={sub.id}
           clientId={sub.client_id}
+          productType={sub.product_type}
           onSaved={() => { setShowQuoteForm(false); onToast('Quote saved — status set to QUOTED'); onUpdated(); }}
           onClose={() => setShowQuoteForm(false)}
         />
@@ -1337,6 +1497,14 @@ const B2BAdminView: React.FC = () => {
 
   useEffect(() => { load(); }, [load]);
 
+  // Keep the admin underwriting queue in sync with insurer portal responses
+  // while the B2B tab is open; manual refresh remains available as before.
+  useEffect(() => {
+    if (tab !== 'b2b') return;
+    const timer = window.setInterval(() => { void load(); }, 30000);
+    return () => window.clearInterval(timer);
+  }, [load, tab]);
+
   // Surfaced prominently per the owner's request (5 Nov 2026) — bulk batches
   // awaiting payment or awaiting master-policy issuance are easy to lose
   // track of buried inside a filtered tab.
@@ -1433,7 +1601,7 @@ const B2BAdminView: React.FC = () => {
             <Empty />
           ) : (
             visibleB2b.map(sub => (
-              <B2BCard key={sub.id} sub={sub} onUpdated={load} onToast={showToast} />
+              <B2BCard key={sub.id} sub={sub} insurers={insurers} onUpdated={load} onToast={showToast} />
             ))
           )
         ) : tab === 'bulk' ? (
