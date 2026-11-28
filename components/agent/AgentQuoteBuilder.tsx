@@ -461,7 +461,7 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
       client_id: clientId,
       client_name: clientName.trim(),
       product_type: product,
-      status: 'SENT',
+      status: 'DRAFT',
       premium_estimate: premium,
       quote_data: { ...currentInputs(), ...(product === 'CAR' || product === 'MOTORCYCLE' ? { addons } : {}), discount_rate: discountRate / 100, discount_amount: discountAmount, base_premium: basePremium },
     });
