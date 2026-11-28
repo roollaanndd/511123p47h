@@ -145,6 +145,19 @@ describe('OJK Rates', () => {
     expect(zone).toBeGreaterThanOrEqual(1);
     expect(zone).toBeLessThanOrEqual(3);
   });
+
+  it('should map Indonesian registration provinces to their OJK zones', () => {
+    expect(getZone('Sumatera Utara')).toBe(1);
+    expect(getZone('DKI Jakarta')).toBe(2);
+    expect(getZone('Jawa Barat')).toBe(2);
+    expect(getZone('Jawa Tengah')).toBe(3);
+  });
+
+  it('should expose only supported province options for vehicle quoting', () => {
+    expect(PROVINCES).toContain('DKI Jakarta');
+    expect(PROVINCES).toContain('Jawa Barat');
+    expect(PROVINCES.length).toBeGreaterThan(30);
+  });
 });
 
 // ─── Tests: Plate Codes ──────────────────────────────────────────────────────
