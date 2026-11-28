@@ -1092,7 +1092,7 @@ function drawSurePathLogo(doc: any, x: number, y: number, mode: 'light' | 'dark'
       return;
     } catch (e) {
       console.warn('QuotationSlip: logo asset could not be rendered', e);
-      if (logoDataUrl) throw new Error('Logo asset could not be rendered. PDF generation stopped to avoid substituting the wrong brand identity.');
+      if (logoDataUrl) throw new Error('Logo asset could not be rendered. PDF generation stopped to avoid substituting the wrong brand identity.', { cause: e });
     }
   }
 
