@@ -569,6 +569,7 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
   const stepIndex = ['product', 'inputs', 'summary'].indexOf(
     step === 'quote_summary' ? 'summary' : step === 'client' ? 'summary' : step
   );
+  const totalSteps = quoteMode === 'penawaran' ? 3 : 4;
 
   const inputClass = "w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500/60 transition-all";
   const labelClass = "block text-xs font-medium text-gray-500 mb-1.5";
@@ -621,7 +622,7 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
         <div>
           <h1 className="text-base font-semibold text-gray-900">{t('Quote Builder', 'Buat Penawaran')}</h1>
           <p className="text-gray-400 text-xs font-bold uppercase tracking-widest">
-            {t(`Step ${stepIndex + 1} of 4`, `Langkah ${stepIndex + 1} dari 4`)}
+            {t(`Step ${stepIndex + 1} of ${totalSteps}`, `Langkah ${stepIndex + 1} dari ${totalSteps}`)}
           </p>
         </div>
       </div>
@@ -630,7 +631,7 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
       <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
         <div
           className="h-full rounded-full transition-all duration-500"
-          style={{ width: `${((stepIndex + 1) / 4) * 100}%`, background: 'linear-gradient(90deg, #00C16A, #047857)' }}
+          style={{ width: `${((stepIndex + 1) / totalSteps) * 100}%`, background: 'linear-gradient(90deg, #00C16A, #047857)' }}
         />
       </div>
 
