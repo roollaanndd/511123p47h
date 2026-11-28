@@ -260,25 +260,19 @@ const QuoteForm: React.FC<QuoteFormProps> = ({ submissionId, clientId, productTy
 
 // ─── B2B Submission Card ──────────────────────────────────────────────────────
 
-const B2BCard: React.FC<{ sub: SpB2BSubmission; onUpdated: () => void; onToast: (m: string) => void }> = ({ sub, onUpdated, onToast }) => {
+const B2BCard: React.FC<{ sub: SpB2BSubmission; insurers: InsurerOption[]; onUpdated: () => void; onToast: (m: string) => void }> = ({ sub, insurers, onUpdated, onToast }) => {
   const [showQuoteForm, setShowQuoteForm] = useState(false);
   const [status, setStatus] = useState(sub.status);
   const [notes, setNotes] = useState(sub.admin_notes ?? '');
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [insurerAssignments, setInsurerAssignments] = useState<SpB2BSubmissionInsurerAssignment[]>([]);
-  const [assignmentInsurers, setAssignmentInsurers] = useState<SpInsurer[]>([]);
   const [selectedAssignmentInsurer, setSelectedAssignmentInsurer] = useState('');
   const [authorizationConfirmed, setAuthorizationConfirmed] = useState(false);
   const [assigningInsurer, setAssigningInsurer] = useState(false);
 
   const loadInsurerAssignments = useCallback(async () => {
     try {
-      const [assignments, activeInsurers] = await Promise.all([
-        adminListB2BSubmissionInsurers(sub.id),
-        listActiveInsurers(),
-      ]);
-      setInsurerAssignments(assignments);
-      setAssignmentInsurers(activeInsurers);
+      setInsurerAssignments(await adminListB2BSubmissionInsurers(sub.id));
     } catch (error) {
       console.error('Unable to load B2B insurer assignments:', error);
     }
@@ -419,7 +413,7 @@ const B2BCard: React.FC<{ sub: SpB2BSubmission; onUpdated: () => void; onToast: 
             disabled={assigningInsurer}
           >
             <option value="">Select active insurer…</option>
-            {assignmentInsurers.map(insurer => <option key={insurer.id} value={insurer.id}>{insurer.name}</option>)}
+            {insurers.map(insurer => <option key={insurer.id} value={insurer.id}>{insurer.name}</option>)}
           </select>
           <button
             type="button"
@@ -1607,7 +1601,7 @@ const B2BAdminView: React.FC = () => {
             <Empty />
           ) : (
             visibleB2b.map(sub => (
-              <B2BCard key={sub.id} sub={sub} onUpdated={load} onToast={showToast} />
+              <B2BCard key={sub.id} sub={sub} insurers={insurers} onUpdated={load} onToast={showToast} />
             ))
           )
         ) : tab === 'bulk' ? (
