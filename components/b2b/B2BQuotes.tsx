@@ -101,6 +101,13 @@ const B2BQuotes: React.FC<Props> = ({ clientId, lang, companyName, allClients, c
   };
   useEffect(() => { void load(); }, [clientId, allClients, reloadKey]);
 
+  // Insurer portal quotes are written server-side; refresh the client view
+  // periodically so newly issued offers appear without a manual page reload.
+  useEffect(() => {
+    const timer = window.setInterval(() => setReloadKey(k => k + 1), 30000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   const handleAction = async (status: 'ACCEPTED' | 'REJECTED') => {
     if (!selected) return;
     setActing(true);
