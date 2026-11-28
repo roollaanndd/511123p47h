@@ -26,6 +26,10 @@ The quick quote is an estimate only. The selected insurer's product rules, curre
 
 The current quote builder's local calculation is not a substitute for server-side premium validation or an insurer-specific product requirements engine. This document does not certify insurer compliance or security.
 
+## Separate pricing-integrity follow-up
+
+The existing `create_policy_order` gateway recalculates the payable total from submitted premium components, but the inspected implementation does not independently derive the OJK base premium from authoritative rate tables in that action. Therefore this Quick Quote change must not be described as making all purchase pricing tamper-proof. A separate, insurer-approved server-side rating implementation is required before treating the premium calculation as fully authoritative. Do not invent or infer insurer-specific rates, eligibility, discounts, or underwriting rules in this change.
+
 ## Regression checks
 
 - OJK zone mapping is tested for representative provinces in `services/__tests__/surepath.test.ts`.
