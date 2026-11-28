@@ -771,6 +771,177 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
         return json({ data: { success: true, order_status: orderStatus, action } });
       }
 
+    // ── Insurer: list corporate B2B submissions assigned by admin ─────────
+    case 'insurer_list_b2b_submissions': {
+        const token = String(params.token ?? '');
+        if (!token) return json({ error: 'token required' }, 400);
+        const { data: authToken, error: authErr } = await findInsurerAuthToken(db, token);
+        if (authErr) { const _err = safeError(authErr); return json(_err.body, _err.status); }
+        if (!authToken) return json({ error: 'Invalid token' }, 404);
+        if (new Date(authToken.expires_at) < new Date()) return json({ error: 'Token expired' }, 410);
+        const allowed = await checkRateLimit(`insurer:${authToken.insurer_id}`, 200);
+        if (!allowed) return json({ error: 'Rate limit exceeded' }, 429);
+
+        const { data: assignments, error: assignmentErr } = await db.from('sp_b2b_submission_insurers')
+          .select('id, submission_id, insurer_id, status, decision_notes, authorization_confirmed_at, created_at, updated_at, quoted_at')
+          .eq('insurer_id', authToken.insurer_id)
+          .order('created_at', { ascending: false })
+          .limit(100);
+        if (assignmentErr) { const _err = safeError(assignmentErr); return json(_err.body, _err.status); }
+        const submissionIds = [...new Set((assignments ?? []).map((a: any) => a.submission_id))];
+        if (submissionIds.length === 0) return json({ data: [] });
+
+        const { data: submissions, error: submissionErr } = await db.from('sp_b2b_submissions')
+          .select('id, client_id, product_type, company_name, pic_name, pic_phone, pic_email, submission_data, status, created_at, updated_at')
+          .in('id', submissionIds);
+        if (submissionErr) { const _err = safeError(submissionErr); return json(_err.body, _err.status); }
+        const byId = new Map((submissions ?? []).map((s: any) => [s.id, s]));
+        const result = (assignments ?? []).flatMap((a: any) => {
+          const submission = byId.get(a.submission_id);
+          return submission ? [{ ...a, submission }] : [];
+        });
+        logActivity(authToken.insurer_id, null, 'B2B_QUEUE_VIEWED', { count: result.length });
+        return json({ data: result });
+      }
+
+    // ── Insurer: quote, request information, or decline an assigned B2B risk
+    case 'insurer_submit_b2b_quote': {
+        const token = String(params.token ?? '');
+        const assignmentId = String(params.assignment_id ?? '').trim();
+        const decision = String(params.decision ?? 'QUOTE').toUpperCase();
+        const notes = String(params.notes ?? '').trim().slice(0, 5000);
+        if (!token || !assignmentId) return json({ error: 'token and assignment_id required' }, 400);
+        if (!['QUOTE', 'REQUEST_INFO', 'DECLINE'].includes(decision)) return json({ error: 'Invalid decision' }, 400);
+        if ((decision === 'REQUEST_INFO' || decision === 'DECLINE') && notes.length < 5) {
+          return json({ error: 'Notes required (minimum 5 characters)' }, 400);
+        }
+
+        const { data: authToken, error: authErr } = await findInsurerAuthToken(db, token);
+        if (authErr) { const _err = safeError(authErr); return json(_err.body, _err.status); }
+        if (!authToken) return json({ error: 'Invalid token' }, 404);
+        if (new Date(authToken.expires_at) < new Date()) return json({ error: 'Token expired' }, 410);
+        const allowed = await checkRateLimit(`insurer:${authToken.insurer_id}`, 200);
+        if (!allowed) return json({ error: 'Rate limit exceeded' }, 429);
+
+        const { data: assignment, error: assignmentErr } = await db.from('sp_b2b_submission_insurers')
+          .select('id, submission_id, insurer_id, status, authorization_confirmed')
+          .eq('id', assignmentId)
+          .eq('insurer_id', authToken.insurer_id)
+          .maybeSingle();
+        if (assignmentErr) { const _err = safeError(assignmentErr); return json(_err.body, _err.status); }
+        if (!assignment) return json({ error: 'Assignment not found for this insurer' }, 404);
+        if (!assignment.authorization_confirmed) return json({ error: 'Submission assignment is missing authorization confirmation' }, 403);
+        if (assignment.status !== 'ASSIGNED' && assignment.status !== 'REQUEST_INFO') {
+          return json({ error: `Assignment already finalized (${assignment.status})` }, 409);
+        }
+
+        const { data: submission, error: submissionErr } = await db.from('sp_b2b_submissions')
+          .select('id, client_id, company_name, product_type, status')
+          .eq('id', assignment.submission_id)
+          .maybeSingle();
+        if (submissionErr) { const _err = safeError(submissionErr); return json(_err.body, _err.status); }
+        if (!submission) return json({ error: 'Submission not found' }, 404);
+
+        const { data: insurer, error: insurerErr } = await db.from('sp_insurers')
+          .select('id, name, logo_url, is_active')
+          .eq('id', authToken.insurer_id)
+          .maybeSingle();
+        if (insurerErr) { const _err = safeError(insurerErr); return json(_err.body, _err.status); }
+        if (!insurer || insurer.is_active !== true) return json({ error: 'Insurer is inactive' }, 403);
+
+        if (decision === 'REQUEST_INFO' || decision === 'DECLINE') {
+          const nextStatus = decision === 'REQUEST_INFO' ? 'REQUEST_INFO' : 'DECLINED';
+          const { data: changed, error: changeErr } = await db.from('sp_b2b_submission_insurers')
+            .update({ status: nextStatus, decision_notes: notes, updated_at: new Date().toISOString() })
+            .eq('id', assignment.id)
+            .eq('insurer_id', authToken.insurer_id)
+            .in('status', ['ASSIGNED', 'REQUEST_INFO'])
+            .select('id, status')
+            .maybeSingle();
+          if (changeErr) { const _err = safeError(changeErr); return json(_err.body, _err.status); }
+          if (!changed) return json({ error: 'Assignment was updated by another user; refresh and retry' }, 409);
+          await db.from('sp_admin_notifications').insert({
+            type: decision === 'REQUEST_INFO' ? 'B2B_INSURER_REQUEST_INFO' : 'B2B_INSURER_DECLINED',
+            title: decision === 'REQUEST_INFO' ? 'Insurer meminta informasi B2B' : 'Insurer menolak pengajuan B2B',
+            body: `${submission.company_name} — ${insurer.name}: ${notes}`,
+            read: false,
+            metadata: { submission_id: submission.id, assignment_id: assignment.id, insurer_id: insurer.id, decision },
+          }).then(() => {}, () => {});
+          logActivity(insurer.id, null, 'B2B_SUBMISSION_DECIDED', { submission_id: submission.id, decision });
+          return json({ data: { success: true, status: nextStatus } });
+        }
+
+        const premiumAmount = Number(params.premium_amount);
+        const validUntil = String(params.valid_until ?? '').trim();
+        const terms = String(params.terms ?? '').trim().slice(0, 10000);
+        const rawCoverage = params.coverage_details && typeof params.coverage_details === 'object' && !Array.isArray(params.coverage_details)
+          ? params.coverage_details as Record<string, unknown> : {};
+        if (!Number.isFinite(premiumAmount) || premiumAmount <= 0 || premiumAmount > 1_000_000_000_000) {
+          return json({ error: 'A valid positive premium amount is required' }, 400);
+        }
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(validUntil) || !Number.isFinite(Date.parse(`${validUntil}T00:00:00Z`)) ||
+            new Date(`${validUntil}T00:00:00Z`).toISOString().slice(0, 10) !== validUntil ||
+            new Date(`${validUntil}T23:59:59Z`).getTime() <= Date.now()) {
+          return json({ error: 'A valid future valid_until date is required' }, 400);
+        }
+        let coverageBytes = 0;
+        try { coverageBytes = new TextEncoder().encode(JSON.stringify(rawCoverage)).byteLength; }
+        catch { return json({ error: 'Invalid coverage details' }, 400); }
+        if (coverageBytes > 32 * 1024) return json({ error: 'Coverage details exceed the 32 KB limit' }, 413);
+        const logoUrl = String(insurer.logo_url ?? '').trim();
+        if (!/^https:\/\//i.test(logoUrl)) return json({ error: 'Insurer official HTTPS logo is not configured' }, 409);
+
+        const ts = new Date().toISOString();
+        // Claim the assignment before inserting a quote so concurrent submissions
+        // cannot create duplicate insurer offers for the same assignment.
+        const { data: claimed, error: claimErr } = await db.from('sp_b2b_submission_insurers')
+          .update({ status: 'QUOTED', decision_notes: notes || null, quoted_at: ts, updated_at: ts })
+          .eq('id', assignment.id)
+          .eq('insurer_id', authToken.insurer_id)
+          .in('status', ['ASSIGNED', 'REQUEST_INFO'])
+          .select('id')
+          .maybeSingle();
+        if (claimErr) { const _err = safeError(claimErr); return json(_err.body, _err.status); }
+        if (!claimed) return json({ error: 'Assignment was updated by another user; refresh and retry' }, 409);
+
+        const coverageDetails = {
+          ...Object.fromEntries(Object.entries(rawCoverage).filter(([key]) => !key.startsWith('__'))),
+          __insurer_id: insurer.id,
+          __insurer_logo_url: logoUrl,
+          __source: 'INSURER_PORTAL',
+          __assignment_id: assignment.id,
+        };
+        const { data: quote, error: quoteErr } = await db.from('sp_b2b_quotes').insert({
+          submission_id: submission.id,
+          client_id: submission.client_id,
+          insurer_name: insurer.name,
+          premium_amount: premiumAmount,
+          coverage_details: coverageDetails,
+          valid_until: validUntil,
+          terms,
+          status: 'PENDING',
+        }).select().single();
+        if (quoteErr) {
+          await db.from('sp_b2b_submission_insurers')
+            .update({ status: assignment.status, quoted_at: null, updated_at: new Date().toISOString() })
+            .eq('id', assignment.id).eq('status', 'QUOTED');
+          const _err = safeError(quoteErr); return json(_err.body, _err.status);
+        }
+
+        await db.from('sp_b2b_submissions').update({ status: 'QUOTED', updated_at: ts })
+          .eq('id', submission.id).in('status', ['SUBMITTED', 'REVIEWING', 'QUOTED']);
+        await db.from('sp_admin_notifications').insert({
+          type: 'B2B_INSURER_QUOTE_RECEIVED',
+          title: 'Penawaran B2B dari insurer diterima',
+          body: `${submission.company_name} — ${insurer.name}: Rp ${Math.round(premiumAmount).toLocaleString('id-ID')}`,
+          read: false,
+          metadata: { submission_id: submission.id, quote_id: quote.id, assignment_id: assignment.id, insurer_id: insurer.id },
+        }).then(() => {}, () => {});
+        logActivity(insurer.id, null, 'B2B_QUOTE_SUBMITTED', { submission_id: submission.id, quote_id: quote.id });
+        sendTelegram(`Penawaran B2B diterima\nPerusahaan: ${submission.company_name}\nInsurer: ${insurer.name}\nPremi: Rp ${Math.round(premiumAmount).toLocaleString('id-ID')}`);
+        return json({ data: { success: true, quote } });
+      }
+
     case 'insurer_list_payments': {
         const token = String(params.token ?? '');
         if (!token) return json({ error: 'token required' }, 400);
