@@ -348,6 +348,15 @@ export interface SpB2BSubmissionInsurerAssignment {
   updated_at: string;
   quoted_at: string | null;
   insurer?: { id: string; name: string; logo_url: string | null } | null;
+  quote?: {
+    id: string;
+    insurer_name: string;
+    premium_amount: number;
+    valid_until: string | null;
+    terms: string | null;
+    status: string;
+    created_at: string;
+  } | null;
 }
 
 export async function adminAssignB2BSubmissionInsurer(input: {
