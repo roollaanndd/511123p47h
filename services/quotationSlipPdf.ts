@@ -367,7 +367,7 @@ function drawCoverPage(doc: any, d: QuotationSlipData, ctx: any) {
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7);
   doc.setTextColor(...COLOR.emeraldDeep);
-  doc.text(ctx.brandMode === 'INSURER' ? 'INSURER QUOTATION' : 'QUOTATION SLIP', PAGE_W - MARGIN, MARGIN + 2, { align: 'right' });
+  doc.text(ctx.brandMode === 'INSURER' ? 'INDICATIVE INSURER QUOTATION' : 'QUOTATION SLIP', PAGE_W - MARGIN, MARGIN + 2, { align: 'right' });
   doc.setFontSize(9);
   doc.setFont('helvetica', 'bold');
   doc.text(d.quotationNumber, PAGE_W - MARGIN, MARGIN + 14, { align: 'right' });
