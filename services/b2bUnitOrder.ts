@@ -426,7 +426,6 @@ export function fromB2BBulkQuote(o: B2BBulkQuoteSource): QuotationSlipData {
     premiumComponents: [
       { component: 'Premi dasar armada', basis: `${itemCount} unit`, rate: 'Sesuai rate per unit', premium: fmtIDR(o.totals.totalPremiumGross) },
       { component: 'Perluasan & paket', basis: `${itemCount} unit`, rate: '—', premium: fmtIDR(addonAndPlan) },
-      { component: 'Biaya administrasi', basis: `${itemCount} unit`, rate: '—', premium: fmtIDR(o.totals.totalAdminFee) },
     ],
     subtotalPremium: fmtIDR(subtotal),
     discountLabel: 'Total diskon armada',
