@@ -664,7 +664,6 @@ export function fromAgentQuote(q: AgentQuoteSource): QuotationSlipData {
   // Setiap nilai di bawah sudah punya fallback-nya sendiri, jadi daftar kosong
   // tetap menghasilkan slip yang benar — bukan layar gagal.
   const rows = Array.isArray(q.rows) ? q.rows.filter(r => r && typeof r.label === 'string') : [];
-  const feeRows = rows.filter(r => /admin|biaya polis|materai/i.test(r.label));
   const premiumRows = rows.filter(r => !/admin|biaya polis|materai/i.test(r.label));
   const basePremium = premiumRows.find(r => /premi\s+dasar|casco|base/i.test(r.label))?.amount ?? q.totalPremium * 0.9;
   const addonRows = premiumRows.filter(r => !/premi\s+dasar|casco|base/i.test(r.label));
