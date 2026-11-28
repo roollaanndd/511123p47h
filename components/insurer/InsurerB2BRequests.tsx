@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Building2, CalendarClock, CheckCircle2, FileText, Info, Loader2, RefreshCw, Send, ShieldCheck, XCircle } from 'lucide-react';
+import { Building2, CalendarClock, CheckCircle2, Info, Loader2, RefreshCw, Send, ShieldCheck, XCircle } from 'lucide-react';
 import { useToast } from '../ui';
 import {
   listInsurerB2BSubmissions,
@@ -11,10 +11,6 @@ interface Props {
   authToken: string;
   refreshTick: number;
 }
-
-const money = (value: number) => new Intl.NumberFormat('id-ID', {
-  style: 'currency', currency: 'IDR', maximumFractionDigits: 0,
-}).format(value);
 
 const defaultValidity = () => {
   const d = new Date();
