@@ -2,6 +2,7 @@
 // Auto-generated from data-gateway/index.ts split
 import type { GatewayContext, ActionResult } from './types.ts';
 import { wrapUserContent, UNTRUSTED_INPUT_NOTICE } from '../../_shared/promptSafety.ts';
+import { validateQuoteSaveInput } from '../../_shared/quoteSecurity.ts';
 
 // json() helper — returns ActionResult (main index.ts converts to Response)
 import { safeError } from '../../_shared/errorMap.ts';
@@ -161,32 +162,12 @@ ${UNTRUSTED_INPUT_NOTICE}`;
         const allowed = await checkRateLimit(`user:${caller.ownerId}`, 60);
         if (!allowed) return json({ error: 'Rate limit exceeded. Coba lagi dalam 1 jam.' }, 429);
 
-        const productType = String(params.product_type ?? '').toUpperCase();
-        const allowedProducts = new Set(['CAR', 'MOTOR', 'MOTORCYCLE', 'TRAVEL', 'PA', 'MPAR']);
-        if (!allowedProducts.has(productType)) return json({ error: 'Invalid quote product type' }, 400);
-
-        const premiumEstimate = Number(params.premium_estimate);
-        if (!Number.isFinite(premiumEstimate) || premiumEstimate < 0) {
-          return json({ error: 'Invalid quote premium estimate' }, 400);
-        }
-
-        const quoteData = params.quote_data ?? {};
-        if (!quoteData || typeof quoteData !== 'object' || Array.isArray(quoteData)) {
-          return json({ error: 'Invalid quote data' }, 400);
-        }
-        let quoteDataSize = 0;
-        try {
-          quoteDataSize = new TextEncoder().encode(JSON.stringify(quoteData)).byteLength;
-        } catch {
-          return json({ error: 'Invalid quote data' }, 400);
-        }
-        if (quoteDataSize > 64 * 1024) {
-          return json({ error: 'Quote data exceeds the 64 KB limit' }, 413);
-        }
+        const parsed = validateQuoteSaveInput(params);
+        if (!parsed.ok) return json({ error: parsed.error }, parsed.status);
+        const { productType, premiumEstimate, quoteData, clientId, clientName } = parsed.value;
 
         // Customer records are optional for quotes. If an existing customer is
         // attached, prove that the record belongs to this agent before storing it.
-        const clientId = params.client_id ? String(params.client_id) : null;
         if (clientId) {
           const { data: client, error: clientError } = await db.from('sp_clients')
             .select('id')
@@ -202,7 +183,7 @@ ${UNTRUSTED_INPUT_NOTICE}`;
         const { data, error } = await db.from('sp_quotes').insert({
           agent_id: caller.ownerId,
           client_id: clientId,
-          client_name: String(params.client_name ?? '').trim().slice(0, 120),
+          client_name: clientName,
           product_type: productType,
           status: 'DRAFT',
           premium_estimate: premiumEstimate,
