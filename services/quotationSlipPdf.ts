@@ -1091,7 +1091,8 @@ function drawSurePathLogo(doc: any, x: number, y: number, mode: 'light' | 'dark'
       doc.addImage(logoDataUrl, fmt, x, drawY, drawW, drawH, undefined, 'FAST');
       return;
     } catch (e) {
-      console.warn('QuotationSlip: addImage failed, falling back to drawn shield', e);
+      console.warn('QuotationSlip: logo asset could not be rendered', e);
+      if (logoDataUrl) throw new Error('Logo asset could not be rendered. PDF generation stopped to avoid substituting the wrong brand identity.');
     }
   }
 
