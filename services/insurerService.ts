@@ -180,7 +180,17 @@ export interface InsurerB2BSubmissionAssignment {
   created_at: string;
   updated_at: string;
   quoted_at: string | null;
-  submission: InsurerB2BSubmission;
+  submission: InsurerB2BSubmission & {
+    documents?: Array<{
+      id: string;
+      doc_type: string;
+      file_name: string;
+      file_size: number | null;
+      mime_type: string | null;
+      uploaded_at: string;
+      signed_url: string | null;
+    }>;
+  };
 }
 
 export async function listInsurerB2BSubmissions(token: string): Promise<InsurerB2BSubmissionAssignment[]> {
