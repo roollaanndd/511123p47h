@@ -174,6 +174,15 @@ ${UNTRUSTED_INPUT_NOTICE}`;
         if (!quoteData || typeof quoteData !== 'object' || Array.isArray(quoteData)) {
           return json({ error: 'Invalid quote data' }, 400);
         }
+        let quoteDataSize = 0;
+        try {
+          quoteDataSize = new TextEncoder().encode(JSON.stringify(quoteData)).byteLength;
+        } catch {
+          return json({ error: 'Invalid quote data' }, 400);
+        }
+        if (quoteDataSize > 64 * 1024) {
+          return json({ error: 'Quote data exceeds the 64 KB limit' }, 413);
+        }
 
         // Customer records are optional for quotes. If an existing customer is
         // attached, prove that the record belongs to this agent before storing it.
