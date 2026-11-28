@@ -796,9 +796,42 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
           .in('id', submissionIds);
         if (submissionErr) { const _err = safeError(submissionErr); return json(_err.body, _err.status); }
         const byId = new Map((submissions ?? []).map((s: any) => [s.id, s]));
+        const { data: rawDocs, error: docsErr } = await db.from('sp_b2b_documents')
+          .select('id, submission_id, doc_type, file_name, file_path, file_size, mime_type, uploaded_at')
+          .in('submission_id', submissionIds)
+          .order('uploaded_at', { ascending: true });
+        if (docsErr) { const _err = safeError(docsErr); return json(_err.body, _err.status); }
+
+        // The insurer has no Supabase JWT. Issue short-lived URLs only after
+        // validating the insurer token and matching the assigned submission.
+        const signedDocs: any[] = [];
+        const docs = rawDocs ?? [];
+        for (let i = 0; i < docs.length; i += 20) {
+          const wave = docs.slice(i, i + 20);
+          const signedWave = await Promise.all(wave.map(async (doc: any) => {
+            const { data: signed } = await db.storage.from('b2b-documents').createSignedUrl(doc.file_path, 300);
+            return {
+              id: doc.id,
+              submission_id: doc.submission_id,
+              doc_type: doc.doc_type,
+              file_name: doc.file_name,
+              file_size: doc.file_size,
+              mime_type: doc.mime_type,
+              uploaded_at: doc.uploaded_at,
+              signed_url: signed?.signedUrl ?? null,
+            };
+          }));
+          signedDocs.push(...signedWave);
+        }
+        const docsBySubmission = new Map<string, any[]>();
+        for (const doc of signedDocs) {
+          const list = docsBySubmission.get(doc.submission_id) ?? [];
+          list.push(doc);
+          docsBySubmission.set(doc.submission_id, list);
+        }
         const result = (assignments ?? []).flatMap((a: any) => {
           const submission = byId.get(a.submission_id);
-          return submission ? [{ ...a, submission }] : [];
+          return submission ? [{ ...a, submission: { ...submission, documents: docsBySubmission.get(a.submission_id) ?? [] } }] : [];
         });
         logActivity(authToken.insurer_id, null, 'B2B_QUEUE_VIEWED', { count: result.length });
         return json({ data: result });
@@ -864,6 +897,14 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
             type: decision === 'REQUEST_INFO' ? 'B2B_INSURER_REQUEST_INFO' : 'B2B_INSURER_DECLINED',
             title: decision === 'REQUEST_INFO' ? 'Insurer meminta informasi B2B' : 'Insurer menolak pengajuan B2B',
             body: `${submission.company_name} — ${insurer.name}: ${notes}`,
+            read: false,
+            metadata: { submission_id: submission.id, assignment_id: assignment.id, insurer_id: insurer.id, decision },
+          }).then(() => {}, () => {});
+          db.from('sp_notifications').insert({
+            agent_id: submission.client_id,
+            type: 'B2B_UPDATE',
+            title: decision === 'REQUEST_INFO' ? 'Insurer meminta informasi tambahan' : 'Pengajuan B2B ditolak insurer',
+            body: `${insurer.name}: ${notes}`,
             read: false,
             metadata: { submission_id: submission.id, assignment_id: assignment.id, insurer_id: insurer.id, decision },
           }).then(() => {}, () => {});
@@ -936,6 +977,14 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
           body: `${submission.company_name} — ${insurer.name}: Rp ${Math.round(premiumAmount).toLocaleString('id-ID')}`,
           read: false,
           metadata: { submission_id: submission.id, quote_id: quote.id, assignment_id: assignment.id, insurer_id: insurer.id },
+        }).then(() => {}, () => {});
+        db.from('sp_notifications').insert({
+          agent_id: submission.client_id,
+          type: 'B2B_QUOTE_READY',
+          title: 'Penawaran asuransi korporat tersedia',
+          body: `${insurer.name} telah mengirim penawaran untuk ${submission.company_name}.`,
+          read: false,
+          metadata: { submission_id: submission.id, quote_id: quote.id, insurer_id: insurer.id },
         }).then(() => {}, () => {});
         logActivity(insurer.id, null, 'B2B_QUOTE_SUBMITTED', { submission_id: submission.id, quote_id: quote.id });
         sendTelegram(`Penawaran B2B diterima\nPerusahaan: ${submission.company_name}\nInsurer: ${insurer.name}\nPremi: Rp ${Math.round(premiumAmount).toLocaleString('id-ID')}`);
