@@ -1,23 +1,25 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const callGateway = vi.fn();
-const supabaseFrom = vi.fn();
+const mocks = vi.hoisted(() => ({
+  callGateway: vi.fn(),
+  supabaseFrom: vi.fn(),
+}));
 
 vi.mock('../db', () => ({
-  callGateway,
-  supabase: { from: supabaseFrom },
+  callGateway: mocks.callGateway,
+  supabase: { from: mocks.supabaseFrom },
 }));
 
 import { saveQuote } from '../commissions';
 
 describe('saveQuote gateway fail-closed behavior', () => {
   beforeEach(() => {
-    callGateway.mockReset();
-    supabaseFrom.mockReset();
+    mocks.callGateway.mockReset();
+    mocks.supabaseFrom.mockReset();
   });
 
   it('does not fall back to a direct table insert when the gateway rejects a quote', async () => {
-    callGateway.mockResolvedValue({
+    mocks.callGateway.mockResolvedValue({
       data: null,
       error: { message: 'Forbidden: verified agent account required' },
     });
@@ -33,6 +35,6 @@ describe('saveQuote gateway fail-closed behavior', () => {
     });
 
     expect(result).toBeNull();
-    expect(supabaseFrom).not.toHaveBeenCalled();
+    expect(mocks.supabaseFrom).not.toHaveBeenCalled();
   });
 });
