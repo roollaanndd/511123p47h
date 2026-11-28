@@ -566,9 +566,9 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
     setSavedQuote(null);
   };
 
-  const stepIndex = ['product', 'inputs', 'summary'].indexOf(
-    step === 'quote_summary' ? 'summary' : step === 'client' ? 'summary' : step
-  );
+  const stepIndex = quoteMode === 'penawaran'
+    ? ['product', 'inputs', 'summary'].indexOf(step === 'quote_summary' ? 'summary' : step)
+    : ['product', 'inputs', 'client', 'summary'].indexOf(step === 'quote_summary' ? 'summary' : step);
   const totalSteps = quoteMode === 'penawaran' ? 3 : 4;
 
   const inputClass = "w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500/60 transition-all";
