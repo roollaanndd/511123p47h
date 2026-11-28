@@ -612,8 +612,9 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
         <button onClick={step === 'product' ? onBack : () => {
           if (step === 'inputs') { setStep('product'); setQuoteMode(null); }
           else if (step === 'client') setStep('inputs');
-          else if (step === 'quote_summary') setStep('client');
-          else if (step === 'summary') setStep('client');
+          else if (step === 'quote_summary' || step === 'summary') {
+            setStep(quoteMode === 'penawaran' ? 'inputs' : 'client');
+          }
         }} className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-gray-600 active:bg-gray-200 transition-colors flex-shrink-0">
           <ChevronLeft size={18} />
         </button>
@@ -859,7 +860,7 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
           {product && product !== 'CAR' && product !== 'MOTORCYCLE' && (
             <div className="space-y-3 pt-1">
               <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 text-center">{t('Choose your next step', 'Pilih proses berikutnya')}</p>
-              <button onClick={() => { setQuoteMode('penawaran'); setStep('inputs'); }} className="w-full rounded-2xl border border-blue-100 bg-blue-50 p-4 text-left transition active:scale-[.99]">
+              <button onClick={() => { setQuoteMode('penawaran'); setClientMode('onetime'); setOnetimeName(''); setStep('inputs'); }} className="w-full rounded-2xl border border-blue-100 bg-blue-50 p-4 text-left transition active:scale-[.99]">
                 <span className="block text-sm font-black text-blue-950">{t('Create a quote', 'Buat Penawaran')}</span>
                 <span className="mt-1 block text-xs text-blue-800">{t('Enter details and prepare an estimate first.', 'Isi data dan siapkan estimasi terlebih dahulu.')}</span>
               </button>
