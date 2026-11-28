@@ -221,10 +221,7 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
         const supportedIds = new Set((supportedProductInsurerIds ?? []).filter(id => activeIds.has(id)));
         const options = activeInsurers.filter(insurer => supportedIds.has(insurer.id));
         setInsurerOptions(options);
-        if (selectedInsurerId && !supportedIds.has(selectedInsurerId)) {
-          setSelectedInsurerId('');
-          setSelectedInsurerProduct(null);
-        }
+        setSelectedInsurerId(current => current && !supportedIds.has(current) ? '' : current);
         if (options.length === 0) setInsurerLoadError(t('No active insurer product is configured for this vehicle type yet.', 'Belum ada produk asuransi aktif yang dikonfigurasi untuk jenis kendaraan ini.'));
       })
       .catch(error => {
@@ -234,6 +231,21 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
       .finally(() => { if (!cancelled) setLoadingInsurers(false); });
     return () => { cancelled = true; };
   }, [step, quoteMode, product]);
+
+  useEffect(() => {
+    if (!selectedInsurerProduct) {
+      setDiscountRate(0);
+      return;
+    }
+    const cap = getInsurerQuoteDiscountCapPercent(selectedInsurerProduct);
+    setDiscountRate(current => Math.min(current, cap));
+  }, [selectedInsurerProduct]);
+
+  const [carInputs, setCarInputs] = useState<CarInputs>({ province: '', brand: '', model: '', year: new Date().getFullYear(), price: 0, coverage: 'COMPREHENSIVE' });
+  const [addons, setAddons] = useState<AddonState>({ flood: false, earthquake: false, riot: false, tplLimit: 0, paDriver: false, paPassengerSeats: 0 });
+  const [travelInputs, setTravelInputs] = useState<TravelInputs>({ destination: '', startDate: '', endDate: '', adults: 1, plan: 'GOLD' });
+  const [paInputs, setPAInputs] = useState<PAInputs>({ category: 'GENERAL', plan: 'BASIC' });
+  const [mparInputs, setMPARInputs] = useState<MPARInputs>({ category: 'GADGET', itemName: '', price: 0, period: 12 });
 
   // Re-check the chosen insurer against product, coverage and maximum vehicle age.
   useEffect(() => {
@@ -262,20 +274,6 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
     return () => { cancelled = true; };
   }, [step, quoteMode, product, selectedInsurerId, carInputs.coverage, carInputs.year]);
 
-  useEffect(() => {
-    if (!selectedInsurerProduct) {
-      setDiscountRate(0);
-      return;
-    }
-    const cap = getInsurerQuoteDiscountCapPercent(selectedInsurerProduct);
-    setDiscountRate(current => Math.min(current, cap));
-  }, [selectedInsurerProduct]);
-
-  const [carInputs, setCarInputs] = useState<CarInputs>({ province: '', brand: '', model: '', year: new Date().getFullYear(), price: 0, coverage: 'COMPREHENSIVE' });
-  const [addons, setAddons] = useState<AddonState>({ flood: false, earthquake: false, riot: false, tplLimit: 0, paDriver: false, paPassengerSeats: 0 });
-  const [travelInputs, setTravelInputs] = useState<TravelInputs>({ destination: '', startDate: '', endDate: '', adults: 1, plan: 'GOLD' });
-  const [paInputs, setPAInputs] = useState<PAInputs>({ category: 'GENERAL', plan: 'BASIC' });
-  const [mparInputs, setMPARInputs] = useState<MPARInputs>({ category: 'GADGET', itemName: '', price: 0, period: 12 });
 
   // Rentang harga pasar ±5% — rumus yang sama dengan StepVehicle Nasabah,
   // supaya nasabah dan mitra melihat angka yang sama untuk kendaraan yang sama.
@@ -694,27 +692,6 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
     } finally {
       setPrintingQuote(false);
     }
-  };
-
-  const reset = () => {
-    setStep('product');
-    setClientMode(localClients.length > 0 ? 'select' : 'new');
-    setSelectedClientId('');
-    setOnetimeName('');
-    setOnetimePhone('');
-    setSelectedInsurerId('');
-    setSelectedInsurerProduct(null);
-    setInsurerOptions([]);
-    setNewClient({ name: '', phone: '' });
-    setCreatedClientId('');
-    setProduct(null);
-    setQuoteMode(null);
-    setCarInputs({ province: '', brand: '', model: '', year: new Date().getFullYear(), price: 0, coverage: 'COMPREHENSIVE' });
-    setAddons({ flood: false, earthquake: false, riot: false, tplLimit: 0, paDriver: false, paPassengerSeats: 0 });
-    setTravelInputs({ destination: '', startDate: '', endDate: '', adults: 1, plan: 'GOLD' });
-    setPAInputs({ category: 'GENERAL', plan: 'BASIC' });
-    setMPARInputs({ category: 'GADGET', itemName: '', price: 0, period: 12 });
-    setSavedQuote(null);
   };
 
   const stepIndex = isVehicleQuickQuote
