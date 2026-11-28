@@ -370,7 +370,7 @@ export function fromB2BBulkQuote(o: B2BBulkQuoteSource): QuotationSlipData {
   return {
     quotationNumber: quoteNumber(),
     slipType: 'PENAWARAN INDIKATIF ASURANSI ARMADA',
-    issueDate: todayID(),
+    issueDate: fmtDateShortID(new Date().toISOString().slice(0, 10)),
     yearTag: String(new Date().getFullYear()),
     validUntil: plus30DaysISO(),
     productType: 'OTHER',
@@ -456,7 +456,7 @@ export function fromB2BBulkQuote(o: B2BBulkQuoteSource): QuotationSlipData {
     bankNameShort: 'BCA',
     bankAccount: '5730 - 807 - 807',
     bankAccountName: 'PT. Ruang Proteksi Indonesia',
-    paymentDueDate: dateShortID(today),
+    paymentDueDate: fmtDateShortID(today),
     transferMemo: `QS/B2B Fleet — ${o.companyName}`,
   };
 }
