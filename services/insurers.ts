@@ -98,6 +98,16 @@ export async function deleteInsurer(id: string): Promise<boolean> {
 
 // ─── Insurer Product CRUD ─────────────────────────────────────────────────────
 
+export async function getActiveInsurerIdsForProduct(productType: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('sp_insurer_products')
+    .select('insurer_id')
+    .eq('product_type', productType)
+    .eq('is_active', true);
+  if (error) { console.error('getActiveInsurerIdsForProduct:', error); return []; }
+  return [...new Set((data ?? []).map((row: any) => String(row.insurer_id)).filter(Boolean))];
+}
+
 export async function getInsurerProducts(insurer_id?: string): Promise<SpInsurerProduct[]> {
   let q = supabase
     .from('sp_insurer_products')
