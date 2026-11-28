@@ -809,7 +809,9 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
         for (let i = 0; i < docs.length; i += 20) {
           const wave = docs.slice(i, i + 20);
           const signedWave = await Promise.all(wave.map(async (doc: any) => {
-            const { data: signed } = await db.storage.from('b2b-documents').createSignedUrl(doc.file_path, 300);
+            const signedResult = doc.file_path
+              ? await db.storage.from('b2b-documents').createSignedUrl(doc.file_path, 300)
+              : { data: null };
             return {
               id: doc.id,
               submission_id: doc.submission_id,
@@ -818,7 +820,7 @@ export async function handleInsurersAction(action: string, ctx: GatewayContext):
               file_size: doc.file_size,
               mime_type: doc.mime_type,
               uploaded_at: doc.uploaded_at,
-              signed_url: signed?.signedUrl ?? null,
+              signed_url: signedResult.data?.signedUrl ?? null,
             };
           }));
           signedDocs.push(...signedWave);
