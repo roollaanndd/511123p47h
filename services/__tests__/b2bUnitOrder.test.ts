@@ -200,7 +200,7 @@ describe('b2bUnitOrder — adapter PDF agent', () => {
     expect(data.totalSumInsured).toContain('430.000.000');
     expect(data.premiumAfterDiscount).toContain('1.175.000');
     expect(data.totalPremium).toContain('1.275.000');
-    expect(data.termsList.join(' ')).toMatch(/server menghitung ulang setiap baris/i);
+    expect(data.termsList.join(' ')).toMatch(/setiap baris dihitung ulang oleh server/i);
     expect(data.termsList.join(' ')).toMatch(/bukan polis atau bukti pertanggungan/i);
   });
 });
