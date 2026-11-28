@@ -487,6 +487,7 @@ export function fromCustomerOrder(o: SpPolicyOrderSource, customerName?: string,
 export interface B2BQuoteSource {
   id: string;
   insurer_name?: string;
+  insurer_logo_url?: string;
   premium_amount: number;
   coverage_details?: Record<string, any>;
   valid_until?: string;
@@ -495,7 +496,9 @@ export interface B2BQuoteSource {
 }
 
 export function fromB2BQuote(q: B2BQuoteSource, companyName?: string): QuotationSlipData {
-  const insurerName = q.insurer_name || 'PT Zurich Asuransi Indonesia Tbk';
+  const insurerName = q.insurer_name?.trim() || 'Penanggung belum dipilih';
+  const insurerLogoUrl = q.insurer_logo_url || q.coverage_details?.__insurer_logo_url;
+  const insurerSelected = Boolean(q.insurer_name?.trim());
   const insurerShort = insurerName
     .replace(/^PT\.?\s*/i, '')
     .replace(/\s+(Asuransi|Tbk|Indonesia).*$/i, '')
@@ -504,7 +507,10 @@ export function fromB2BQuote(q: B2BQuoteSource, companyName?: string): Quotation
   const periodEnd = addYearsID(periodStart, 1);
   const company = companyName || 'Klien Korporasi SurePath';
 
-  const coverageEntries = Object.entries(q.coverage_details ?? {});
+  // Internal insurer metadata is persisted inside coverage_details for
+  // backwards-compatible storage; never display it as customer coverage.
+  const coverageEntries = Object.entries(q.coverage_details ?? {})
+    .filter(([key]) => !key.startsWith('__'));
   const coverageLabel = (k: string) => k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
   const sumInsuredItems = coverageEntries.length > 0
     ? coverageEntries.slice(0, 6).map(([k, v], i) => ({
@@ -536,6 +542,8 @@ export function fromB2BQuote(q: B2BQuoteSource, companyName?: string): Quotation
     previousPolicyNumber: '-',
     insurer: insurerName,
     insurerShort,
+    ...(insurerLogoUrl ? { insurerLogoUrl } : {}),
+    brandMode: insurerSelected ? 'INSURER' : 'SUREPATH',
 
     periodStart: new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' }),
     periodEnd,
@@ -545,7 +553,9 @@ export function fromB2BQuote(q: B2BQuoteSource, companyName?: string): Quotation
     titleMain: 'Penawaran',
     titleMid: 'Asuransi',
     titleAccent: 'Korporasi.',
-    ledeHtml: `Penawaran asuransi korporasi untuk ${company}, ditempatkan melalui ${insurerShort}. Rincian jaminan dan premi tercantum pada halaman berikut.`,
+    ledeHtml: insurerSelected
+      ? `Penawaran asuransi korporasi untuk ${company}, ditempatkan melalui ${insurerShort}. Rincian jaminan dan premi tercantum pada halaman berikut.`
+      : `Penawaran indikatif asuransi korporasi untuk ${company}. Penanggung belum dipilih; penempatan tetap menunggu pilihan dan akseptasi penanggung.`,
 
     insuredName: company,
     insuredAddress: '-',
@@ -591,12 +601,15 @@ export function fromB2BQuote(q: B2BQuoteSource, companyName?: string): Quotation
     ],
 
     termsList: [
-      `Penawaran ini ditempatkan pada ${insurerName}, mengikuti syarat dan kondisi polis standar penanggung beserta klausul terlampir.`,
+      insurerSelected
+        ? `Penawaran ini ditempatkan pada ${insurerName}, mengikuti syarat dan kondisi polis standar penanggung beserta klausul terlampir.`
+        : 'Penanggung belum dipilih. Penawaran ini bukan konfirmasi penutupan dan belum memberikan bukti pertanggungan.',
       q.valid_until
         ? `Penawaran berlaku sampai ${dateShortID(q.valid_until)}.`
         : 'Penawaran berlaku selama 30 (tiga puluh) hari sejak tanggal penerbitan.',
       ...(q.terms ? [q.terms] : []),
-      'Polis diterbitkan setelah subjectivity terpenuhi, konfirmasi penutupan, dan pembayaran premi diterima.',
+      'Polis diterbitkan setelah subjectivity terpenuhi, konfirmasi penutupan, akseptasi penanggung, dan pembayaran premi diterima.',
+      'Penawaran ini bersifat indikatif dan bukan polis atau bukti pertanggungan.',
     ],
 
     closingTitle: 'Lindungi Bisnis Anda,',
