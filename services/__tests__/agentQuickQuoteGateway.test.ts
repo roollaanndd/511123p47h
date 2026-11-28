@@ -106,4 +106,12 @@ describe('save_quote gateway security', () => {
     expect(result?.status).toBe(404);
     expect(insertedRows).toHaveLength(0);
   });
+
+  it('rejects oversized quote payloads before database writes', async () => {
+    const { ctx, insertedRows } = makeContext();
+    ctx.params.quote_data = { note: 'x'.repeat(65 * 1024) };
+    const result = await handleMiscAction('save_quote', ctx as any);
+    expect(result?.status).toBe(413);
+    expect(insertedRows).toHaveLength(0);
+  });
 });
