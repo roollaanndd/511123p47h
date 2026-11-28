@@ -63,29 +63,21 @@ export async function getAgentQuotes(agentId: string): Promise<SpQuote[]> {
 }
 
 export async function saveQuote(data: Omit<SpQuote, 'id' | 'created_at'>): Promise<SpQuote | null> {
-  // FIX v1.49.1: route through gateway to bypass RLS issues
-  // Previously used supabase directly which could fail silently due to RLS
+  // Quote writes must pass through the authenticated gateway. A direct-table
+  // fallback would bypass its verified-agent, ownership, rate-limit and forced
+  // DRAFT checks whenever the gateway rejects or is unavailable.
   try {
     const { callGateway } = await import('./db');
     const { data: result, error } = await callGateway('save_quote', {
-      agent_id: data.agent_id,
-      client_id: data.client_id,
+      client_id: data.client_id ?? null,
       client_name: data.client_name,
       product_type: data.product_type,
-      status: data.status,
       premium_estimate: data.premium_estimate,
       quote_data: data.quote_data,
     });
     if (error) {
       console.error('saveQuote gateway error:', error);
-      // Fallback to direct insert
-      const { data: fallback, error: fbErr } = await supabase
-        .from('sp_quotes')
-        .insert(data)
-        .select()
-        .single();
-      if (fbErr) { console.error('saveQuote fallback error:', fbErr); return null; }
-      return fallback as SpQuote;
+      return null;
     }
     return result as SpQuote;
   } catch (e) {
