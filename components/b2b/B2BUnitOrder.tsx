@@ -554,7 +554,15 @@ const B2BUnitOrder: React.FC<Props> = ({ clientId, client, onDone, lang }) => {
   };
 
   const handleDownloadProposal = async () => {
-      const data = buildUnitOrderSlipData();
+    if (!preferredInsurer) {
+      setError(t('Select an insurer before generating an insurer-branded quotation.', 'Pilih penanggung sebelum membuat penawaran dengan identitas logo penanggung.'));
+      return;
+    }
+    if (!preferredInsurer.logo_url) {
+      setError(t('The selected insurer has no approved logo configured. Ask an admin to update the insurer profile before downloading.', 'Logo resmi penanggung terpilih belum dikonfigurasi. Minta admin memperbarui profil penanggung sebelum mengunduh.'));
+      return;
+    }
+    const data = buildUnitOrderSlipData();
     if (!data) return;
     try {
       await publishAndDownloadQuotation(data, {
@@ -1194,8 +1202,8 @@ const B2BUnitOrder: React.FC<Props> = ({ clientId, client, onDone, lang }) => {
               </p>
               <p className="text-2xs text-ds-ink3 mt-0.5">
                 {t(
-                  'Pick the insurer you want for this policy. Premium stays the same (OJK tariff).',
-                  'Pilih perusahaan asuransi untuk polis ini. Premi tetap sama (tarif OJK).',
+                  'Choose your preferred insurer for placement. The B2B fleet rating engine calculates the indicative premium; final acceptance remains with the insurer.',
+                  'Pilih penanggung yang diinginkan untuk penempatan. Mesin rating armada B2B menghitung premi indikatif; akseptasi akhir tetap menjadi kewenangan penanggung.',
                 )}
               </p>
             </div>
