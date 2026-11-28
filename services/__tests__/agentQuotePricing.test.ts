@@ -53,6 +53,24 @@ describe('insurer-specific agent quote pricing', () => {
     expect(result.totalPremium).toBe(5_060_000);
   });
 
+  it('allows up to 25% only when insurer configuration and commission permit it', () => {
+    expect(getInsurerQuoteDiscountCapPercent({
+      base_commission_rate: 0.25,
+      max_discount_rate: 0.25,
+    })).toBe(25);
+  });
+
+  it('uses the underwriting default stamp duty when none is configured', () => {
+    const result = calculateInsurerQuotePricing(breakdown, {
+      base_commission_rate: 0.1,
+      max_discount_rate: 0,
+      policy_cost: 0,
+      stamp_duty: null,
+    }, 0);
+    expect(result.insurerStampDuty).toBe(10_000);
+    expect(result.totalPremium).toBe(5_070_000);
+  });
+
   it('normalizes invalid or negative insurer fees to zero', () => {
     const result = calculateInsurerQuotePricing(breakdown, {
       base_commission_rate: 0.1,
