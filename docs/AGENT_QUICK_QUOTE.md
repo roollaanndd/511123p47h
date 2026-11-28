@@ -6,11 +6,13 @@ The Agent Quote Builder supports a low-friction, indicative quote without forcin
 
 ## Quick quote flow
 
-1. Select a product and choose **Create a quote**.
-2. Enter product details.
-3. For motor products, select the vehicle registration province from the STNK. The province determines the OJK rate zone; an empty province must never silently be treated as a valid quote input.
-4. Review the indicative estimate.
-5. Optionally enter a prospective customer's name, then save, print, or share the estimate.
+1. Select a motor product and choose **Create a quote**.
+2. Select an active insurer partner that has an active product configuration for the selected vehicle type. The partner must have a configured official logo asset before a quotation PDF can be generated.
+3. Enter the vehicle details and select the registration province from the STNK. The province determines the OJK rate zone; an empty province must never silently be treated as a valid quote input.
+4. Enter quick customer details (existing customer, new CRM customer, or one-time customer).
+5. Select Comprehensive or TLO, then choose optional coverage extensions.
+6. Review the detailed tariff, fees, insurer-configured policy cost/stamp duty, and commission-funded discount ceiling. The chosen insurer is rechecked for coverage and maximum vehicle age before the quote can be saved or printed.
+7. Save the quote as a draft, print the insurer-branded PDF, or share the quotation.
 
 A quick quote does not create a customer CRM record, policy, certificate, payment obligation, or commission. A saved-but-unsent quote is stored as `DRAFT`.
 
@@ -22,7 +24,7 @@ Actual purchase must use the existing product-specific application wizard. Polic
 
 ## Insurer and pricing disclosure
 
-The quick quote is an estimate only. The selected insurer's product rules, current approved rates, underwriting decision, eligibility, wording, exclusions, documents, and final premium must be confirmed in the relevant application/insurer workflow. Do not attribute a quote to a specific insurer unless that insurer/product has actually been selected and its terms/rates are being used.
+The quick quote is an estimate only. Vehicle base pricing uses the active OJK rate set (or the compiled SEOJK fallback when no active set is available); insurer product configuration contributes eligibility, policy cost, stamp duty, commission rate, and discount ceiling. The repository does not currently contain a separate proprietary rating table for each insurer, so this flow must not claim to reproduce an insurer's private underwriting rate or represent the estimate as an insurer-confirmed final premium. The selected insurer's approved rates, underwriting decision, eligibility, wording, exclusions, documents, and final premium must be confirmed in the relevant application/insurer workflow. The PDF uses the selected insurer's configured logo_url as its document identity on every page and fails closed if that asset is missing or cannot be loaded. Admins must ensure each configured logo URL points to the insurer's official approved asset. The quotation remains subject to insurer acceptance and is not a policy or proof of cover.
 
 The current quote builder's local calculation is not a substitute for server-side premium validation or an insurer-specific product requirements engine. This document does not certify insurer compliance or security.
 
