@@ -13,6 +13,7 @@ import { fromCustomerOrder } from '../../services/quotationSlipAdapter';
 import { getStatusMeta } from '../../lib/statusMeta';
 import InsurerAIPanel from '../shared/InsurerAIPanel';
 import InsurerBulkBatches from './InsurerBulkBatches';
+import InsurerB2BRequests from './InsurerB2BRequests';
 import ModuleIcon from '../shared/ModuleIcon';
 
 interface Props {
@@ -67,7 +68,7 @@ const InsurerOrders: React.FC<Props> = ({ authToken, lang, refreshTick }) => {
   // Batch B2B lives inside this tab rather than a 6th bottom-nav entry —
   // PortalTabBar is already full at 5 (same reasoning as B2BPortal.tsx's
   // bulkMode toggle this session).
-  const [viewMode, setViewMode] = useState<'individual' | 'bulk'>('individual');
+  const [viewMode, setViewMode] = useState<'individual' | 'bulk' | 'corporate'>('individual');
   const [selectedOrder, setSelectedOrder] = useState<InsurerOrder | null>(null);
   const [decisionMode, setDecisionMode] = useState<'APPROVED' | 'REQUEST_INFO' | 'DECLINED' | null>(null);
   const [notes, setNotes] = useState('');
@@ -216,6 +217,7 @@ const InsurerOrders: React.FC<Props> = ({ authToken, lang, refreshTick }) => {
         {([
           { id: 'individual', label: 'Polis Individual' },
           { id: 'bulk', label: 'Batch B2B' },
+          { id: 'corporate', label: 'Corporate B2B' },
         ] as const).map(m => (
           <button
             key={m.id}
@@ -231,6 +233,8 @@ const InsurerOrders: React.FC<Props> = ({ authToken, lang, refreshTick }) => {
 
       {viewMode === 'bulk' ? (
         <InsurerBulkBatches authToken={authToken} refreshTick={refreshTick} />
+      ) : viewMode === 'corporate' ? (
+        <InsurerB2BRequests authToken={authToken} refreshTick={refreshTick} />
       ) : (
       <>
       {/* Search */}
