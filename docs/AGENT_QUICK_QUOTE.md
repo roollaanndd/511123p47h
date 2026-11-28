@@ -48,3 +48,7 @@ B2B has three distinct quote paths and must not be forced through the agent's si
 - **Corporate B2B submissions:** the submission form currently captures aggregate fleet information and other underwritten products, not a complete rated per-unit schedule. Admin/operations must select an active insurer and enter the premium returned by the insurer/underwriter. The gateway resolves the official insurer name and HTTPS logo from `sp_insurers`, rejects inactive insurers or missing logos, and stores the resolved logo metadata in the quote's coverage JSON. The customer PDF uses that logo; internal metadata is hidden from customer coverage details.
 
 For fleet submissions that do not include a validated unit schedule, do not calculate an OJK rate from aggregate fleet value. Use B2B Unit Order or Bulk Import for per-vehicle calculations and server-side repricing.
+
+### B2B insurer authorization boundary
+
+The B2B insurer picker returns active insurers and their configured display logos. An active record and logo do **not** prove that an insurer has approved every B2B product line, risk class, or customer segment. Operations must confirm product authorization and placement authority against the current insurer agreement before issuing a quote. The server validates active status and the configured HTTPS logo, but it does not infer product authorization from `is_active`.
