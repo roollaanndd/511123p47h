@@ -150,6 +150,8 @@ export interface QuotationSlipData {
 
   // Optional logo override (data URL or URL string)
   logoUrl?: string;
+  // INSURER mode uses the verified insurer asset as the document identity on every page.
+  brandMode?: 'SUREPATH' | 'INSURER';
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -212,17 +214,29 @@ export async function generateQuotationSlipPDF(data: QuotationSlipData): Promise
 
   // ─── Pre-load assets ────────────────────────────────────────────────────
   let logoDataUrl: string | null = null;
-  try {
-    logoDataUrl = await loadLogoAsDataUrl(data.logoUrl);
-  } catch (e) {
-    console.warn('QuotationSlip: logo load failed, falling back to drawn shield', e);
-  }
-
   let insurerLogoDataUrl: string | null = null;
-  if (data.insurerLogoUrl) {
+
+  if (data.brandMode === 'INSURER') {
+    if (!data.insurerLogoUrl) {
+      throw new Error('Logo resmi Penanggung belum dikonfigurasi. PDF tidak dibuat agar tidak memakai identitas merek yang salah.');
+    }
+    insurerLogoDataUrl = await loadImageAsDataUrl(data.insurerLogoUrl);
+    if (!insurerLogoDataUrl) {
+      throw new Error('Logo resmi Penanggung tidak dapat dimuat. Periksa URL logo dan izin akses aset sebelum mencetak PDF.');
+    }
+    // Every document header uses this exact insurer asset; never substitute SurePath.
+    logoDataUrl = insurerLogoDataUrl;
+  } else {
     try {
-      insurerLogoDataUrl = await loadImageAsDataUrl(data.insurerLogoUrl);
-    } catch { /* insurer logo is decorative — never blocks generation */ }
+      logoDataUrl = await loadLogoAsDataUrl(data.logoUrl);
+    } catch (e) {
+      console.warn('QuotationSlip: logo load failed, falling back to drawn shield', e);
+    }
+    if (data.insurerLogoUrl) {
+      try {
+        insurerLogoDataUrl = await loadImageAsDataUrl(data.insurerLogoUrl);
+      } catch { /* insurer logo is decorative for SurePath-branded documents */ }
+    }
   }
 
   // Unique QR — dark ink on white so any scanner reads it. NEVER fall back to
@@ -272,7 +286,7 @@ export async function generateQuotationSlipPDF(data: QuotationSlipData): Promise
     closingTitle, closingAccent, closingDesc,
     periodStartShort, periodEndShort, bankNameShort,
     totalPremiumClean, discountAmountClean,
-    logoDataUrl, insurerLogoDataUrl, qrDataUrl, eQuoteUrl, productType, coverPhotoDataUrl,
+    logoDataUrl, insurerLogoDataUrl, qrDataUrl, eQuoteUrl, productType, coverPhotoDataUrl, brandMode: data.brandMode,
   };
 
   drawCoverPage(doc, data, ctxShared);
@@ -287,7 +301,7 @@ export async function generateQuotationSlipPDF(data: QuotationSlipData): Promise
   doc.setProperties({
     title: `${data.quotationNumber} — Penawaran Asuransi`,
     subject: `Quotation Slip — ${data.insurerShort}`,
-    author: 'SurePath · PT. Ruang Proteksi Indonesia',
+    author: data.brandMode === 'INSURER' ? data.insurer : 'SurePath · PT. Ruang Proteksi Indonesia',
     creator: 'SurePath Digital Insurance Platform',
     keywords: 'SurePath, Quotation, Asuransi, ' + data.quotationNumber,
   });
@@ -353,7 +367,7 @@ function drawCoverPage(doc: any, d: QuotationSlipData, ctx: any) {
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7);
   doc.setTextColor(...COLOR.emeraldDeep);
-  doc.text('QUOTATION SLIP', PAGE_W - MARGIN, MARGIN + 2, { align: 'right' });
+  doc.text(ctx.brandMode === 'INSURER' ? 'INSURER QUOTATION' : 'QUOTATION SLIP', PAGE_W - MARGIN, MARGIN + 2, { align: 'right' });
   doc.setFontSize(9);
   doc.setFont('helvetica', 'bold');
   doc.text(d.quotationNumber, PAGE_W - MARGIN, MARGIN + 14, { align: 'right' });
