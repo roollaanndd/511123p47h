@@ -635,6 +635,8 @@ export interface AgentQuoteSource {
   ojkRate?: number;
   rateBand?: 'MIN' | 'MID' | 'MAX';
   providerName?: string;
+  insurerLogoUrl?: string;
+  brandMode?: 'SUREPATH' | 'INSURER';
   rows: { label: string; amount: number }[];
   discountAmount?: number;
   totalPremium: number;
@@ -647,7 +649,7 @@ export function fromAgentQuote(q: AgentQuoteSource): QuotationSlipData {
   const isMotor = productType === 'MOTOR';
   const productName = PRODUCT_NAMES[productType];
   const coverage = PRODUCT_COVERAGE[productType];
-  const insurerName = q.providerName || 'PT Zurich Asuransi Indonesia Tbk';
+  const insurerName = q.providerName?.trim() || 'Penanggung belum dipilih';
   const insurerShort = insurerName
     .replace(/^PT\.?\s*/i, '')
     .replace(/\s+(Asuransi|Tbk|Indonesia).*$/i, '')
@@ -662,11 +664,13 @@ export function fromAgentQuote(q: AgentQuoteSource): QuotationSlipData {
   // Setiap nilai di bawah sudah punya fallback-nya sendiri, jadi daftar kosong
   // tetap menghasilkan slip yang benar — bukan layar gagal.
   const rows = Array.isArray(q.rows) ? q.rows.filter(r => r && typeof r.label === 'string') : [];
-  const basePremium = rows.find(r => /premi\s+dasar|casco|base/i.test(r.label))?.amount ?? q.totalPremium * 0.9;
-  const addonRows = rows.filter(r => !/premi\s+dasar|casco|base|biaya|materai/i.test(r.label));
+  const feeRows = rows.filter(r => /admin|biaya polis|materai/i.test(r.label));
+  const premiumRows = rows.filter(r => !/admin|biaya polis|materai/i.test(r.label));
+  const basePremium = premiumRows.find(r => /premi\s+dasar|casco|base/i.test(r.label))?.amount ?? q.totalPremium * 0.9;
+  const addonRows = premiumRows.filter(r => !/premi\s+dasar|casco|base/i.test(r.label));
   const addonPremium = addonRows.reduce((s, r) => s + (r.amount ?? 0), 0);
-  const adminFee = rows.find(r => /admin/i.test(r.label))?.amount ?? 50000;
-  const stampDuty = rows.find(r => /materai/i.test(r.label))?.amount ?? 10000;
+  const adminFee = rows.filter(r => /admin|biaya polis/i.test(r.label)).reduce((s, r) => s + (Number(r.amount) || 0), 0);
+  const stampDuty = rows.filter(r => /materai/i.test(r.label)).reduce((s, r) => s + (Number(r.amount) || 0), 0);
   const discountAmount = q.discountAmount ?? 0;
   const netPremium = q.totalPremium - adminFee - stampDuty;
   const rate = q.ojkRate ? (q.ojkRate * 100).toFixed(2).replace('.', ',') + '%' : (sumInsured > 0 ? (basePremium / sumInsured * 100).toFixed(2).replace('.', ',') + '%' : '-');
@@ -695,6 +699,8 @@ export function fromAgentQuote(q: AgentQuoteSource): QuotationSlipData {
     previousPolicyNumber: '-',
     insurer: insurerName,
     insurerShort,
+    insurerLogoUrl: q.insurerLogoUrl,
+    brandMode: q.brandMode,
 
     agentName: q.agentName,
     agentPhone: q.agentPhone,
