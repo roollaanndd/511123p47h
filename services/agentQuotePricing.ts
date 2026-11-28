@@ -43,7 +43,7 @@ const finiteNonNegative = (value: unknown): number => {
 export function getInsurerQuoteDiscountCapPercent(config: InsurerQuotePricingConfig): number {
   const commissionRate = Math.min(0.25, finiteNonNegative(config.base_commission_rate));
   const configuredDiscount = finiteNonNegative(config.max_discount_rate);
-  return Math.min(15, Math.max(0, Math.min(configuredDiscount, commissionRate)) * 100);
+  return Math.min(25, Math.max(0, Math.min(configuredDiscount, commissionRate)) * 100);
 }
 
 /**
@@ -58,9 +58,9 @@ export function calculateInsurerQuotePricing(
 ): InsurerQuotePricing {
   const tariffPremium = finiteNonNegative(breakdown.total);
   const policyCost = finiteNonNegative(config.policy_cost);
-  const insurerStampDuty = finiteNonNegative(config.stamp_duty);
+  const insurerStampDuty = config.stamp_duty == null ? 10_000 : finiteNonNegative(config.stamp_duty);
   const discountCapRate = getInsurerQuoteDiscountCapPercent(config) / 100;
-  const requestedRate = Math.min(15, Math.max(0, finiteNonNegative(requestedDiscountPercent))) / 100;
+  const requestedRate = Math.min(25, Math.max(0, finiteNonNegative(requestedDiscountPercent))) / 100;
   const discountRate = Math.min(requestedRate, discountCapRate);
   const discountAmount = Math.round(tariffPremium * discountRate);
   const grossPremium = tariffPremium + policyCost + insurerStampDuty;
