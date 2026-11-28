@@ -111,8 +111,6 @@ const calcPremium = (product: ProductType, inputs: any, addonState?: AddonState)
   return 0;
 };
 
-const COMMISSION_RATE: Record<ProductType, number> = { CAR: 0.12, MOTORCYCLE: 0.12, TRAVEL: 0.15, PA: 0.20, MPAR: 0.15 };
-
 const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, agent }) => {
   const t = (en: string, id: string) => lang === Language.EN ? en : id;
   const toast = useToast();
@@ -364,7 +362,6 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
   const basePremium = product ? calcPremium(product, currentInputs(), (product === 'CAR' || product === 'MOTORCYCLE') ? addons : undefined) : 0;
   const discountAmount = Math.round(basePremium * Math.min(15, Math.max(0, discountRate)) / 100);
   const premium = Math.max(0, basePremium - discountAmount);
-  const commission = product ? Math.round(premium * COMMISSION_RATE[product]) : 0;
 
   const canProceedClient = clientMode === 'select'
     ? !!selectedClientId
@@ -539,7 +536,7 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
         zone: product === 'CAR' || product === 'MOTORCYCLE' ? getZone(carInputs.province) : 3,
         ojkRate: product === 'CAR' || product === 'MOTORCYCLE' ? (premium > 0 && vehiclePrice > 0 ? premium / vehiclePrice : 0.025) : 0,
         rateBand: 'MID',
-        providerName: 'PT Zurich Asuransi Indonesia Tbk',
+        providerName: 'Belum ditentukan — mengikuti ketersediaan produk dan akseptasi Penanggung',
         rows: quoteRows,
         totalPremium: premium,
       }), { sourceApp: 'AGENT', totalPremiumNumeric: premium });
@@ -1190,6 +1187,7 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
 
           <div className="bg-gradient-to-br from-slate-900 to-slate-800 dark:from-slate-800 dark:to-slate-900 rounded-[2rem] p-6 text-white shadow-2xl">
             <p className="text-slate-400 text-xs font-black uppercase tracking-widest mb-1">Penawaran Kendaraan</p>
+            <p className="mb-3 text-[11px] leading-relaxed text-amber-200">{t('Indicative estimate only. Final premium, coverage, eligibility and documents depend on the selected insurer and underwriting approval. This is not a policy or proof of cover.', 'Estimasi indikatif. Premi final, jaminan, kelayakan, dan dokumen mengikuti perusahaan asuransi yang dipilih serta persetujuan underwriting. Ini bukan polis atau bukti pertanggungan.')}</p>
             <label className="block text-xs text-slate-300 mb-1">{t('Customer name (optional)', 'Nama calon nasabah (opsional)')}</label>
             <input type="text" value={onetimeName} onChange={e => setOnetimeName(e.target.value)} placeholder={t('Enter name only if needed', 'Isi nama jika diperlukan')} className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-emerald-400/50" />
             <p className="text-slate-400 text-sm mt-0.5">{carInputs.brand} {carInputs.model} ({carInputs.year})</p>
@@ -1241,15 +1239,11 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
               <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Est. Premi Tahunan</p>
             <p className="font-black text-3xl text-white mt-0.5">{formatIDR(premium)}</p>
             </div>
-            <div className="mt-3 bg-white/10 rounded-2xl px-4 py-3 flex items-center justify-between">
-              <span className="text-slate-300 text-xs font-bold uppercase tracking-widest">Komisi Anda</span>
-              <span className="font-black text-emerald-400">{formatIDR(commission)}</span>
-            </div>
           </div>
 
           <button
             onClick={handlePrintQuote}
-            disabled={printingQuote || !carInputs.brand || !carInputs.model || carInputs.price <= 0}
+            disabled={printingQuote || !carInputs.province || !carInputs.brand || !carInputs.model || carInputs.price <= 0}
             className="h-12 px-5 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-500 text-white font-bold text-sm shadow-lg shadow-emerald-500/30 active:scale-95 transition-all disabled:opacity-50 w-full flex items-center justify-center gap-2"
           >
             {printingQuote ? <RefreshCw size={14} className="animate-spin" /> : <Download size={14} />}
@@ -1291,6 +1285,7 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
           {/* Summary Card */}
           <div className="bg-gradient-to-br from-slate-900 to-slate-800 dark:from-slate-800 dark:to-slate-900 rounded-[2rem] p-6 text-white shadow-2xl">
             <p className="text-slate-400 text-xs font-black uppercase tracking-widest mb-1">{t('Quote Summary', 'Ringkasan Penawaran')}</p>
+            <p className="mb-3 text-[11px] leading-relaxed text-amber-200">{t('Indicative estimate only. Final premium, coverage, eligibility and documents depend on the selected insurer and underwriting approval. This is not a policy or proof of cover.', 'Estimasi indikatif. Premi final, jaminan, kelayakan, dan dokumen mengikuti perusahaan asuransi yang dipilih serta persetujuan underwriting. Ini bukan polis atau bukti pertanggungan.')}</p>
             <label className="block text-xs text-slate-300 mb-1">{t('Customer name (optional)', 'Nama calon nasabah (opsional)')}</label>
             <input type="text" value={onetimeName} onChange={e => setOnetimeName(e.target.value)} placeholder={t('Enter name only if needed', 'Isi nama jika diperlukan')} className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-emerald-400/50" />
             <p className="text-slate-400 text-sm mt-0.5">{product}</p>
@@ -1328,10 +1323,6 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
             <div className="mt-5 pt-4 border-t border-white/10">
               <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">{t('Est. Annual Premium', 'Est. Premi Tahunan')}</p>
               <p className="font-black text-3xl text-white mt-0.5">{formatIDR(premium)}</p>
-            </div>
-            <div className="mt-3 bg-white/10 rounded-2xl px-4 py-3 flex items-center justify-between">
-              <span className="text-slate-300 text-xs font-bold uppercase tracking-widest">{t('Your Commission', 'Komisi Anda')}</span>
-              <span className="font-black text-emerald-400">{formatIDR(commission)}</span>
             </div>
           </div>
 
