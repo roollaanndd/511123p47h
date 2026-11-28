@@ -187,7 +187,8 @@ const ADDON_NAMES: Array<[keyof FleetAddOns, string]> = [
 export function fromB2BUnitOrder(o: B2BUnitQuoteSource): QuotationSlipData {
   const isMotor = o.vehicleClass !== 'HEAVY_EQUIPMENT';
   const coverage: FleetCoverage = o.line.coverage;
-  const insurerName = o.insurerName || 'PT Zurich Asuransi Indonesia Tbk';
+  const insurerSelected = Boolean(o.insurerName?.trim());
+  const insurerName = insurerSelected ? o.insurerName!.trim() : 'Penanggung belum dipilih';
   const insurerShort = insurerShortName(insurerName);
   const productName = isMotor
     ? `Asuransi Kendaraan Bermotor — ${coverage === 'TLO' ? 'TLO' : 'Comprehensive'}`
@@ -222,6 +223,7 @@ export function fromB2BUnitOrder(o: B2BUnitQuoteSource): QuotationSlipData {
     insurer: insurerName,
     insurerShort,
     ...(o.insurerLogoUrl ? { insurerLogoUrl: o.insurerLogoUrl } : {}),
+    brandMode: insurerSelected ? 'INSURER' : 'SUREPATH',
 
     agentName: 'Tim B2B SurePath',
     agentCode: 'B2B',
@@ -291,9 +293,11 @@ export function fromB2BUnitOrder(o: B2BUnitQuoteSource): QuotationSlipData {
     ],
 
     termsList: [
-      `Penawaran ini untuk penutupan asuransi atas kendaraan ${vehicleSummary} dengan penempatan pada ${insurerName}, mengikuti syarat dan kondisi Polis Standar Asuransi Kendaraan Bermotor Indonesia beserta klausul terlampir.`,
+      insurerSelected
+        ? `Penawaran ini untuk penutupan asuransi atas kendaraan ${vehicleSummary} dengan penempatan pada ${insurerName}, mengikuti syarat dan kondisi Polis Standar Asuransi Kendaraan Bermotor Indonesia beserta klausul terlampir.`
+        : `Penawaran indikatif untuk kendaraan ${vehicleSummary}. Penanggung belum dipilih; penempatan dan penerbitan polis menunggu pilihan serta akseptasi penanggung.`,
       'Penawaran berlaku selama 30 (tiga puluh) hari sejak tanggal penerbitan. Untuk menghindari terputusnya jaminan, konfirmasi dan pembayaran disarankan sebelum tanggal mulai pertanggungan.',
-      `Rate premi menggunakan acuan tarif OJK (SEOJK 6/2017); rate ${rate}, band ${o.line.category ?? '-'}, zone ${o.line.zone}. Premi final mengikuti konfirmasi tertulis dari Penanggung.`,
+      `Perhitungan menggunakan rate set B2B armada yang aktif; rate ${rate}, kategori ${o.line.category ?? '-'}, zona ${o.line.zone}. Premi final mengikuti validasi server dan konfirmasi tertulis dari Penanggung.`,
       'Polis diterbitkan setelah subjectivity terpenuhi, konfirmasi penutupan, dan pembayaran premi diterima.',
       'Dokumen ini bukan surat konfirmasi penutupan; seluruh konfirmasi dan akseptasi merupakan kewenangan penuh Penanggung.',
     ],
