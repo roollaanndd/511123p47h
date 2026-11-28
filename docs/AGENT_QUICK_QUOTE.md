@@ -37,3 +37,14 @@ The existing `create_policy_order` gateway recalculates the payable total from s
 - OJK zone mapping is tested for representative provinces in `services/__tests__/surepath.test.ts`.
 - Vehicle quick quote requires a supported registration province before proceeding or generating a quotation slip.
 - The Agent Quote Builder must not call direct policy-creation or commission-creation APIs.
+
+
+## B2B quotation parity
+
+B2B has three distinct quote paths and must not be forced through the agent's single-vehicle OJK calculator:
+
+- **B2B Unit Order:** uses the dedicated B2B fleet rating engine for one vehicle. The quote PDF can be downloaded before batch submission. An insurer must be selected for insurer-branded output; the selected insurer's official logo is mandatory. No Zurich/default insurer is invented when no insurer is selected.
+- **B2B Bulk Import:** keeps the detailed per-unit Excel quotation and adds an insurer-branded PDF executive summary. The PDF totals come from the same client-side fleet engine used for the review screen; every unit is recalculated by the gateway when the batch is submitted. The PDF is explicitly indicative and is not a policy or proof of cover.
+- **Corporate B2B submissions:** the submission form currently captures aggregate fleet information and other underwritten products, not a complete rated per-unit schedule. Admin/operations must select an active insurer and enter the premium returned by the insurer/underwriter. The gateway resolves the official insurer name and HTTPS logo from `sp_insurers`, rejects inactive insurers or missing logos, and stores the resolved logo metadata in the quote's coverage JSON. The customer PDF uses that logo; internal metadata is hidden from customer coverage details.
+
+For fleet submissions that do not include a validated unit schedule, do not calculate an OJK rate from aggregate fleet value. Use B2B Unit Order or Bulk Import for per-vehicle calculations and server-side repricing.
