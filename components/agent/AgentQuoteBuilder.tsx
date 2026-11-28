@@ -3,9 +3,10 @@ import { ChevronLeft, ChevronRight, CheckCircle2, Send, RefreshCw, FileCheck, Us
 import { Language } from '../../types';
 import { formatIDR } from '../car-wizard/WizardUI';
 import {
-  saveQuote, addClient,
-  type SpClient, type SpQuote
+  saveQuote, addClient, listActiveInsurers, getInsurerProducts, getAvailableInsurerProducts,
+  type SpClient, type SpQuote, type SpInsurer, type SpInsurerProduct
 } from '../../services/supabaseService';
+import { calculateInsurerQuotePricing, getInsurerQuoteDiscountCapPercent } from '../../services/agentQuotePricing';
 import { publishAndDownloadQuotation } from '../../services/quotationService';
 import { fromAgentQuote } from '../../services/quotationSlipAdapter';
 // v2.7.50 — pintu masuk STNK memakai kartu pindai yang sama dengan portal
@@ -41,7 +42,7 @@ interface Props {
 type ProductType = 'CAR' | 'MOTORCYCLE' | 'TRAVEL' | 'PA' | 'MPAR';
 // UX v1.50.0: product-first flow — pilih produk dulu, data klien belakangan
 // (step 'client' pindah ke setelah 'inputs', dengan quick-add klien inline).
-type Step = 'product' | 'inputs' | 'client' | 'quote_summary' | 'summary' | 'success';
+type Step = 'product' | 'insurer' | 'inputs' | 'client' | 'quote_summary' | 'summary' | 'success';
 type QuoteTab = 'new' | 'orders';
 type QuoteMode = 'penawaran' | 'beli' | null;
 type ClientMode = 'select' | 'new' | 'onetime';
@@ -124,6 +125,7 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
   const [clientMode, setClientMode] = useState<ClientMode>(clients.length > 0 ? 'select' : 'new');
   const [selectedClientId, setSelectedClientId] = useState<string>('');
   const [onetimeName, setOnetimeName] = useState('');
+  const [onetimePhone, setOnetimePhone] = useState('');
   // Quick-add klien inline — tersimpan otomatis ke sp_clients (CRM) tanpa
   // harus keluar ke tab Klien dulu.
   const [localClients, setLocalClients] = useState<SpClient[]>(clients);
@@ -132,7 +134,13 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
   const [addingClient, setAddingClient] = useState(false);
   const [product, setProduct] = useState<ProductType | null>(null);
   const [quoteMode, setQuoteMode] = useState<QuoteMode>(null);
-  const [discountRate, setDiscountRate] = useState(0); // percent, capped at 15% for quote estimates
+  const [discountRate, setDiscountRate] = useState(0); // percent, capped by the selected insurer's allowance
+  const [insurerOptions, setInsurerOptions] = useState<SpInsurer[]>([]);
+  const [selectedInsurerId, setSelectedInsurerId] = useState('');
+  const [selectedInsurerProduct, setSelectedInsurerProduct] = useState<SpInsurerProduct | null>(null);
+  const [loadingInsurers, setLoadingInsurers] = useState(false);
+  const [loadingInsurerProduct, setLoadingInsurerProduct] = useState(false);
+  const [insurerLoadError, setInsurerLoadError] = useState('');
   const [convertQuoteToPurchase, setConvertQuoteToPurchase] = useState(false);
 
   // v2.7.50 — STNK OCR memakai layanan yang sama dengan portal Nasabah.
@@ -196,6 +204,74 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
   };
 
   useEffect(() => { setLocalClients(clients); }, [clients]);
+
+  // Insurer-first Quick Quote: show only active partners with an active product
+  // for this vehicle type. Official insurer assets come from sp_insurers.logo_url.
+  useEffect(() => {
+    if (step !== 'insurer' || quoteMode !== 'penawaran' || (product !== 'CAR' && product !== 'MOTORCYCLE')) return;
+    let cancelled = false;
+    setLoadingInsurers(true);
+    setInsurerLoadError('');
+    setInsurerOptions([]);
+    Promise.all([listActiveInsurers(), getInsurerProducts()])
+      .then(([insurers, products]) => {
+        if (cancelled) return;
+        const activeInsurers = (insurers ?? []).filter(insurer => insurer.is_active);
+        const activeIds = new Set(activeInsurers.map(insurer => insurer.id));
+        const supportedIds = new Set((products ?? [])
+          .filter(row => row.is_active && String(row.product_type).toUpperCase() === product && activeIds.has(row.insurer_id))
+          .map(row => row.insurer_id));
+        const options = activeInsurers.filter(insurer => supportedIds.has(insurer.id));
+        setInsurerOptions(options);
+        if (selectedInsurerId && !supportedIds.has(selectedInsurerId)) {
+          setSelectedInsurerId('');
+          setSelectedInsurerProduct(null);
+        }
+        if (options.length === 0) setInsurerLoadError(t('No active insurer product is configured for this vehicle type yet.', 'Belum ada produk asuransi aktif yang dikonfigurasi untuk jenis kendaraan ini.'));
+      })
+      .catch(error => {
+        console.error('Unable to load insurers for quick quote:', error);
+        if (!cancelled) setInsurerLoadError(t('Insurer list could not be loaded. Please try again.', 'Daftar perusahaan asuransi gagal dimuat. Silakan coba lagi.'));
+      })
+      .finally(() => { if (!cancelled) setLoadingInsurers(false); });
+    return () => { cancelled = true; };
+  }, [step, quoteMode, product]);
+
+  // Re-check the chosen insurer against product, coverage and maximum vehicle age.
+  useEffect(() => {
+    if (step !== 'quote_summary' || quoteMode !== 'penawaran' || (product !== 'CAR' && product !== 'MOTORCYCLE') || !selectedInsurerId) {
+      setSelectedInsurerProduct(null);
+      return;
+    }
+    let cancelled = false;
+    setLoadingInsurerProduct(true);
+    setSelectedInsurerProduct(null);
+    const vehicleAge = Math.max(0, new Date().getFullYear() - carInputs.year);
+    getAvailableInsurerProducts(product, carInputs.coverage, vehicleAge)
+      .then(({ products }) => {
+        if (cancelled) return;
+        const matches = (products ?? []).filter(row => row.insurer_id === selectedInsurerId);
+        const chosen = matches.find(row => String(row.vehicle_coverage).toUpperCase() === carInputs.coverage)
+          ?? matches.find(row => String(row.vehicle_coverage).toUpperCase() === 'ALL')
+          ?? null;
+        setSelectedInsurerProduct(chosen);
+      })
+      .catch(error => {
+        console.error('Unable to verify selected insurer product:', error);
+        if (!cancelled) setSelectedInsurerProduct(null);
+      })
+      .finally(() => { if (!cancelled) setLoadingInsurerProduct(false); });
+    return () => { cancelled = true; };
+  }, [step, quoteMode, product, selectedInsurerId, carInputs.coverage, carInputs.year]);
+
+  useEffect(() => {
+    if (!selectedInsurerProduct) {
+      setDiscountRate(0);
+      return;
+    }
+    const cap = getInsurerQuoteDiscountCapPercent(selectedInsurerProduct);
+    setDiscountRate(current => Math.min(current, cap));
+  }, [selectedInsurerProduct]);
 
   const [carInputs, setCarInputs] = useState<CarInputs>({ province: '', brand: '', model: '', year: new Date().getFullYear(), price: 0, coverage: 'COMPREHENSIVE' });
   const [addons, setAddons] = useState<AddonState>({ flood: false, earthquake: false, riot: false, tplLimit: 0, paDriver: false, paPassengerSeats: 0 });
@@ -290,6 +366,10 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
   const clientName = clientMode === 'select'
     ? (localClients.find(c => c.id === selectedClientId)?.name ?? '')
     : clientMode === 'new' ? newClient.name : onetimeName;
+  const clientPhone = clientMode === 'select'
+    ? (localClients.find(c => c.id === selectedClientId)?.phone ?? '')
+    : clientMode === 'new' ? newClient.phone : onetimePhone;
+  const selectedInsurer = insurerOptions.find(insurer => insurer.id === selectedInsurerId) ?? null;
 
   const clientId = clientMode === 'select'
     ? selectedClientId
@@ -359,9 +439,26 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
     return {};
   };
 
-  const basePremium = product ? calcPremium(product, currentInputs(), (product === 'CAR' || product === 'MOTORCYCLE') ? addons : undefined) : 0;
-  const discountAmount = Math.round(basePremium * Math.min(15, Math.max(0, discountRate)) / 100);
-  const premium = Math.max(0, basePremium - discountAmount);
+  const isVehicleQuickQuote = quoteMode === 'penawaran' && (product === 'CAR' || product === 'MOTORCYCLE');
+  const vehiclePremiumBreakdown = isVehicleQuickQuote && carInputs.province && carInputs.price > 0
+    ? calcOjkPremium(product === 'MOTORCYCLE' ? 'MOTORCYCLE' : 'CAR', carInputs.coverage, carInputs.price, getZone(carInputs.province), {
+        flood: addons.flood, earthquake: addons.earthquake, riot: addons.riot,
+        tplLimit: addons.tplLimit, paDriver: addons.paDriver, paPassengerSeats: addons.paPassengerSeats,
+      })
+    : null;
+  const insurerQuotePricing = vehiclePremiumBreakdown && selectedInsurerProduct
+    ? calculateInsurerQuotePricing(vehiclePremiumBreakdown, selectedInsurerProduct, discountRate)
+    : null;
+  const discountCapPercent = selectedInsurerProduct ? getInsurerQuoteDiscountCapPercent(selectedInsurerProduct) : 0;
+  const basePremium = isVehicleQuickQuote
+    ? (insurerQuotePricing?.grossPremium ?? 0)
+    : (product ? calcPremium(product, currentInputs(), (product === 'CAR' || product === 'MOTORCYCLE') ? addons : undefined) : 0);
+  const discountAmount = isVehicleQuickQuote
+    ? (insurerQuotePricing?.discountAmount ?? 0)
+    : Math.round(basePremium * Math.min(15, Math.max(0, discountRate)) / 100);
+  const premium = isVehicleQuickQuote
+    ? (insurerQuotePricing?.totalPremium ?? 0)
+    : Math.max(0, basePremium - discountAmount);
 
   const canProceedClient = clientMode === 'select'
     ? !!selectedClientId
@@ -455,6 +552,10 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
 
   const handleSaveQuote = async () => {
     if (!product) return;
+    if (isVehicleQuickQuote && (!selectedInsurerProduct || !selectedInsurer?.logo_url || !insurerQuotePricing)) {
+      toast.error(t('Select an eligible insurer with an official logo before saving this quotation.', 'Pilih perusahaan asuransi yang memenuhi syarat dan memiliki logo resmi sebelum menyimpan penawaran.'));
+      return;
+    }
     setSaving(true);
     const q = await saveQuote({
       agent_id: agentId,
@@ -463,7 +564,44 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
       product_type: product,
       status: 'DRAFT',
       premium_estimate: premium,
-      quote_data: { ...currentInputs(), ...(product === 'CAR' || product === 'MOTORCYCLE' ? { addons } : {}), discount_rate: discountRate / 100, discount_amount: discountAmount, base_premium: basePremium },
+      quote_data: {
+        ...currentInputs(),
+        ...(product === 'CAR' || product === 'MOTORCYCLE' ? { addons } : {}),
+        customer_phone: clientPhone,
+        insurer: selectedInsurer ? { id: selectedInsurer.id, code: selectedInsurer.code, name: selectedInsurer.name, logo_url: selectedInsurer.logo_url ?? null } : null,
+        insurer_product: selectedInsurerProduct ? {
+          id: selectedInsurerProduct.id,
+          insurer_id: selectedInsurerProduct.insurer_id,
+          product_type: selectedInsurerProduct.product_type,
+          vehicle_coverage: selectedInsurerProduct.vehicle_coverage,
+          max_vehicle_age_years: selectedInsurerProduct.max_vehicle_age_years ?? null,
+          base_commission_rate: selectedInsurerProduct.base_commission_rate,
+          max_discount_rate: selectedInsurerProduct.max_discount_rate,
+          policy_cost: selectedInsurerProduct.policy_cost,
+          stamp_duty: selectedInsurerProduct.stamp_duty,
+        } : null,
+        pricing_snapshot: vehiclePremiumBreakdown && insurerQuotePricing ? {
+          source: 'OJK rate engine + active insurer product configuration',
+          zone: vehiclePremiumBreakdown.zone,
+          category: vehiclePremiumBreakdown.category,
+          rate: vehiclePremiumBreakdown.rate,
+          base_premium: vehiclePremiumBreakdown.basePremium,
+          addon_premium: vehiclePremiumBreakdown.addonPremium,
+          addon_details: vehiclePremiumBreakdown.addonsDetail,
+          admin_fee: vehiclePremiumBreakdown.adminFee,
+          tariff_stamp_duty: vehiclePremiumBreakdown.stampDuty,
+          insurer_policy_cost: insurerQuotePricing.policyCost,
+          insurer_stamp_duty: insurerQuotePricing.insurerStampDuty,
+          gross_premium: insurerQuotePricing.grossPremium,
+          discount_rate: insurerQuotePricing.discountRate,
+          discount_amount: insurerQuotePricing.discountAmount,
+          total_premium: insurerQuotePricing.totalPremium,
+          calculated_at: new Date().toISOString(),
+        } : null,
+        discount_rate: isVehicleQuickQuote ? (insurerQuotePricing?.discountRate ?? 0) : discountRate / 100,
+        discount_amount: discountAmount,
+        base_premium: basePremium,
+      },
     });
     setSaving(false);
     if (q) {
@@ -477,6 +615,10 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
 
   const handlePrintQuote = async () => {
     if (!product) return;
+    if (isVehicleQuickQuote && (!selectedInsurerProduct || !selectedInsurer?.logo_url || !insurerQuotePricing || !vehiclePremiumBreakdown)) {
+      toast.error(t('An eligible insurer product and its official logo are required before PDF generation.', 'Produk asuransi yang memenuhi syarat dan logo resminya wajib tersedia sebelum membuat PDF.'));
+      return;
+    }
     setPrintingQuote(true);
     try {
       // Build rows based on product type
@@ -489,7 +631,7 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
 
       if (product === 'CAR' || product === 'MOTORCYCLE') {
         const zone = getZone(carInputs.province);
-        const breakdown = calcOjkPremium(product === 'MOTORCYCLE' ? 'MOTORCYCLE' : 'CAR', carInputs.coverage, carInputs.price, zone, {
+        const breakdown = vehiclePremiumBreakdown ?? calcOjkPremium(product === 'MOTORCYCLE' ? 'MOTORCYCLE' : 'CAR', carInputs.coverage, carInputs.price, zone, {
           flood: addons.flood, earthquake: addons.earthquake, riot: addons.riot,
           tplLimit: addons.tplLimit, paDriver: addons.paDriver, paPassengerSeats: addons.paPassengerSeats,
         });
@@ -501,8 +643,10 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
           ...(breakdown.addonsDetail.tpl > 0        ? [{ label: 'TPL',                  amount: breakdown.addonsDetail.tpl }]        : []),
           ...(breakdown.addonsDetail.paDriver > 0   ? [{ label: 'PA Pengemudi',         amount: breakdown.addonsDetail.paDriver }]   : []),
           ...(breakdown.addonsDetail.paPassenger > 0? [{ label: 'PA Penumpang',         amount: breakdown.addonsDetail.paPassenger }]: []),
-          { label: 'Biaya Admin', amount: breakdown.adminFee },
-          { label: 'Materai', amount: breakdown.stampDuty },
+          { label: 'Biaya Administrasi', amount: breakdown.adminFee },
+          { label: 'Materai Tarif Dasar', amount: breakdown.stampDuty },
+          ...(selectedInsurerProduct?.policy_cost ? [{ label: 'Biaya Polis Penanggung', amount: selectedInsurerProduct.policy_cost }] : []),
+          ...(selectedInsurerProduct?.stamp_duty ? [{ label: 'Materai Penanggung', amount: selectedInsurerProduct.stamp_duty }] : []),
         ];
         vehicleBrand = carInputs.brand;
         vehicleModel = carInputs.model;
@@ -523,7 +667,7 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
         quoteNumber,
         validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
         clientName: clientName || t('Prospective customer', 'Calon nasabah'),
-        clientPhone: '',
+        clientPhone,
         agentName: agent?.name ?? 'Mitra SurePath',
         agentCode: agent?.agent_code ?? '',
         agentPhone: agent?.phone ?? agent?.whatsapp ?? '',
@@ -534,10 +678,13 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
         vehiclePrice,
         coverageType,
         zone: product === 'CAR' || product === 'MOTORCYCLE' ? getZone(carInputs.province) : 3,
-        ojkRate: product === 'CAR' || product === 'MOTORCYCLE' ? (premium > 0 && vehiclePrice > 0 ? premium / vehiclePrice : 0.025) : 0,
+        ojkRate: product === 'CAR' || product === 'MOTORCYCLE' ? (vehiclePremiumBreakdown?.rate ?? 0) : 0,
         rateBand: 'MID',
-        providerName: 'Belum ditentukan — mengikuti ketersediaan produk dan akseptasi Penanggung',
+        providerName: isVehicleQuickQuote ? (selectedInsurer?.name ?? '') : 'Penanggung belum dipilih',
+        insurerLogoUrl: isVehicleQuickQuote ? (selectedInsurer?.logo_url ?? undefined) : undefined,
+        brandMode: isVehicleQuickQuote ? 'INSURER' : 'SUREPATH',
         rows: quoteRows,
+        discountAmount,
         totalPremium: premium,
       }), { sourceApp: 'AGENT', totalPremiumNumeric: premium });
       toast.success(t('Quotation slip generated!', 'Slip penawaran berhasil dibuat!'));
@@ -554,6 +701,10 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
     setClientMode(localClients.length > 0 ? 'select' : 'new');
     setSelectedClientId('');
     setOnetimeName('');
+    setOnetimePhone('');
+    setSelectedInsurerId('');
+    setSelectedInsurerProduct(null);
+    setInsurerOptions([]);
     setNewClient({ name: '', phone: '' });
     setCreatedClientId('');
     setProduct(null);
@@ -566,10 +717,12 @@ const AgentQuoteBuilder: React.FC<Props> = ({ agentId, clients, lang, onBack, ag
     setSavedQuote(null);
   };
 
-  const stepIndex = quoteMode === 'penawaran'
-    ? ['product', 'inputs', 'summary'].indexOf(step === 'quote_summary' ? 'summary' : step)
-    : ['product', 'inputs', 'client', 'summary'].indexOf(step === 'quote_summary' ? 'summary' : step);
-  const totalSteps = quoteMode === 'penawaran' ? 3 : 4;
+  const stepIndex = isVehicleQuickQuote
+    ? ['product', 'insurer', 'inputs', 'client', 'summary'].indexOf(step === 'quote_summary' ? 'summary' : step)
+    : quoteMode === 'penawaran'
+      ? ['product', 'inputs', 'summary'].indexOf(step === 'quote_summary' ? 'summary' : step)
+      : ['product', 'inputs', 'client', 'summary'].indexOf(step === 'quote_summary' ? 'summary' : step);
+  const totalSteps = isVehicleQuickQuote ? 5 : quoteMode === 'penawaran' ? 3 : 4;
 
   const inputClass = "w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500/60 transition-all";
   const labelClass = "block text-xs font-medium text-gray-500 mb-1.5";
