@@ -155,20 +155,49 @@ ${UNTRUSTED_INPUT_NOTICE}`;
 
     // ─── save_quote — agent saves their quote ──────────────────────────────
     case 'save_quote': {
-        if (!caller.spUser) return json({ error: 'No profile' }, 403);
-        // FIX v1.50.0: use canonical sp_users.id so the quote shows up in the
-        // agent's own list (which queries by sp_users.id).
-        // FIX: the payload column is `quote_data` (NOT NULL). This wrote to
-        // `details`, which does not exist on sp_quotes — so every save was
-        // rejected and the agent's quote builder reported a save failure.
+        if (!caller.spUser || caller.spUser.role !== 'AGENT') {
+          return json({ error: 'Forbidden: verified agent account required' }, 403);
+        }
+        const allowed = await checkRateLimit(`user:${caller.ownerId}`, 60);
+        if (!allowed) return json({ error: 'Rate limit exceeded. Coba lagi dalam 1 jam.' }, 429);
+
+        const productType = String(params.product_type ?? '').toUpperCase();
+        const allowedProducts = new Set(['CAR', 'MOTOR', 'MOTORCYCLE', 'TRAVEL', 'PA', 'MPAR']);
+        if (!allowedProducts.has(productType)) return json({ error: 'Invalid quote product type' }, 400);
+
+        const premiumEstimate = Number(params.premium_estimate);
+        if (!Number.isFinite(premiumEstimate) || premiumEstimate < 0) {
+          return json({ error: 'Invalid quote premium estimate' }, 400);
+        }
+
+        const quoteData = params.quote_data ?? {};
+        if (!quoteData || typeof quoteData !== 'object' || Array.isArray(quoteData)) {
+          return json({ error: 'Invalid quote data' }, 400);
+        }
+
+        // Customer records are optional for quotes. If an existing customer is
+        // attached, prove that the record belongs to this agent before storing it.
+        const clientId = params.client_id ? String(params.client_id) : null;
+        if (clientId) {
+          const { data: client, error: clientError } = await db.from('sp_clients')
+            .select('id')
+            .eq('id', clientId)
+            .eq('agent_id', caller.ownerId)
+            .maybeSingle();
+          if (clientError) { const _err = safeError(clientError); return json(_err.body, _err.status); }
+          if (!client) return json({ error: 'Client not found for this agent' }, 404);
+        }
+
+        // The caller identity is authoritative. A client cannot choose another
+        // agent_id or mark an unsent quote as SENT/CONVERTED.
         const { data, error } = await db.from('sp_quotes').insert({
           agent_id: caller.ownerId,
-          client_id: params.client_id ?? null,
-          client_name: String(params.client_name ?? ''),
-          product_type: String(params.product_type ?? 'CAR'),
-          status: String(params.status ?? 'SENT'),
-          premium_estimate: Number(params.premium_estimate ?? 0),
-          quote_data: params.quote_data ?? params.details ?? {},
+          client_id: clientId,
+          client_name: String(params.client_name ?? '').trim().slice(0, 120),
+          product_type: productType,
+          status: 'DRAFT',
+          premium_estimate: premiumEstimate,
+          quote_data: quoteData,
         }).select().single();
         if (error) { const _err = safeError(error); return json(_err.body, _err.status); }
         return json({ data });
