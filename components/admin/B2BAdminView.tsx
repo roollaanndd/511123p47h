@@ -396,6 +396,13 @@ const B2BCard: React.FC<{ sub: SpB2BSubmission; onUpdated: () => void; onToast: 
                 <div className="min-w-0">
                   <p className="text-xs font-bold text-ds-ink dark:text-white truncate">{a.insurer?.name ?? 'Insurer'}</p>
                   <p className="text-[10px] text-ds-ink3">{a.decision_notes || (a.authorization_confirmed ? 'Product authorization confirmed' : 'Authorization not confirmed')}</p>
+                  {a.quote && (
+                    <div className="mt-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/20 px-2 py-1.5">
+                      <p className="text-[11px] font-black text-emerald-800 dark:text-emerald-300">{fmtIDR(Number(a.quote.premium_amount || 0))}</p>
+                      <p className="text-[9px] text-emerald-700 dark:text-emerald-400">Valid until {fmtDate(a.quote.valid_until)} · {a.quote.status}</p>
+                      {a.quote.terms && <p className="mt-1 text-[10px] text-ds-ink3 line-clamp-2">{a.quote.terms}</p>}
+                    </div>
+                  )}
                 </div>
                 <Badge cls={a.status === 'QUOTED' ? B2B_STATUS_CLS.QUOTED : a.status === 'DECLINED' ? B2B_STATUS_CLS.REJECTED : B2B_STATUS_CLS.REVIEWING} label={a.status} />
               </div>
