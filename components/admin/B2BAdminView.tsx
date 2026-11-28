@@ -37,7 +37,13 @@ import {
 } from '../../services/supabaseService';
 import ModuleIcon from '../shared/ModuleIcon';
 import { useConfirmDialog, usePromptDialog } from '../ui';
-import { getB2BBulkBatch, type SpB2BBatchItem } from '../../services/b2bBulk';
+import {
+  getB2BBulkBatch,
+  adminAssignB2BSubmissionInsurer,
+  adminListB2BSubmissionInsurers,
+  type SpB2BBatchItem,
+  type SpB2BSubmissionInsurerAssignment,
+} from '../../services/b2bBulk';
 import AddUserWizard, { type WizardCredential } from './AddUserWizard';
 import { FIELD_MATRIX } from './wizard/kycMatrix';
 
@@ -259,6 +265,46 @@ const B2BCard: React.FC<{ sub: SpB2BSubmission; onUpdated: () => void; onToast: 
   const [status, setStatus] = useState(sub.status);
   const [notes, setNotes] = useState(sub.admin_notes ?? '');
   const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [insurerAssignments, setInsurerAssignments] = useState<SpB2BSubmissionInsurerAssignment[]>([]);
+  const [assignmentInsurers, setAssignmentInsurers] = useState<SpInsurer[]>([]);
+  const [selectedAssignmentInsurer, setSelectedAssignmentInsurer] = useState('');
+  const [authorizationConfirmed, setAuthorizationConfirmed] = useState(false);
+  const [assigningInsurer, setAssigningInsurer] = useState(false);
+
+  const loadInsurerAssignments = async () => {
+    try {
+      const [assignments, activeInsurers] = await Promise.all([
+        adminListB2BSubmissionInsurers(sub.id),
+        listActiveInsurers(),
+      ]);
+      setInsurerAssignments(assignments);
+      setAssignmentInsurers(activeInsurers);
+    } catch (error) {
+      console.error('Unable to load B2B insurer assignments:', error);
+    }
+  };
+
+  useEffect(() => { void loadInsurerAssignments(); }, [sub.id]);
+
+  const assignInsurer = async () => {
+    if (!selectedAssignmentInsurer || !authorizationConfirmed || assigningInsurer) return;
+    setAssigningInsurer(true);
+    const result = await adminAssignB2BSubmissionInsurer({
+      submissionId: sub.id,
+      insurerId: selectedAssignmentInsurer,
+      authorizationConfirmed,
+    });
+    setAssigningInsurer(false);
+    if (!result) {
+      onToast('Insurer assignment failed. Check authorization and try again.');
+      return;
+    }
+    setSelectedAssignmentInsurer('');
+    setAuthorizationConfirmed(false);
+    await loadInsurerAssignments();
+    onToast('Insurer assigned. The submission is now visible in its insurer portal.');
+    onUpdated();
+  };
 
   const changeStatus = async (s: string) => {
     setStatus(s as SpB2BSubmission['status']);
@@ -332,6 +378,58 @@ const B2BCard: React.FC<{ sub: SpB2BSubmission; onUpdated: () => void; onToast: 
           </div>
         </div>
       )}
+
+      {/* Insurer routing — explicit product authorization attestation is required. */}
+      <div className="rounded-xl border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/50 dark:bg-emerald-950/10 p-3 space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-2xs font-black uppercase tracking-widest text-ds-ink3">Insurer routing</p>
+          <span className="text-[10px] text-ds-ink3">{insurerAssignments.length} assigned</span>
+        </div>
+        {insurerAssignments.length > 0 ? (
+          <div className="space-y-1.5">
+            {insurerAssignments.map(a => (
+              <div key={a.id} className="flex items-center justify-between gap-2 rounded-lg bg-white dark:bg-ds-card2 px-2.5 py-2">
+                <div className="min-w-0">
+                  <p className="text-xs font-bold text-ds-ink dark:text-white truncate">{a.insurer?.name ?? 'Insurer'}</p>
+                  <p className="text-[10px] text-ds-ink3">{a.decision_notes || (a.authorization_confirmed ? 'Product authorization confirmed' : 'Authorization not confirmed')}</p>
+                </div>
+                <Badge cls={a.status === 'QUOTED' ? B2B_STATUS_CLS.QUOTED : a.status === 'DECLINED' ? B2B_STATUS_CLS.REJECTED : B2B_STATUS_CLS.REVIEWING} label={a.status} />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-ds-ink3">No insurer has been assigned to this corporate request.</p>
+        )}
+        <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2">
+          <select
+            value={selectedAssignmentInsurer}
+            onChange={e => setSelectedAssignmentInsurer(e.target.value)}
+            className={INPUT}
+            disabled={assigningInsurer}
+          >
+            <option value="">Select active insurer…</option>
+            {assignmentInsurers.map(insurer => <option key={insurer.id} value={insurer.id}>{insurer.name}</option>)}
+          </select>
+          <button
+            type="button"
+            onClick={assignInsurer}
+            disabled={!selectedAssignmentInsurer || !authorizationConfirmed || assigningInsurer}
+            className="px-3 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold disabled:opacity-40"
+          >
+            {assigningInsurer ? 'Assigning…' : 'Assign insurer'}
+          </button>
+        </div>
+        <label className="flex items-start gap-2 text-[11px] leading-relaxed text-ds-ink3">
+          <input
+            type="checkbox"
+            checked={authorizationConfirmed}
+            onChange={e => setAuthorizationConfirmed(e.target.checked)}
+            className="mt-0.5 accent-emerald-600"
+            disabled={assigningInsurer}
+          />
+          I confirm this insurer's authorization for this specific B2B product/risk has been verified before assignment.
+        </label>
+      </div>
 
       {/* Add Quote Button */}
       <button
