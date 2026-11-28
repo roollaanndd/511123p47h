@@ -54,6 +54,11 @@ const InsurerB2BRequests: React.FC<Props> = ({ authToken, refreshTick }) => {
 
   useEffect(() => { void load(); }, [load, refreshTick]);
 
+  useEffect(() => {
+    const timer = window.setInterval(() => { void load(); }, 30000);
+    return () => window.clearInterval(timer);
+  }, [load]);
+
   const selected = useMemo(() => items.find(item => item.id === selectedId) ?? null, [items, selectedId]);
   const pendingCount = items.filter(item => item.status === 'ASSIGNED' || item.status === 'REQUEST_INFO').length;
 
