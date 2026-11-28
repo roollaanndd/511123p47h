@@ -64,7 +64,7 @@ export async function getAgentQuotes(agentId: string): Promise<SpQuote[]> {
 
 export async function saveQuote(data: Omit<SpQuote, 'id' | 'created_at'>): Promise<SpQuote | null> {
   // Quote writes must pass through the authenticated gateway. A direct-table
-  // fallback would bypass its verified-agent, ownership, rate-limit and forced
+  // fallback would bypass its agent-role, ownership, rate-limit and forced
   // DRAFT checks whenever the gateway rejects or is unavailable.
   try {
     const { callGateway } = await import('./db');
